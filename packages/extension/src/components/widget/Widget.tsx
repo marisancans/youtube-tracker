@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Settings } from '@yt-detox/shared';
 import {
   getCurrentSession,
   getCurrentVideoSession,
@@ -45,13 +44,10 @@ export default function Widget(): JSX.Element {
     unproductiveCount: 0,
   });
   
-  const [settings, setSettings] = useState<Settings | null>(null);
-  
   // Fetch settings on mount
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, (response) => {
       if (response && !response.error) {
-        setSettings(response);
         setState((prev) => ({
           ...prev,
           dailyGoal: response.dailyGoalMinutes || 60,

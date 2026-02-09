@@ -23,7 +23,7 @@ const SCROLL_DEBOUNCE = 150;
 // ===== State =====
 
 let root: Root | null = null;
-let _updateIntervalId: number | null = null;
+let updateIntervalId: number | null = null;
 let scrollTimeoutId: number | null = null;
 let lastUrl = window.location.href;
 let isInitialized = false;
@@ -527,13 +527,20 @@ async function init(): Promise<void> {
     setTimeout(startVideoSession, 1500);
   }
   
-  // Start update interval
+  // Start update interval - store for potential cleanup
   updateIntervalId = window.setInterval(() => {
     const pageType = getPageType();
     if (pageType === 'watch' || pageType === 'shorts') {
       updateVideoSession();
     }
   }, UPDATE_INTERVAL);
+  
+  // Cleanup on window unload
+  window.addEventListener('unload', () => {
+    if (updateIntervalId) {
+      clearInterval(updateIntervalId);
+    }
+  });
   
   console.log('[YT Detox] Initialized');
 }

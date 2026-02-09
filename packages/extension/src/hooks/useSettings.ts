@@ -4,19 +4,27 @@ import { getSettings, updateSettings as updateSettingsApi } from '@/lib/messagin
 
 const DEFAULT_SETTINGS: Settings = {
   trackingEnabled: true,
+  privacyTier: 'standard',
   phase: 'observation',
   installDate: Date.now(),
   dailyGoalMinutes: 60,
+  weekendGoalMinutes: 120,
+  bedtime: '23:00',
+  wakeTime: '07:00',
   interventionsEnabled: {
     productivityPrompts: true,
+    timeWarnings: true,
+    intentionPrompts: false,
+    frictionDelay: false,
     weeklyReports: true,
+    bedtimeWarning: false,
   },
   productivityPromptChance: 0.3,
   whitelistedChannels: [],
   blockedChannels: [],
   backend: {
     enabled: false,
-    url: '',
+    url: 'http://localhost:8000',
     userId: null,
     lastSync: null,
   },

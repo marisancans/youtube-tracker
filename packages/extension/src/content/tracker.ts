@@ -1,7 +1,6 @@
 import type {
   VideoSession,
   BrowserSession,
-  DailyStats,
   PageType,
   VideoSource,
   VideoInfo,
@@ -10,10 +9,28 @@ import type {
   PageEvent,
   VideoWatchEvent,
   RecommendationEvent,
-  CATEGORY_KEYWORDS,
+  InterventionEvent,
+  MoodReport,
+  ExitType,
 } from '@yt-detox/shared';
 
 // ===== State Management =====
+
+interface ThumbnailHoverInfo {
+  startTime: number;
+  videoTitle: string;
+  channelName: string;
+  positionIndex: number;
+}
+
+interface TemporalTracking {
+  firstCheckTime: string | null;
+  hourlySeconds: Record<string, number>;
+  sessionStartTime: number;
+  lastActivityTime: number;
+  bingeModeActive: boolean;
+  preSleepActive: boolean;
+}
 
 interface TrackerState {
   currentBrowserSession: BrowserSession | null;
@@ -24,14 +41,33 @@ interface TrackerState {
   previousPageType: PageType | null;
   lastScrollY: number;
   lastScrollTime: number;
+  lastScrollEventTime: number;  // For debouncing scroll events
   scrollVelocities: number[];
   visibilityHiddenAt: number | null;
   backgroundAccumulatedMs: number;
-  thumbnailHoverStart: Map<string, number>; // videoId -> hover start time
-  pendingEvents: Array<ScrollEvent | ThumbnailEvent | PageEvent | VideoWatchEvent | RecommendationEvent>;
+  thumbnailHoverStart: Map<string, ThumbnailHoverInfo>;
+  pendingEvents: {
+    scroll: ScrollEvent[];
+    thumbnail: ThumbnailEvent[];
+    page: PageEvent[];
+    video_watch: VideoWatchEvent[];
+    recommendation: RecommendationEvent[];
+    intervention: InterventionEvent[];
+    mood: MoodReport[];
+  };
   lastVideoTime: number;
+  lastVideoPaused: boolean;
+  videoSeekCount: number;
+  videoPauseCount: number;
   autoplayCountdownActive: boolean;
   autoplayNextVideo: string | null;
+  autoplayCountdownStartTime: number | null;
+  tabSwitchCount: number;
+  sidebarRecommendationsShown: Set<string>;
+  temporal: TemporalTracking;
+  scrollDebounceTimer: number | null;
+  batchScrollEvents: ScrollEvent[];
+  observedThumbnails: Set<Element>;
 }
 
 const state: TrackerState = {
@@ -43,14 +79,40 @@ const state: TrackerState = {
   previousPageType: null,
   lastScrollY: 0,
   lastScrollTime: Date.now(),
+  lastScrollEventTime: 0,
   scrollVelocities: [],
   visibilityHiddenAt: null,
   backgroundAccumulatedMs: 0,
   thumbnailHoverStart: new Map(),
-  pendingEvents: [],
+  pendingEvents: {
+    scroll: [],
+    thumbnail: [],
+    page: [],
+    video_watch: [],
+    recommendation: [],
+    intervention: [],
+    mood: [],
+  },
   lastVideoTime: 0,
+  lastVideoPaused: true,
+  videoSeekCount: 0,
+  videoPauseCount: 0,
   autoplayCountdownActive: false,
   autoplayNextVideo: null,
+  autoplayCountdownStartTime: null,
+  tabSwitchCount: 0,
+  sidebarRecommendationsShown: new Set(),
+  temporal: {
+    firstCheckTime: null,
+    hourlySeconds: {},
+    sessionStartTime: Date.now(),
+    lastActivityTime: Date.now(),
+    bingeModeActive: false,
+    preSleepActive: false,
+  },
+  scrollDebounceTimer: null,
+  batchScrollEvents: [],
+  observedThumbnails: new Set(),
 };
 
 // ===== Utility Functions =====
@@ -134,12 +196,13 @@ function inferCategory(title: string, channel: string): string | undefined {
   return undefined;
 }
 
-function getTodayKey(): string {
-  return new Date().toISOString().split('T')[0];
-}
-
 function getHour(): string {
   return new Date().getHours().toString();
+}
+
+function getCurrentTimeHHMM(): string {
+  const now = new Date();
+  return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 }
 
 function countCapsPercent(text: string): number {
@@ -148,6 +211,16 @@ function countCapsPercent(text: string): number {
   if (letters.length === 0) return 0;
   const caps = letters.replace(/[^A-Z]/g, '').length;
   return Math.round((caps / letters.length) * 100);
+}
+
+function isPreSleepTime(): boolean {
+  const hour = new Date().getHours();
+  return hour >= 22 || hour < 2; // 10pm - 2am
+}
+
+function isBingeSession(): boolean {
+  const sessionDurationMs = Date.now() - state.temporal.sessionStartTime;
+  return sessionDurationMs > 60 * 60 * 1000; // > 60 minutes
 }
 
 // ===== DOM Scrapers =====
@@ -226,6 +299,60 @@ function getVisibleThumbnailCount(): number {
   return count;
 }
 
+function scrapeThumbnailInfo(element: Element): { videoId: string; videoTitle: string; channelName: string; positionIndex: number } | null {
+  // Find parent video renderer
+  const renderer = element.closest('ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-video-renderer, ytd-grid-video-renderer');
+  if (!renderer) return null;
+  
+  // Get video ID from link
+  const link = renderer.querySelector('a#thumbnail, a.yt-simple-endpoint[href*="/watch"]');
+  const href = link?.getAttribute('href') || '';
+  const videoIdMatch = href.match(/[?&]v=([^&]+)/);
+  const videoId = videoIdMatch?.[1] || '';
+  if (!videoId) return null;
+  
+  // Get title
+  const titleEl = renderer.querySelector('#video-title, #video-title-link, h3 a');
+  const videoTitle = titleEl?.textContent?.trim() || '';
+  
+  // Get channel name
+  const channelEl = renderer.querySelector('#channel-name a, ytd-channel-name a, .ytd-channel-name');
+  const channelName = channelEl?.textContent?.trim() || '';
+  
+  // Get position index
+  const parent = renderer.parentElement;
+  let positionIndex = 0;
+  if (parent) {
+    const siblings = Array.from(parent.children);
+    positionIndex = siblings.indexOf(renderer);
+  }
+  
+  return { videoId, videoTitle, channelName, positionIndex };
+}
+
+function scrapeSidebarRecommendations(): Array<{ videoId: string; videoTitle: string; channelName: string; positionIndex: number }> {
+  const recommendations: Array<{ videoId: string; videoTitle: string; channelName: string; positionIndex: number }> = [];
+  const sidebarItems = document.querySelectorAll('ytd-compact-video-renderer');
+  
+  sidebarItems.forEach((item, index) => {
+    const link = item.querySelector('a.yt-simple-endpoint[href*="/watch"]');
+    const href = link?.getAttribute('href') || '';
+    const videoIdMatch = href.match(/[?&]v=([^&]+)/);
+    const videoId = videoIdMatch?.[1] || '';
+    if (!videoId) return;
+    
+    const titleEl = item.querySelector('#video-title');
+    const videoTitle = titleEl?.textContent?.trim() || '';
+    
+    const channelEl = item.querySelector('.ytd-channel-name');
+    const channelName = channelEl?.textContent?.trim() || '';
+    
+    recommendations.push({ videoId, videoTitle, channelName, positionIndex: index });
+  });
+  
+  return recommendations;
+}
+
 // ===== Browser Session Management =====
 
 export async function initBrowserSession(): Promise<void> {
@@ -234,6 +361,16 @@ export async function initBrowserSession(): Promise<void> {
   const pageType = getPageType();
   state.currentPageType = pageType;
   state.pageEnteredAt = Date.now();
+  
+  // Initialize temporal tracking
+  state.temporal.sessionStartTime = Date.now();
+  state.temporal.lastActivityTime = Date.now();
+  state.temporal.preSleepActive = isPreSleepTime();
+  
+  // Set first check time of the day
+  if (!state.temporal.firstCheckTime) {
+    state.temporal.firstCheckTime = getCurrentTimeHHMM();
+  }
   
   state.currentBrowserSession = {
     id: generateId(),
@@ -271,6 +408,11 @@ export async function initBrowserSession(): Promise<void> {
     searchQueries: [],
   };
   
+  // Record initial page event
+  recordPageEvent('page_load', {
+    navigationMethod: 'direct',
+  });
+  
   // Send to background
   chrome.runtime.sendMessage({
     type: 'PAGE_LOAD',
@@ -279,8 +421,16 @@ export async function initBrowserSession(): Promise<void> {
       pageType,
       url: window.location.href,
       timestamp: Date.now(),
+      firstCheckTime: state.temporal.firstCheckTime,
+      preSleepActive: state.temporal.preSleepActive,
     },
   });
+  
+  // Setup observers
+  setupThumbnailObservers();
+  setupAutoplayObserver();
+  setupSidebarObserver();
+  setupVideoObservers();
 }
 
 export function updateBrowserSession(): void {
@@ -311,25 +461,49 @@ export function updateBrowserSession(): void {
       state.currentBrowserSession.timeOnShortsSeconds = timeOnCurrentPage;
       break;
   }
+  
+  // Update hourly seconds
+  const hour = getHour();
+  const elapsedThisInterval = Math.floor((now - state.temporal.lastActivityTime) / 1000);
+  state.temporal.hourlySeconds[hour] = (state.temporal.hourlySeconds[hour] || 0) + elapsedThisInterval;
+  state.temporal.lastActivityTime = now;
+  
+  // Check for binge mode
+  if (!state.temporal.bingeModeActive && isBingeSession()) {
+    state.temporal.bingeModeActive = true;
+    // Could trigger an intervention here
+  }
 }
 
-export function endBrowserSession(exitType?: string): void {
+export function endBrowserSession(exitType?: ExitType): void {
   if (!state.currentBrowserSession) return;
   
   updateBrowserSession();
   state.currentBrowserSession.endedAt = Date.now();
   state.currentBrowserSession.exitType = exitType;
   
+  // End any active video session
+  if (state.currentVideoSession) {
+    endVideoSession('navigated');
+  }
+  
   chrome.runtime.sendMessage({
     type: 'PAGE_UNLOAD',
     data: {
       session: state.currentBrowserSession,
-      events: state.pendingEvents,
+      events: getAllPendingEvents(),
+      temporal: {
+        firstCheckTime: state.temporal.firstCheckTime,
+        hourlySeconds: state.temporal.hourlySeconds,
+        bingeModeActive: state.temporal.bingeModeActive,
+        preSleepActive: state.temporal.preSleepActive,
+        sessionDurationMs: Date.now() - state.temporal.sessionStartTime,
+      },
     },
   });
   
   state.currentBrowserSession = null;
-  state.pendingEvents = [];
+  clearPendingEvents();
 }
 
 // ===== Video Session Management =====
@@ -351,6 +525,9 @@ export function startVideoSession(): void {
   
   state.currentVideoInfo = videoInfo;
   state.lastVideoTime = videoInfo.currentTime;
+  state.lastVideoPaused = videoInfo.isPaused;
+  state.videoSeekCount = 0;
+  state.videoPauseCount = 0;
   
   state.currentVideoSession = {
     id: generateId(),
@@ -390,6 +567,9 @@ export function startVideoSession(): void {
   
   // Record video play event
   recordVideoEvent('play');
+  
+  // Track sidebar recommendations shown
+  trackSidebarRecommendationsShown();
 }
 
 export function updateVideoSession(): void {
@@ -398,17 +578,31 @@ export function updateVideoSession(): void {
   
   const prevTime = state.lastVideoTime;
   const currTime = videoInfo.currentTime;
-  state.lastVideoTime = currTime;
+  const wasPaused = state.lastVideoPaused;
+  const isPaused = videoInfo.isPaused;
   
-  // Detect seek
+  state.lastVideoTime = currTime;
+  state.lastVideoPaused = isPaused;
+  
+  // Detect seek (time jump > 2 seconds that's not normal playback)
   const timeDelta = currTime - prevTime;
-  if (Math.abs(timeDelta) > 2) {
-    state.currentVideoSession.seekCount++;
+  if (Math.abs(timeDelta) > 2 && !wasPaused) {
+    state.videoSeekCount++;
+    state.currentVideoSession.seekCount = state.videoSeekCount;
     recordVideoEvent('seek', {
       seekFromSeconds: prevTime,
       seekToSeconds: currTime,
       seekDeltaSeconds: timeDelta,
     });
+  }
+  
+  // Detect pause/play
+  if (!wasPaused && isPaused) {
+    state.videoPauseCount++;
+    state.currentVideoSession.pauseCount = state.videoPauseCount;
+    recordVideoEvent('pause');
+  } else if (wasPaused && !isPaused) {
+    recordVideoEvent('play');
   }
   
   // Update watched time
@@ -437,18 +631,12 @@ export function endVideoSession(reason: 'ended' | 'abandoned' | 'navigated' = 'n
   if (state.currentBrowserSession) {
     state.currentBrowserSession.videosWatched++;
     state.currentBrowserSession.videosStartedNotFinished--;
-    
-    // Categorize completion
-    if (watchPercent >= 90) {
-      // Completed
-    } else if (watchPercent < 30) {
-      // Abandoned
-    }
   }
   
   // Record end event
-  recordVideoEvent(reason === 'ended' ? 'ended' : 'abandoned', {
-    watchPercentAtAbandon: reason === 'abandoned' ? watchPercent : undefined,
+  const eventType = reason === 'ended' ? 'ended' : 'abandoned';
+  recordVideoEvent(eventType, {
+    watchPercentAtAbandon: reason !== 'ended' ? watchPercent : undefined,
   });
   
   // Send to background
@@ -460,6 +648,8 @@ export function endVideoSession(reason: 'ended' | 'abandoned' | 'navigated' = 'n
   state.currentVideoSession = null;
   state.currentVideoInfo = null;
   state.lastVideoTime = 0;
+  state.videoSeekCount = 0;
+  state.videoPauseCount = 0;
 }
 
 function recordVideoEvent(eventType: string, extras?: Record<string, any>): void {
@@ -476,10 +666,10 @@ function recordVideoEvent(eventType: string, extras?: Record<string, any>): void
     ...extras,
   };
   
-  state.pendingEvents.push(event);
+  state.pendingEvents.video_watch.push(event);
 }
 
-// ===== Behavioral Event Tracking =====
+// ===== Scroll Event Tracking (Debounced) =====
 
 export function trackScroll(): void {
   if (!state.currentBrowserSession) return;
@@ -494,7 +684,7 @@ export function trackScroll(): void {
   state.scrollVelocities.push(velocity);
   if (state.scrollVelocities.length > 10) state.scrollVelocities.shift();
   
-  const direction = scrollY > state.lastScrollY ? 'down' : 'up';
+  const direction: 'up' | 'down' = scrollY > state.lastScrollY ? 'down' : 'up';
   const pageHeight = document.documentElement.scrollHeight;
   const viewportHeight = window.innerHeight;
   const scrollDepth = pageHeight > viewportHeight 
@@ -503,38 +693,169 @@ export function trackScroll(): void {
   
   state.currentBrowserSession.totalScrollPixels += delta;
   
-  // Only record significant scrolls (> 100px, debounced to 500ms)
-  if (delta > 100 && timeDelta > 500) {
-    const event: ScrollEvent = {
-      type: 'scroll',
-      sessionId: state.currentBrowserSession.id,
-      pageType: state.currentPageType,
-      timestamp: now,
-      scrollY,
-      scrollDepthPercent: scrollDepth,
-      viewportHeight,
-      pageHeight,
-      scrollVelocity: velocity,
-      scrollDirection: direction,
-      visibleVideoCount: getVisibleThumbnailCount(),
-    };
-    
-    state.pendingEvents.push(event);
-  }
+  // Create event for batching
+  const event: ScrollEvent = {
+    type: 'scroll',
+    sessionId: state.currentBrowserSession.id,
+    pageType: state.currentPageType,
+    timestamp: now,
+    scrollY,
+    scrollDepthPercent: scrollDepth,
+    viewportHeight,
+    pageHeight,
+    scrollVelocity: velocity,
+    scrollDirection: direction,
+    visibleVideoCount: getVisibleThumbnailCount(),
+  };
+  
+  state.batchScrollEvents.push(event);
   
   state.lastScrollY = scrollY;
   state.lastScrollTime = now;
+  
+  // Debounce: flush scroll events every 500ms
+  if (state.scrollDebounceTimer) {
+    clearTimeout(state.scrollDebounceTimer);
+  }
+  
+  state.scrollDebounceTimer = window.setTimeout(() => {
+    flushScrollEvents();
+  }, 500);
+}
+
+function flushScrollEvents(): void {
+  if (state.batchScrollEvents.length === 0) return;
+  
+  // Take only the most recent event or aggregate
+  // For now, take the last event as the "summary" of scroll activity
+  const lastEvent = state.batchScrollEvents[state.batchScrollEvents.length - 1];
+  
+  // Calculate aggregate metrics
+  const avgVelocity = state.scrollVelocities.length > 0
+    ? state.scrollVelocities.reduce((a, b) => a + b, 0) / state.scrollVelocities.length
+    : 0;
+  
+  lastEvent.scrollVelocity = avgVelocity;
+  
+  state.pendingEvents.scroll.push(lastEvent);
+  state.batchScrollEvents = [];
+  state.scrollDebounceTimer = null;
+}
+
+// ===== Thumbnail Hover/Click Tracking =====
+
+function setupThumbnailObservers(): void {
+  // Observer to detect new thumbnails
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node instanceof Element) {
+          attachThumbnailListeners(node);
+        }
+      });
+    });
+  });
+  
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
+  
+  // Attach to existing thumbnails
+  attachThumbnailListeners(document.body);
+}
+
+function attachThumbnailListeners(root: Element): void {
+  const selectors = [
+    'ytd-rich-item-renderer',
+    'ytd-compact-video-renderer',
+    'ytd-video-renderer',
+    'ytd-grid-video-renderer',
+  ];
+  
+  selectors.forEach((selector) => {
+    root.querySelectorAll(selector).forEach((el) => {
+      if (state.observedThumbnails.has(el)) return;
+      state.observedThumbnails.add(el);
+      
+      el.addEventListener('mouseenter', () => handleThumbnailHoverStart(el));
+      el.addEventListener('mouseleave', () => handleThumbnailHoverEnd(el, false));
+      el.addEventListener('click', (e) => handleThumbnailClick(el, e));
+    });
+  });
+}
+
+function handleThumbnailHoverStart(element: Element): void {
+  const info = scrapeThumbnailInfo(element);
+  if (!info) return;
+  
+  state.thumbnailHoverStart.set(info.videoId, {
+    startTime: Date.now(),
+    videoTitle: info.videoTitle,
+    channelName: info.channelName,
+    positionIndex: info.positionIndex,
+  });
+}
+
+function handleThumbnailHoverEnd(element: Element, clicked: boolean): void {
+  const info = scrapeThumbnailInfo(element);
+  if (!info) return;
+  
+  const hoverInfo = state.thumbnailHoverStart.get(info.videoId);
+  if (!hoverInfo || !state.currentBrowserSession) {
+    state.thumbnailHoverStart.delete(info.videoId);
+    return;
+  }
+  
+  const hoverDuration = Date.now() - hoverInfo.startTime;
+  state.thumbnailHoverStart.delete(info.videoId);
+  
+  // Only track if hover was meaningful (> 200ms)
+  if (hoverDuration < 200 && !clicked) return;
+  
+  state.currentBrowserSession.thumbnailsHovered++;
+  if (clicked) {
+    state.currentBrowserSession.thumbnailsClicked++;
+  }
+  
+  const event: ThumbnailEvent = {
+    type: 'thumbnail',
+    sessionId: state.currentBrowserSession.id,
+    videoId: info.videoId,
+    videoTitle: hoverInfo.videoTitle,
+    channelName: hoverInfo.channelName,
+    pageType: state.currentPageType,
+    positionIndex: hoverInfo.positionIndex,
+    timestamp: Date.now(),
+    hoverDurationMs: hoverDuration,
+    previewPlayed: hoverDuration > 3000, // YouTube starts preview after ~3s
+    previewWatchMs: hoverDuration > 3000 ? hoverDuration - 3000 : 0,
+    clicked,
+    titleCapsPercent: countCapsPercent(hoverInfo.videoTitle),
+    titleLength: hoverInfo.videoTitle.length,
+  };
+  
+  state.pendingEvents.thumbnail.push(event);
+}
+
+function handleThumbnailClick(element: Element, _event: Event): void {
+  handleThumbnailHoverEnd(element, true);
 }
 
 export function trackThumbnailHover(videoId: string, videoTitle: string, channelName: string, positionIndex: number): void {
-  state.thumbnailHoverStart.set(videoId, Date.now());
+  state.thumbnailHoverStart.set(videoId, {
+    startTime: Date.now(),
+    videoTitle,
+    channelName,
+    positionIndex,
+  });
 }
 
 export function trackThumbnailLeave(videoId: string, clicked: boolean = false): void {
-  const hoverStart = state.thumbnailHoverStart.get(videoId);
-  if (!hoverStart || !state.currentBrowserSession) return;
+  const hoverInfo = state.thumbnailHoverStart.get(videoId);
+  if (!hoverInfo || !state.currentBrowserSession) return;
   
-  const hoverDuration = Date.now() - hoverStart;
+  const hoverDuration = Date.now() - hoverInfo.startTime;
   state.thumbnailHoverStart.delete(videoId);
   
   state.currentBrowserSession.thumbnailsHovered++;
@@ -542,29 +863,29 @@ export function trackThumbnailLeave(videoId: string, clicked: boolean = false): 
     state.currentBrowserSession.thumbnailsClicked++;
   }
   
-  // We need video info - try to get from the thumbnail element
-  // For now, record basic event
   const event: ThumbnailEvent = {
     type: 'thumbnail',
     sessionId: state.currentBrowserSession.id,
     videoId,
-    videoTitle: '',  // Would need to scrape from DOM
-    channelName: '', // Would need to scrape from DOM
+    videoTitle: hoverInfo.videoTitle,
+    channelName: hoverInfo.channelName,
     pageType: state.currentPageType,
-    positionIndex: 0,
+    positionIndex: hoverInfo.positionIndex,
     timestamp: Date.now(),
     hoverDurationMs: hoverDuration,
-    previewPlayed: hoverDuration > 3000, // YouTube starts preview after ~3s
+    previewPlayed: hoverDuration > 3000,
     previewWatchMs: hoverDuration > 3000 ? hoverDuration - 3000 : 0,
     clicked,
-    titleCapsPercent: 0,
-    titleLength: 0,
+    titleCapsPercent: countCapsPercent(hoverInfo.videoTitle),
+    titleLength: hoverInfo.videoTitle.length,
   };
   
-  state.pendingEvents.push(event);
+  state.pendingEvents.thumbnail.push(event);
 }
 
-export function trackPageNavigation(eventType: string, extras?: Record<string, any>): void {
+// ===== Page Navigation Tracking =====
+
+function recordPageEvent(eventType: string, extras?: Record<string, any>): void {
   if (!state.currentBrowserSession) return;
   
   const now = Date.now();
@@ -584,7 +905,13 @@ export function trackPageNavigation(eventType: string, extras?: Record<string, a
     timeOnPageMs: timeOnPage,
   };
   
-  state.pendingEvents.push(event);
+  state.pendingEvents.page.push(event);
+}
+
+export function trackPageNavigation(eventType: string, extras?: Record<string, any>): void {
+  if (!state.currentBrowserSession) return;
+  
+  recordPageEvent(eventType, extras);
   
   // Handle specific event types
   switch (eventType) {
@@ -601,7 +928,7 @@ export function trackPageNavigation(eventType: string, extras?: Record<string, a
   
   state.previousPageType = state.currentPageType;
   state.currentPageType = getPageType();
-  state.pageEnteredAt = now;
+  state.pageEnteredAt = Date.now();
 }
 
 export function trackSearch(query: string): void {
@@ -610,9 +937,58 @@ export function trackSearch(query: string): void {
   state.currentBrowserSession.searchCount++;
   state.currentBrowserSession.searchQueries.push(query);
   
+  // Count search results
+  const resultsCount = document.querySelectorAll('ytd-video-renderer').length;
+  
   trackPageNavigation('page_load', {
     navigationMethod: 'search',
     searchQuery: query,
+    searchResultsCount: resultsCount,
+  });
+}
+
+// ===== Recommendation Tracking =====
+
+function setupSidebarObserver(): void {
+  // Observe sidebar for changes
+  const observer = new MutationObserver(() => {
+    if (state.currentPageType === 'watch') {
+      trackSidebarRecommendationsShown();
+    }
+  });
+  
+  // Try to find the sidebar
+  const sidebar = document.querySelector('#secondary, ytd-watch-next-secondary-results-renderer');
+  if (sidebar) {
+    observer.observe(sidebar, { childList: true, subtree: true });
+  }
+}
+
+function trackSidebarRecommendationsShown(): void {
+  if (!state.currentBrowserSession) return;
+  
+  const recommendations = scrapeSidebarRecommendations();
+  recommendations.forEach((rec) => {
+    if (state.sidebarRecommendationsShown.has(rec.videoId)) return;
+    state.sidebarRecommendationsShown.add(rec.videoId);
+    
+    const event: RecommendationEvent = {
+      type: 'recommendation',
+      sessionId: state.currentBrowserSession!.id,
+      location: 'sidebar',
+      positionIndex: rec.positionIndex,
+      videoId: rec.videoId,
+      videoTitle: rec.videoTitle,
+      channelName: rec.channelName,
+      action: 'ignored', // Will be updated if clicked
+      hoverDurationMs: undefined,
+      timestamp: Date.now(),
+      wasAutoplayNext: rec.positionIndex === 0, // First item is usually autoplay next
+      autoplayCountdownStarted: false,
+      autoplayCancelled: false,
+    };
+    
+    state.pendingEvents.recommendation.push(event);
   });
 }
 
@@ -621,23 +997,113 @@ export function trackRecommendationClick(videoId: string, position: number, loca
   
   state.currentBrowserSession.recommendationClicks++;
   
+  // Find existing event for this video and update it
+  const existingEvent = state.pendingEvents.recommendation.find(
+    (e) => e.videoId === videoId && e.action === 'ignored'
+  );
+  
+  if (existingEvent) {
+    existingEvent.action = 'clicked';
+    existingEvent.timestamp = Date.now();
+  } else {
+    const event: RecommendationEvent = {
+      type: 'recommendation',
+      sessionId: state.currentBrowserSession.id,
+      location: location as any,
+      positionIndex: position,
+      videoId,
+      videoTitle: undefined,
+      channelName: undefined,
+      action: 'clicked',
+      hoverDurationMs: undefined,
+      timestamp: Date.now(),
+      wasAutoplayNext: false,
+      autoplayCountdownStarted: false,
+      autoplayCancelled: false,
+    };
+    
+    state.pendingEvents.recommendation.push(event);
+  }
+}
+
+// ===== Autoplay Tracking =====
+
+function setupAutoplayObserver(): void {
+  // Watch for autoplay countdown element
+  const observer = new MutationObserver(() => {
+    checkAutoplayCountdown();
+  });
+  
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class', 'style'],
+  });
+}
+
+function checkAutoplayCountdown(): void {
+  const autoplayOverlay = document.querySelector('.ytp-autonav-endscreen-countdown-overlay');
+  
+  if (autoplayOverlay && !state.autoplayCountdownActive) {
+    // Autoplay countdown started
+    state.autoplayCountdownActive = true;
+    state.autoplayCountdownStartTime = Date.now();
+    
+    // Try to get the next video info
+    const nextVideoLink = document.querySelector('.ytp-autonav-endscreen-upnext-thumbnail');
+    const href = nextVideoLink?.getAttribute('href') || '';
+    const videoIdMatch = href.match(/[?&]v=([^&]+)/);
+    state.autoplayNextVideo = videoIdMatch?.[1] || null;
+    
+    if (state.autoplayNextVideo) {
+      recordAutoplayEvent(state.autoplayNextVideo, 'countdown_started');
+    }
+  } else if (!autoplayOverlay && state.autoplayCountdownActive) {
+    // Autoplay countdown ended
+    state.autoplayCountdownActive = false;
+    
+    // Check if it was cancelled or played
+    // If we're still on the same video, it was cancelled
+    const currentVideoId = getVideoId();
+    if (state.autoplayNextVideo && currentVideoId !== state.autoplayNextVideo) {
+      // Autoplay happened
+      if (state.currentBrowserSession) {
+        state.currentBrowserSession.autoplayCount++;
+      }
+    } else if (state.autoplayNextVideo) {
+      // Autoplay was cancelled
+      recordAutoplayEvent(state.autoplayNextVideo, 'cancelled');
+      if (state.currentBrowserSession) {
+        state.currentBrowserSession.autoplayCancelled++;
+      }
+    }
+    
+    state.autoplayNextVideo = null;
+    state.autoplayCountdownStartTime = null;
+  }
+}
+
+function recordAutoplayEvent(videoId: string, action: 'countdown_started' | 'cancelled' | 'played'): void {
+  if (!state.currentBrowserSession) return;
+  
   const event: RecommendationEvent = {
     type: 'recommendation',
     sessionId: state.currentBrowserSession.id,
-    location: location as any,
-    positionIndex: position,
+    location: 'autoplay_queue',
+    positionIndex: 0,
     videoId,
     videoTitle: undefined,
     channelName: undefined,
-    action: 'clicked',
+    action: action === 'played' ? 'clicked' : 'ignored',
     hoverDurationMs: undefined,
     timestamp: Date.now(),
-    wasAutoplayNext: false,
-    autoplayCountdownStarted: false,
-    autoplayCancelled: false,
+    wasAutoplayNext: true,
+    autoplayCountdownStarted: action === 'countdown_started' || action === 'cancelled',
+    autoplayCancelled: action === 'cancelled',
   };
   
-  state.pendingEvents.push(event);
+  state.pendingEvents.recommendation.push(event);
 }
 
 export function trackAutoplay(nextVideoId: string, cancelled: boolean = false): void {
@@ -645,28 +1111,60 @@ export function trackAutoplay(nextVideoId: string, cancelled: boolean = false): 
   
   if (cancelled) {
     state.currentBrowserSession.autoplayCancelled++;
+    recordAutoplayEvent(nextVideoId, 'cancelled');
   } else {
     state.currentBrowserSession.autoplayCount++;
     state.autoplayNextVideo = nextVideoId;
+    recordAutoplayEvent(nextVideoId, 'played');
   }
+}
+
+// ===== Video Element Observers =====
+
+function setupVideoObservers(): void {
+  // Observe for video element
+  const observer = new MutationObserver(() => {
+    const video = document.querySelector('video');
+    if (video) {
+      attachVideoListeners(video);
+    }
+  });
   
-  const event: RecommendationEvent = {
-    type: 'recommendation',
-    sessionId: state.currentBrowserSession.id,
-    location: 'autoplay_queue',
-    positionIndex: 0,
-    videoId: nextVideoId,
-    videoTitle: undefined,
-    channelName: undefined,
-    action: cancelled ? 'ignored' : 'clicked',
-    hoverDurationMs: undefined,
-    timestamp: Date.now(),
-    wasAutoplayNext: true,
-    autoplayCountdownStarted: true,
-    autoplayCancelled: cancelled,
-  };
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
   
-  state.pendingEvents.push(event);
+  // Attach to existing video
+  const video = document.querySelector('video');
+  if (video) {
+    attachVideoListeners(video);
+  }
+}
+
+let videoListenersAttached = false;
+
+function attachVideoListeners(video: HTMLVideoElement): void {
+  if (videoListenersAttached) return;
+  videoListenersAttached = true;
+  
+  video.addEventListener('ended', () => {
+    if (state.currentVideoSession) {
+      endVideoSession('ended');
+    }
+  });
+  
+  video.addEventListener('ratechange', () => {
+    if (state.currentVideoSession && state.currentBrowserSession) {
+      recordVideoEvent('speed_change', { playbackSpeed: video.playbackRate });
+    }
+  });
+  
+  video.addEventListener('waiting', () => {
+    if (state.currentVideoSession && state.currentBrowserSession) {
+      recordVideoEvent('buffer');
+    }
+  });
 }
 
 // ===== Visibility Tracking =====
@@ -676,8 +1174,9 @@ export function handleVisibilityChange(): void {
   
   if (document.hidden) {
     state.visibilityHiddenAt = Date.now();
+    state.tabSwitchCount++;
     
-    trackPageNavigation('tab_hidden');
+    recordPageEvent('tab_hidden');
     
     // Pause tracking for video
     if (state.currentVideoSession) {
@@ -690,8 +1189,64 @@ export function handleVisibilityChange(): void {
       state.visibilityHiddenAt = null;
     }
     
-    trackPageNavigation('tab_visible');
+    recordPageEvent('tab_visible');
   }
+}
+
+// ===== Intervention Tracking =====
+
+export function trackInterventionShown(interventionType: string, triggerReason: string): void {
+  if (!state.currentBrowserSession) return;
+  
+  const event: InterventionEvent = {
+    type: 'intervention',
+    sessionId: state.currentBrowserSession.id,
+    interventionType: interventionType as any,
+    triggeredAt: Date.now(),
+    triggerReason,
+    response: undefined,
+    responseAt: undefined,
+    responseTimeMs: undefined,
+    userLeftYoutube: false,
+    minutesUntilReturn: undefined,
+  };
+  
+  state.pendingEvents.intervention.push(event);
+}
+
+export function trackInterventionResponse(
+  interventionType: string,
+  response: string,
+  userLeftYoutube: boolean = false
+): void {
+  // Find the most recent intervention of this type
+  const event = [...state.pendingEvents.intervention]
+    .reverse()
+    .find((e) => e.interventionType === interventionType && !e.response);
+  
+  if (event) {
+    event.response = response as any;
+    event.responseAt = Date.now();
+    event.responseTimeMs = event.responseAt - event.triggeredAt;
+    event.userLeftYoutube = userLeftYoutube;
+  }
+}
+
+// ===== Mood Report Tracking =====
+
+export function trackMoodReport(reportType: 'pre' | 'post', mood: number, intention?: string, satisfaction?: number): void {
+  if (!state.currentBrowserSession) return;
+  
+  const report: MoodReport = {
+    timestamp: Date.now(),
+    sessionId: state.currentBrowserSession.id,
+    reportType,
+    mood,
+    intention,
+    satisfaction,
+  };
+  
+  state.pendingEvents.mood.push(report);
 }
 
 // ===== Productivity Rating =====
@@ -717,6 +1272,33 @@ export function rateVideo(rating: -1 | 0 | 1): void {
   });
 }
 
+// ===== Event Management =====
+
+function getAllPendingEvents(): Record<string, any[]> {
+  return {
+    scroll: state.pendingEvents.scroll,
+    thumbnail: state.pendingEvents.thumbnail,
+    page: state.pendingEvents.page,
+    video_watch: state.pendingEvents.video_watch,
+    recommendation: state.pendingEvents.recommendation,
+    intervention: state.pendingEvents.intervention,
+    mood: state.pendingEvents.mood,
+  };
+}
+
+function clearPendingEvents(): void {
+  state.pendingEvents = {
+    scroll: [],
+    thumbnail: [],
+    page: [],
+    video_watch: [],
+    recommendation: [],
+    intervention: [],
+    mood: [],
+  };
+  state.sidebarRecommendationsShown.clear();
+}
+
 // ===== Export State Getters =====
 
 export function getCurrentSession(): BrowserSession | null {
@@ -733,7 +1315,40 @@ export function getCurrentVideoInfo(): VideoInfo | null {
 }
 
 export function getPendingEvents(): Array<ScrollEvent | ThumbnailEvent | PageEvent | VideoWatchEvent | RecommendationEvent> {
-  const events = [...state.pendingEvents];
-  state.pendingEvents = [];
-  return events;
+  // Flush any pending scroll events
+  flushScrollEvents();
+  
+  // Combine all events
+  const allEvents = [
+    ...state.pendingEvents.scroll,
+    ...state.pendingEvents.thumbnail,
+    ...state.pendingEvents.page,
+    ...state.pendingEvents.video_watch,
+    ...state.pendingEvents.recommendation,
+  ];
+  
+  // Clear events
+  state.pendingEvents.scroll = [];
+  state.pendingEvents.thumbnail = [];
+  state.pendingEvents.page = [];
+  state.pendingEvents.video_watch = [];
+  state.pendingEvents.recommendation = [];
+  
+  return allEvents;
+}
+
+export function getTemporalData(): TemporalTracking {
+  return { ...state.temporal };
+}
+
+export function getTabSwitchCount(): number {
+  return state.tabSwitchCount;
+}
+
+export function isBingeMode(): boolean {
+  return state.temporal.bingeModeActive;
+}
+
+export function isPreSleep(): boolean {
+  return state.temporal.preSleepActive || isPreSleepTime();
 }

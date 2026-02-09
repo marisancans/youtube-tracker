@@ -232,8 +232,8 @@ export interface RecommendationEvent {
   location: RecommendationLocation;
   positionIndex: number;
   videoId: string;
-  videoTitle: string;
-  channelName: string;
+  videoTitle?: string;
+  channelName?: string;
   action: RecommendationAction;
   hoverDurationMs?: number;
   timestamp: number;
@@ -426,10 +426,52 @@ export type MessageType =
   | 'RATE_VIDEO'
   | 'PROMPT_SHOWN'
   | 'INTERVENTION_RESPONSE'
+  | 'INTERVENTION_SHOWN'
   | 'MOOD_REPORT'
   | 'GET_WEEKLY_SUMMARY'
   | 'PAGE_RELOAD'
-  | 'BACK_BUTTON';
+  | 'BACK_BUTTON'
+  | 'SYNC_NOW'
+  | 'GET_SYNC_STATUS'
+  | 'BATCH_EVENTS';
+
+// ===== Batch Sync Types =====
+
+export interface EventQueues {
+  scroll: ScrollEvent[];
+  thumbnail: ThumbnailEvent[];
+  page: PageEvent[];
+  video_watch: VideoWatchEvent[];
+  recommendation: RecommendationEvent[];
+  intervention: InterventionEvent[];
+  mood: MoodReport[];
+}
+
+export interface SyncState {
+  lastSync: Record<string, number>;
+  syncInProgress: boolean;
+  retryCount: number;
+  offlineQueue: EventQueues;
+}
+
+export interface SyncStatusResponse {
+  lastSync: Record<string, number>;
+  pendingCounts: Record<string, number>;
+  offlineQueueCounts: Record<string, number>;
+  syncInProgress: boolean;
+}
+
+// ===== Temporal Tracking Types =====
+
+export interface TemporalData {
+  firstCheckTime: string | null;
+  hourlySeconds: Record<string, number>;
+  sessionStartTime: number;
+  lastActivityTime: number;
+  bingeModeActive: boolean;
+  preSleepActive: boolean;
+  sessionDurationMs: number;
+}
 
 export interface Message<T = unknown> {
   type: MessageType;
