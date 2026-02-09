@@ -5,15 +5,31 @@ export interface VideoSession {
   videoId: string;
   title: string;
   channel: string;
+  channelId?: string;
   durationSeconds: number;
   watchedSeconds: number;
   watchedPercent: number;
   source: VideoSource;
+  sourcePosition?: number;
   isShort: boolean;
   playbackSpeed: number;
+  averageSpeed?: number;
+  category?: string;
   productivityRating: ProductivityRating | null;
   timestamp: number;
+  startedAt: number;
+  endedAt?: number;
   ratedAt: number | null;
+  // Engagement metrics
+  seekCount: number;
+  pauseCount: number;
+  tabSwitchCount: number;
+  // Outcome
+  ledToAnotherVideo?: boolean;
+  nextVideoSource?: VideoSource;
+  // User input
+  intention?: string;
+  matchedIntention?: boolean;
 }
 
 export type VideoSource = 
@@ -23,7 +39,10 @@ export type VideoSource =
   | 'autoplay' 
   | 'direct' 
   | 'shorts' 
-  | 'homepage';
+  | 'homepage'
+  | 'notification'
+  | 'history'
+  | 'end_screen';
 
 export type ProductivityRating = -1 | 0 | 1;
 
@@ -34,35 +53,232 @@ export interface BrowserSession {
   startedAt: number;
   endedAt: number | null;
   tabId: number | null;
-  videos: string[];
-  totalWatchedSeconds: number;
-  activeSeconds: number;
+  // Entry
+  entryPageType: PageType;
+  entryUrl: string;
+  entrySource: EntrySource;
+  triggerType?: TriggerType;
+  // Totals
+  totalDurationSeconds: number;
+  activeDurationSeconds: number;
   backgroundSeconds: number;
-  durationSeconds: number;
+  // Counts
+  pagesVisited: number;
+  videosWatched: number;
+  videosStartedNotFinished: number;
   shortsCount: number;
-  autoplayCount: number;
+  // Behavioral
+  totalScrollPixels: number;
+  thumbnailsHovered: number;
+  thumbnailsClicked: number;
+  pageReloads: number;
+  backButtonPresses: number;
   recommendationClicks: number;
+  autoplayCount: number;
+  autoplayCancelled: number;
   searchCount: number;
+  // Time distribution
+  timeOnHomeSeconds: number;
+  timeOnWatchSeconds: number;
+  timeOnSearchSeconds: number;
+  timeOnShortsSeconds: number;
+  // Productivity
+  productiveVideos: number;
+  unproductiveVideos: number;
+  neutralVideos: number;
+  // Exit
+  exitType?: ExitType;
+  // Searches
+  searchQueries: string[];
 }
+
+export type EntrySource = 'direct' | 'bookmark' | 'notification' | 'link' | 'new_tab' | 'external';
+export type TriggerType = 'habit' | 'notification' | 'task' | 'boredom' | 'unknown';
+export type ExitType = 'closed_tab' | 'navigated_away' | 'idle_timeout' | 'intervention' | 'user_choice';
 
 // ===== Daily Stats =====
 
 export interface DailyStats {
   date: string;
+  // Time
   totalSeconds: number;
   activeSeconds: number;
   backgroundSeconds: number;
+  // Sessions
+  sessionCount: number;
+  avgSessionDurationSeconds: number;
+  firstCheckTime?: string; // HH:MM
+  // Videos
   videoCount: number;
+  videosCompleted: number; // >90%
+  videosAbandoned: number; // <30%
   shortsCount: number;
+  uniqueChannels: number;
+  // Behavioral
   searchCount: number;
   recommendationClicks: number;
   autoplayCount: number;
-  sessions: number;
+  autoplayCancelled: number;
+  totalScrollPixels: number;
+  avgScrollVelocity: number;
+  thumbnailsHovered: number;
+  thumbnailsClicked: number;
+  pageReloads: number;
+  backButtonPresses: number;
+  tabSwitches: number;
+  // Productivity
   productiveVideos: number;
   unproductiveVideos: number;
   neutralVideos: number;
   promptsShown: number;
   promptsAnswered: number;
+  // Interventions
+  interventionsShown: number;
+  interventionsEffective: number;
+  // Temporal
+  hourlySeconds: Record<string, number>; // {"0": 120, "1": 0, ...}
+  topChannels: ChannelStat[];
+  // Pre-sleep (configurable bedtime)
+  preSleepMinutes: number; // usage within 2h of bedtime
+  // Binge detection
+  bingeSessions: number; // sessions > 1 hour
+}
+
+// ===== Granular Events =====
+
+export interface ScrollEvent {
+  type: 'scroll';
+  sessionId: string;
+  pageType: PageType;
+  timestamp: number;
+  scrollY: number;
+  scrollDepthPercent: number;
+  viewportHeight: number;
+  pageHeight: number;
+  scrollVelocity: number;
+  scrollDirection: 'up' | 'down';
+  visibleVideoCount: number;
+}
+
+export interface ThumbnailEvent {
+  type: 'thumbnail';
+  sessionId: string;
+  videoId: string;
+  videoTitle: string;
+  channelName: string;
+  pageType: PageType;
+  positionIndex: number;
+  timestamp: number;
+  hoverDurationMs: number;
+  previewPlayed: boolean;
+  previewWatchMs: number;
+  clicked: boolean;
+  // Clickbait indicators
+  titleCapsPercent: number;
+  titleLength: number;
+}
+
+export interface PageEvent {
+  type: 'page';
+  sessionId: string;
+  eventType: PageEventType;
+  pageType: PageType;
+  pageUrl: string;
+  timestamp: number;
+  fromPageType?: PageType;
+  navigationMethod?: NavigationMethod;
+  searchQuery?: string;
+  searchResultsCount?: number;
+  timeOnPageMs?: number;
+}
+
+export type PageEventType = 
+  | 'page_load' 
+  | 'page_unload' 
+  | 'tab_visible' 
+  | 'tab_hidden'
+  | 'tab_switch_away'
+  | 'tab_switch_back'
+  | 'page_reload'
+  | 'back_button'
+  | 'forward_button'
+  | 'link_click';
+
+export type NavigationMethod = 'click' | 'back' | 'forward' | 'reload' | 'direct' | 'autoplay' | 'external';
+
+export interface VideoWatchEvent {
+  type: 'video_watch';
+  sessionId: string;
+  watchSessionId: string;
+  videoId: string;
+  eventType: VideoEventType;
+  timestamp: number;
+  videoTimeSeconds: number;
+  // Seek data
+  seekFromSeconds?: number;
+  seekToSeconds?: number;
+  seekDeltaSeconds?: number;
+  // Speed change
+  playbackSpeed?: number;
+  // Abandonment
+  watchPercentAtAbandon?: number;
+}
+
+export type VideoEventType = 'play' | 'pause' | 'seek' | 'speed_change' | 'ended' | 'abandoned' | 'buffer';
+
+export interface RecommendationEvent {
+  type: 'recommendation';
+  sessionId: string;
+  location: RecommendationLocation;
+  positionIndex: number;
+  videoId: string;
+  videoTitle: string;
+  channelName: string;
+  action: RecommendationAction;
+  hoverDurationMs?: number;
+  timestamp: number;
+  wasAutoplayNext: boolean;
+  autoplayCountdownStarted: boolean;
+  autoplayCancelled: boolean;
+}
+
+export type RecommendationLocation = 'sidebar' | 'end_screen' | 'home_feed' | 'search_results' | 'autoplay_queue';
+export type RecommendationAction = 'ignored' | 'hovered' | 'clicked' | 'not_interested' | 'dont_recommend';
+
+export interface InterventionEvent {
+  type: 'intervention';
+  sessionId: string;
+  interventionType: InterventionType;
+  triggeredAt: number;
+  triggerReason: string;
+  response?: InterventionResponse;
+  responseAt?: number;
+  responseTimeMs?: number;
+  userLeftYoutube: boolean;
+  minutesUntilReturn?: number;
+}
+
+export type InterventionType = 
+  | 'productivity_prompt' 
+  | 'time_warning' 
+  | 'intention_prompt' 
+  | 'friction_delay'
+  | 'session_summary'
+  | 'break_reminder'
+  | 'daily_limit'
+  | 'bedtime_warning';
+
+export type InterventionResponse = 'dismissed' | 'engaged' | 'productive' | 'unproductive' | 'neutral' | 'stopped_watching';
+
+// ===== Self-Report (Optional) =====
+
+export interface MoodReport {
+  timestamp: number;
+  sessionId: string;
+  reportType: 'pre' | 'post';
+  mood: number; // 1-5
+  intention?: string; // "What brought you here?"
+  satisfaction?: number; // 1-5 "Was this time well spent?"
 }
 
 // ===== Sync Payloads =====
@@ -74,10 +290,23 @@ export interface SyncSessionsRequest {
   dailyStats: Record<string, DailyStats>;
 }
 
+export interface SyncEventsRequest {
+  userId: string;
+  sessionId: string;
+  events: (ScrollEvent | ThumbnailEvent | PageEvent | VideoWatchEvent | RecommendationEvent | InterventionEvent)[];
+  moodReports?: MoodReport[];
+}
+
 export interface SyncSessionsResponse {
   success: boolean;
   syncedSessions: number;
   syncedBrowserSessions: number;
+  lastSyncTime: number;
+}
+
+export interface SyncEventsResponse {
+  success: boolean;
+  syncedEvents: number;
   lastSyncTime: number;
 }
 
@@ -96,6 +325,9 @@ export interface CurrentSession {
   backgroundSeconds: number;
   videos: number;
   shortsCount: number;
+  scrollPixels: number;
+  recommendationClicks: number;
+  autoplayCount: number;
 }
 
 export interface WeeklySummary {
@@ -103,6 +335,8 @@ export interface WeeklySummary {
   prevWeek: WeekStats;
   changePercent: number;
   topChannels: ChannelStat[];
+  contentMix: ContentMix;
+  peakHours: number[];
   generatedAt: number;
 }
 
@@ -110,32 +344,55 @@ export interface WeekStats {
   totalSeconds: number;
   totalMinutes: number;
   videoCount: number;
+  shortsCount: number;
   productiveVideos: number;
   unproductiveVideos: number;
   sessions: number;
+  avgSessionMinutes: number;
+  recommendationRatio: number; // % from recommendations
 }
 
 export interface ChannelStat {
   channel: string;
   minutes: number;
+  videoCount: number;
+}
+
+export interface ContentMix {
+  fromSearch: number; // percentage
+  fromRecommendation: number;
+  fromSubscription: number;
+  fromAutoplay: number;
+  fromDirect: number;
+  shorts: number;
 }
 
 // ===== Settings =====
 
 export interface Settings {
   trackingEnabled: boolean;
-  phase: 'observation' | 'awareness' | 'intervention';
+  privacyTier: PrivacyTier;
+  phase: 'observation' | 'awareness' | 'intervention' | 'reduction';
   installDate: number;
   dailyGoalMinutes: number;
+  weekendGoalMinutes: number;
+  bedtime: string; // HH:MM format
+  wakeTime: string; // HH:MM format
   interventionsEnabled: {
     productivityPrompts: boolean;
+    timeWarnings: boolean;
+    intentionPrompts: boolean;
+    frictionDelay: boolean;
     weeklyReports: boolean;
+    bedtimeWarning: boolean;
   };
   productivityPromptChance: number;
   whitelistedChannels: string[];
   blockedChannels: string[];
   backend: BackendSettings;
 }
+
+export type PrivacyTier = 'minimal' | 'standard' | 'full';
 
 export interface BackendSettings {
   enabled: boolean;
@@ -151,17 +408,28 @@ export type MessageType =
   | 'PAGE_UNLOAD'
   | 'TAB_HIDDEN'
   | 'TAB_VISIBLE'
+  | 'TAB_SWITCH'
   | 'VIDEO_WATCHED'
+  | 'VIDEO_EVENT'
   | 'SEARCH'
   | 'RECOMMENDATION_CLICK'
+  | 'RECOMMENDATION_SHOWN'
   | 'AUTOPLAY_PENDING'
+  | 'AUTOPLAY_CANCELLED'
+  | 'SCROLL_EVENT'
+  | 'THUMBNAIL_EVENT'
+  | 'PAGE_EVENT'
   | 'GET_SESSION'
   | 'GET_STATS'
   | 'GET_SETTINGS'
   | 'UPDATE_SETTINGS'
   | 'RATE_VIDEO'
   | 'PROMPT_SHOWN'
-  | 'GET_WEEKLY_SUMMARY';
+  | 'INTERVENTION_RESPONSE'
+  | 'MOOD_REPORT'
+  | 'GET_WEEKLY_SUMMARY'
+  | 'PAGE_RELOAD'
+  | 'BACK_BUTTON';
 
 export interface Message<T = unknown> {
   type: MessageType;
@@ -174,11 +442,26 @@ export interface VideoInfo {
   videoId: string | null;
   title: string;
   channel: string;
+  channelId?: string;
   durationSeconds: number;
   currentTime: number;
   playbackSpeed: number;
   isPaused: boolean;
   isShort: boolean;
+  category?: string;
 }
 
-export type PageType = 'homepage' | 'watch' | 'shorts' | 'search' | 'subscriptions' | 'other';
+export type PageType = 'homepage' | 'watch' | 'shorts' | 'search' | 'subscriptions' | 'history' | 'channel' | 'other';
+
+// ===== Category Inference =====
+
+export const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  education: ['tutorial', 'learn', 'course', 'lecture', 'explained', 'how to', 'documentary', 'science'],
+  entertainment: ['funny', 'comedy', 'prank', 'meme', 'react', 'vlog', 'challenge'],
+  music: ['music', 'song', 'official video', 'lyrics', 'album', 'concert', 'cover'],
+  gaming: ['gameplay', 'playthrough', 'gaming', 'stream', 'esports', 'minecraft', 'fortnite'],
+  news: ['news', 'breaking', 'update', 'report', 'politics', 'election'],
+  tech: ['review', 'unboxing', 'tech', 'iphone', 'android', 'computer', 'software'],
+  fitness: ['workout', 'exercise', 'fitness', 'yoga', 'gym', 'training'],
+  cooking: ['recipe', 'cooking', 'food', 'chef', 'kitchen', 'baking'],
+};
