@@ -27,10 +27,9 @@ interface EventQueues {
 }
 
 interface SyncState {
-  lastSync: Record<string, number>;
+  lastSyncTime: number;
   syncInProgress: boolean;
   retryCount: number;
-  offlineQueue: EventQueues;
 }
 
 interface StorageData {
@@ -40,7 +39,6 @@ interface StorageData {
   dailyStats: Record<string, DailyStats>;
   pendingEvents: EventQueues;
   syncState: SyncState;
-  lastSyncTime: number;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -72,27 +70,19 @@ const DEFAULT_SETTINGS: Settings = {
 };
 
 const DEFAULT_SYNC_STATE: SyncState = {
-  lastSync: {
-    scroll: 0,
-    thumbnail: 0,
-    page: 0,
-    video_watch: 0,
-    recommendation: 0,
-    intervention: 0,
-    mood: 0,
-    sessions: 0,
-  },
+  lastSyncTime: 0,
   syncInProgress: false,
   retryCount: 0,
-  offlineQueue: {
-    scroll: [],
-    thumbnail: [],
-    page: [],
-    video_watch: [],
-    recommendation: [],
-    intervention: [],
-    mood: [],
-  },
+};
+
+const EMPTY_EVENT_QUEUES: EventQueues = {
+  scroll: [],
+  thumbnail: [],
+  page: [],
+  video_watch: [],
+  recommendation: [],
+  intervention: [],
+  mood: [],
 };
 
 // ===== Storage Helpers =====
@@ -104,17 +94,8 @@ async function getStorage(): Promise<StorageData> {
     videoSessions: data.videoSessions || [],
     browserSessions: data.browserSessions || [],
     dailyStats: data.dailyStats || {},
-    pendingEvents: data.pendingEvents || {
-      scroll: [],
-      thumbnail: [],
-      page: [],
-      video_watch: [],
-      recommendation: [],
-      intervention: [],
-      mood: [],
-    },
+    pendingEvents: data.pendingEvents || { ...EMPTY_EVENT_QUEUES },
     syncState: data.syncState || { ...DEFAULT_SYNC_STATE },
-    lastSyncTime: data.lastSyncTime || 0,
   };
 }
 
@@ -131,14 +112,6 @@ function getTodayKey(): string {
 function getHour(): string {
   return new Date().getHours().toString();
 }
-
-function isWeekend(): boolean {
-  const day = new Date().getDay();
-  return day === 0 || day === 6;
-}
-
-// Used for weekend goal calculation (future feature)
-void isWeekend;
 
 // ===== Stats Management =====
 
@@ -233,12 +206,11 @@ async function updateDailyStats(browserSession: BrowserSession, videoSessions: V
       stats.hourlySeconds[hour] = (stats.hourlySeconds[hour] || 0) + (seconds as number);
     }
   } else {
-    // Fallback: use current hour
     const hour = getHour();
     stats.hourlySeconds[hour] = (stats.hourlySeconds[hour] || 0) + browserSession.totalDurationSeconds;
   }
   
-  // Binge detection (session > 1 hour)
+  // Binge detection
   if (browserSession.totalDurationSeconds > 3600 || temporal?.bingeModeActive) {
     stats.bingeSessions++;
   }
@@ -264,7 +236,6 @@ async function updateDailyStats(browserSession: BrowserSession, videoSessions: V
       stats.videosAbandoned++;
     }
     
-    // Track channels
     if (session.channel) {
       if (!channelMinutes[session.channel]) {
         channelMinutes[session.channel] = { minutes: 0, count: 0 };
@@ -273,11 +244,10 @@ async function updateDailyStats(browserSession: BrowserSession, videoSessions: V
       channelMinutes[session.channel].count++;
     }
     
-    // Tab switches
     stats.tabSwitches += session.tabSwitchCount;
   }
   
-  // Update unique channels and top channels
+  // Update top channels
   const channels = Object.entries(channelMinutes)
     .map(([channel, data]) => ({
       channel,
@@ -286,7 +256,6 @@ async function updateDailyStats(browserSession: BrowserSession, videoSessions: V
     }))
     .sort((a, b) => b.minutes - a.minutes);
   
-  // Merge with existing top channels
   const existingChannels = new Map(
     (stats.topChannels || []).map((c: ChannelStat) => [c.channel, c])
   );
@@ -310,57 +279,7 @@ async function updateDailyStats(browserSession: BrowserSession, videoSessions: V
   await saveStorage({ dailyStats: storage.dailyStats });
 }
 
-// ===== Backend Sync =====
-
-const SYNC_ENDPOINTS: Record<string, string> = {
-  scroll: '/scroll/events',
-  thumbnail: '/thumbnails/events',
-  page: '/pages/events',
-  video_watch: '/video-events/events',
-  recommendation: '/recommendations/events',
-  intervention: '/interventions/events',
-  mood: '/mood/reports',
-};
-
-async function syncEventBatch(
-  eventType: string,
-  events: any[],
-  baseUrl: string,
-  userId: string
-): Promise<boolean> {
-  if (events.length === 0) return true;
-  
-  const endpoint = SYNC_ENDPOINTS[eventType];
-  if (!endpoint) {
-    console.error(`Unknown event type: ${eventType}`);
-    return false;
-  }
-  
-  try {
-    const body = eventType === 'mood' 
-      ? { reports: events }
-      : { events };
-    
-    const response = await fetch(`${baseUrl}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Id': userId,
-      },
-      body: JSON.stringify(body),
-    });
-    
-    if (!response.ok) {
-      console.error(`Sync ${eventType} failed:`, await response.text());
-      return false;
-    }
-    
-    return true;
-  } catch (error) {
-    console.error(`Sync ${eventType} error:`, error);
-    return false;
-  }
-}
+// ===== Unified Backend Sync =====
 
 async function syncToBackend(): Promise<boolean> {
   const storage = await getStorage();
@@ -374,10 +293,27 @@ async function syncToBackend(): Promise<boolean> {
     return false;
   }
   
+  // Check if there's anything to sync
+  const hasData = 
+    storage.videoSessions.length > 0 ||
+    storage.browserSessions.length > 0 ||
+    Object.keys(storage.dailyStats).length > 0 ||
+    storage.pendingEvents.scroll.length > 0 ||
+    storage.pendingEvents.thumbnail.length > 0 ||
+    storage.pendingEvents.page.length > 0 ||
+    storage.pendingEvents.video_watch.length > 0 ||
+    storage.pendingEvents.recommendation.length > 0 ||
+    storage.pendingEvents.intervention.length > 0 ||
+    storage.pendingEvents.mood.length > 0;
+  
+  if (!hasData) {
+    return true;
+  }
+  
   storage.syncState.syncInProgress = true;
   await saveStorage({ syncState: storage.syncState });
   
-  // Get user ID
+  // Get or create user ID
   let userId = settings.backend.userId;
   if (!userId) {
     userId = `device-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -385,81 +321,60 @@ async function syncToBackend(): Promise<boolean> {
     await saveStorage({ settings });
   }
   
-  const baseUrl = settings.backend.url;
-  let overallSuccess = true;
-  
   try {
-    // Sync sessions first
-    if (storage.videoSessions.length > 0 || storage.browserSessions.length > 0) {
-      const syncResponse = await fetch(`${baseUrl}/sync/sessions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': userId,
-        },
-        body: JSON.stringify({
-          sessions: storage.videoSessions.slice(-100),
-          browserSessions: storage.browserSessions.slice(-50),
-          dailyStats: storage.dailyStats,
-        }),
-      });
-      
-      if (!syncResponse.ok) {
-        console.error('Session sync failed:', await syncResponse.text());
-        overallSuccess = false;
-      } else {
-        storage.syncState.lastSync.sessions = Date.now();
-      }
-    }
+    // Build unified sync request
+    const syncRequest = {
+      userId,
+      lastSyncTime: storage.syncState.lastSyncTime,
+      data: {
+        videoSessions: storage.videoSessions.slice(-100),
+        browserSessions: storage.browserSessions.slice(-50),
+        dailyStats: storage.dailyStats,
+        scrollEvents: storage.pendingEvents.scroll,
+        thumbnailEvents: storage.pendingEvents.thumbnail,
+        pageEvents: storage.pendingEvents.page,
+        videoWatchEvents: storage.pendingEvents.video_watch,
+        recommendationEvents: storage.pendingEvents.recommendation,
+        interventionEvents: storage.pendingEvents.intervention,
+        moodReports: storage.pendingEvents.mood,
+      },
+    };
     
-    // Sync each event type individually
-    const eventTypes = ['scroll', 'thumbnail', 'page', 'video_watch', 'recommendation', 'intervention', 'mood'] as const;
+    const response = await fetch(`${settings.backend.url}/sync`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Id': userId,
+      },
+      body: JSON.stringify(syncRequest),
+    });
     
-    for (const eventType of eventTypes) {
-      const events = storage.pendingEvents[eventType];
-      if (events.length > 0) {
-        const success = await syncEventBatch(eventType, events, baseUrl, userId);
-        
-        if (success) {
-          storage.pendingEvents[eventType] = [];
-          storage.syncState.lastSync[eventType] = Date.now();
-        } else {
-          // Move to offline queue for retry
-          (storage.syncState.offlineQueue[eventType] as any[]).push(...events);
-          storage.pendingEvents[eventType] = [];
-          overallSuccess = false;
-        }
-      }
-      
-      // Try to sync offline queue if we have connectivity
-      if (storage.syncState.offlineQueue[eventType].length > 0 && overallSuccess) {
-        const offlineEvents = storage.syncState.offlineQueue[eventType];
-        const success = await syncEventBatch(eventType, offlineEvents, baseUrl, userId);
-        
-        if (success) {
-          storage.syncState.offlineQueue[eventType] = [];
-        }
-      }
-    }
-    
-    // Update sync state
-    if (overallSuccess) {
-      settings.backend.lastSync = Date.now();
-      storage.syncState.retryCount = 0;
-    } else {
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Sync failed:', errorText);
       storage.syncState.retryCount++;
+      return false;
     }
+    
+    const result = await response.json();
+    
+    // Clear synced data
+    storage.pendingEvents = { ...EMPTY_EVENT_QUEUES };
+    storage.syncState.lastSyncTime = result.lastSyncTime;
+    storage.syncState.retryCount = 0;
+    settings.backend.lastSync = Date.now();
     
     await saveStorage({
       settings,
       pendingEvents: storage.pendingEvents,
       syncState: storage.syncState,
-      lastSyncTime: Date.now(),
     });
     
-    return overallSuccess;
+    console.log('[YT Detox] Sync successful:', result.syncedCounts);
+    return true;
+    
   } catch (error) {
-    console.error('Sync error:', error);
+    console.error('[YT Detox] Sync error:', error);
     storage.syncState.retryCount++;
     return false;
   } finally {
@@ -494,9 +409,8 @@ async function queueEvents(events: Record<string, any[]>): Promise<void> {
 // ===== Message Handlers =====
 
 async function handlePageLoad(data: any): Promise<void> {
-  console.log('Page load:', data.pageType, data.url);
+  console.log('[YT Detox] Page load:', data.pageType, data.url);
   
-  // Update first check time if provided
   if (data.firstCheckTime) {
     const storage = await getStorage();
     const today = getTodayKey();
@@ -517,15 +431,13 @@ async function handlePageUnload(data: { session: BrowserSession; events: Record<
   
   // Save browser session
   storage.browserSessions.push(data.session);
-  
-  // Keep only last 100 browser sessions
   if (storage.browserSessions.length > 100) {
     storage.browserSessions = storage.browserSessions.slice(-100);
   }
   
   await saveStorage({ browserSessions: storage.browserSessions });
   
-  // Queue events by type
+  // Queue events
   await queueEvents(data.events);
   
   // Update daily stats
@@ -534,14 +446,15 @@ async function handlePageUnload(data: { session: BrowserSession; events: Record<
   );
   await updateDailyStats(data.session, sessionsForStats, data.temporal);
   
-  // Try to sync
+  // Trigger sync if backend enabled
   const settings = storage.settings;
   if (settings.backend.enabled) {
     const lastSync = settings.backend.lastSync || 0;
     const timeSinceSync = Date.now() - lastSync;
-    // Sync every 5 minutes or if we have many events
-    const totalPendingEvents = Object.values(storage.pendingEvents).reduce((sum, arr) => sum + arr.length, 0);
-    if (timeSinceSync > 5 * 60 * 1000 || totalPendingEvents > 100) {
+    const totalPending = Object.values(storage.pendingEvents).reduce((sum, arr) => sum + arr.length, 0);
+    
+    // Sync every 5 minutes or if queue is getting large
+    if (timeSinceSync > 5 * 60 * 1000 || totalPending > 100) {
       syncToBackend();
     }
   }
@@ -551,8 +464,6 @@ async function handleVideoWatched(session: VideoSession): Promise<void> {
   const storage = await getStorage();
   
   storage.videoSessions.push(session);
-  
-  // Keep only last 500 video sessions
   if (storage.videoSessions.length > 500) {
     storage.videoSessions = storage.videoSessions.slice(-500);
   }
@@ -570,7 +481,6 @@ async function handleRateVideo(data: { sessionId: string; rating: -1 | 0 | 1 }):
     await saveStorage({ videoSessions: storage.videoSessions });
   }
   
-  // Update daily stats
   const today = getTodayKey();
   if (storage.dailyStats[today]) {
     storage.dailyStats[today].promptsAnswered++;
@@ -581,13 +491,9 @@ async function handleRateVideo(data: { sessionId: string; rating: -1 | 0 | 1 }):
   }
 }
 
-async function handleGetStats(): Promise<{
-  today: DailyStats | null;
-  currentSession: any | null;
-}> {
+async function handleGetStats(): Promise<{ today: DailyStats | null; currentSession: any | null }> {
   const storage = await getStorage();
   const today = getTodayKey();
-  
   return {
     today: storage.dailyStats[today] || null,
     currentSession: null,
@@ -610,7 +516,6 @@ async function handleGetWeeklySummary(): Promise<any> {
   const storage = await getStorage();
   const stats = storage.dailyStats;
   
-  // Get last 7 days
   const days: DailyStats[] = [];
   for (let i = 0; i < 7; i++) {
     const date = new Date();
@@ -621,7 +526,6 @@ async function handleGetWeeklySummary(): Promise<any> {
     }
   }
   
-  // Calculate totals
   const thisWeek = days.reduce(
     (acc, day) => ({
       totalSeconds: acc.totalSeconds + day.totalSeconds,
@@ -651,7 +555,6 @@ async function handleGetWeeklySummary(): Promise<any> {
     thisWeek.avgSessionMinutes = Math.floor(thisWeek.totalMinutes / thisWeek.sessions);
   }
   
-  // Aggregate top channels
   const channelMap = new Map<string, ChannelStat>();
   for (const day of days) {
     for (const ch of day.topChannels || []) {
@@ -669,7 +572,6 @@ async function handleGetWeeklySummary(): Promise<any> {
     .sort((a, b) => b.minutes - a.minutes)
     .slice(0, 5);
   
-  // Peak hours
   const hourlyTotals: Record<string, number> = {};
   for (const day of days) {
     for (const [hour, seconds] of Object.entries(day.hourlySeconds || {})) {
@@ -704,11 +606,7 @@ async function handlePromptShown(): Promise<void> {
   await saveStorage({ dailyStats: storage.dailyStats });
 }
 
-async function handleInterventionResponse(data: {
-  type: string;
-  response: string;
-  effective: boolean;
-}): Promise<void> {
+async function handleInterventionResponse(data: { type: string; response: string; effective: boolean }): Promise<void> {
   const storage = await getStorage();
   const today = getTodayKey();
   
@@ -734,28 +632,20 @@ async function handleSyncNow(): Promise<{ success: boolean; error?: string }> {
 }
 
 async function handleGetSyncStatus(): Promise<{
-  lastSync: Record<string, number>;
+  lastSyncTime: number;
   pendingCounts: Record<string, number>;
-  offlineQueueCounts: Record<string, number>;
   syncInProgress: boolean;
 }> {
   const storage = await getStorage();
   
   const pendingCounts: Record<string, number> = {};
-  const offlineQueueCounts: Record<string, number> = {};
-  
   for (const [key, value] of Object.entries(storage.pendingEvents)) {
     pendingCounts[key] = value.length;
   }
   
-  for (const [key, value] of Object.entries(storage.syncState.offlineQueue)) {
-    offlineQueueCounts[key] = value.length;
-  }
-  
   return {
-    lastSync: storage.syncState.lastSync,
+    lastSyncTime: storage.syncState.lastSyncTime,
     pendingCounts,
-    offlineQueueCounts,
     syncInProgress: storage.syncState.syncInProgress,
   };
 }
@@ -773,62 +663,49 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
         case 'PAGE_LOAD':
           await handlePageLoad(data);
           break;
-          
         case 'PAGE_UNLOAD':
           await handlePageUnload(data as any);
           break;
-          
         case 'VIDEO_WATCHED':
           await handleVideoWatched(data as VideoSession);
           break;
-          
         case 'RATE_VIDEO':
           await handleRateVideo(data as any);
           break;
-          
         case 'GET_STATS':
           response = await handleGetStats();
           break;
-          
         case 'GET_SETTINGS':
           response = await handleGetSettings();
           break;
-          
         case 'UPDATE_SETTINGS':
           response = await handleUpdateSettings(data as Partial<Settings>);
           break;
-          
         case 'GET_WEEKLY_SUMMARY':
           response = await handleGetWeeklySummary();
           break;
-          
         case 'PROMPT_SHOWN':
           await handlePromptShown();
           break;
-          
         case 'INTERVENTION_RESPONSE':
           await handleInterventionResponse(data as any);
           break;
-          
         case 'GET_SESSION':
           response = { session: null };
           break;
-          
         case 'SYNC_NOW' as any:
           response = await handleSyncNow();
           break;
-          
         case 'GET_SYNC_STATUS' as any:
           response = await handleGetSyncStatus();
           break;
-          
         default:
-          console.log('Unknown message type:', type);
+          console.log('[YT Detox] Unknown message type:', type);
       }
       
       sendResponse(response);
     } catch (error) {
-      console.error('Message handler error:', error);
+      console.error('[YT Detox] Message handler error:', error);
       sendResponse({ error: String(error) });
     }
   })();
@@ -836,25 +713,15 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
   return true;
 });
 
-// ===== Alarms for periodic sync =====
+// ===== Alarms =====
 
 chrome.alarms.create('syncToBackend', { periodInMinutes: 5 });
-chrome.alarms.create('retryOfflineSync', { periodInMinutes: 15 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'syncToBackend') {
     const storage = await getStorage();
     if (storage.settings.backend.enabled) {
       await syncToBackend();
-    }
-  } else if (alarm.name === 'retryOfflineSync') {
-    const storage = await getStorage();
-    if (storage.settings.backend.enabled) {
-      // Check if we have offline events to retry
-      const hasOfflineEvents = Object.values(storage.syncState.offlineQueue).some(q => q.length > 0);
-      if (hasOfflineEvents) {
-        await syncToBackend();
-      }
     }
   }
 });
@@ -869,25 +736,12 @@ chrome.runtime.onInstalled.addListener(async (details) => {
       videoSessions: [],
       browserSessions: [],
       dailyStats: {},
-      pendingEvents: {
-        scroll: [],
-        thumbnail: [],
-        page: [],
-        video_watch: [],
-        recommendation: [],
-        intervention: [],
-        mood: [],
-      },
+      pendingEvents: { ...EMPTY_EVENT_QUEUES },
       syncState: { ...DEFAULT_SYNC_STATE },
-      lastSyncTime: 0,
     });
-    
-    // Open options page on first install
     chrome.runtime.openOptionsPage();
   } else if (details.reason === 'update') {
-    // Migrate storage if needed
     const storage = await getStorage();
-    
     // Ensure new fields exist
     if (!storage.pendingEvents.intervention) {
       storage.pendingEvents.intervention = [];
@@ -895,15 +749,8 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     if (!storage.pendingEvents.mood) {
       storage.pendingEvents.mood = [];
     }
-    if (!storage.syncState.offlineQueue) {
-      storage.syncState.offlineQueue = { ...DEFAULT_SYNC_STATE.offlineQueue };
-    }
-    
-    await saveStorage({
-      pendingEvents: storage.pendingEvents,
-      syncState: storage.syncState,
-    });
+    await saveStorage({ pendingEvents: storage.pendingEvents });
   }
 });
 
-console.log('YouTube Detox background service worker initialized (v0.3.0)');
+console.log('[YT Detox] Background service worker initialized (v0.3.0 - unified sync)');
