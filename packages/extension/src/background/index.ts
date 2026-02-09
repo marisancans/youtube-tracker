@@ -1,561 +1,653 @@
-/**
- * YouTube Detox - Background Service Worker (TypeScript)
- */
-
-import type { 
-  Settings, 
-  VideoSession, 
-  BrowserSession, 
+import type {
+  VideoSession,
+  BrowserSession,
   DailyStats,
-  WeeklySummary,
-  StatsResponse,
-  CurrentSession
-} from '@yt-detox/shared'
+  Settings,
+  Message,
+  ScrollEvent,
+  ThumbnailEvent,
+  PageEvent,
+  VideoWatchEvent,
+  RecommendationEvent,
+  InterventionEvent,
+  ChannelStat,
+} from '@yt-detox/shared';
 
-const STORAGE_KEYS = {
-  SESSIONS: 'sessions',
-  VIDEOS: 'videos',
-  DAILY_STATS: 'dailyStats',
-  SETTINGS: 'settings',
-  WEEKLY_SUMMARIES: 'weeklySummaries',
-} as const
+// ===== State =====
+
+interface StorageData {
+  settings: Settings;
+  videoSessions: VideoSession[];
+  browserSessions: BrowserSession[];
+  dailyStats: Record<string, DailyStats>;
+  pendingEvents: Array<ScrollEvent | ThumbnailEvent | PageEvent | VideoWatchEvent | RecommendationEvent | InterventionEvent>;
+  lastSyncTime: number;
+}
 
 const DEFAULT_SETTINGS: Settings = {
   trackingEnabled: true,
+  privacyTier: 'standard',
   phase: 'observation',
   installDate: Date.now(),
   dailyGoalMinutes: 60,
+  weekendGoalMinutes: 120,
+  bedtime: '23:00',
+  wakeTime: '07:00',
   interventionsEnabled: {
     productivityPrompts: true,
+    timeWarnings: true,
+    intentionPrompts: false,
+    frictionDelay: false,
     weeklyReports: true,
+    bedtimeWarning: false,
   },
   productivityPromptChance: 0.3,
   whitelistedChannels: [],
   blockedChannels: [],
   backend: {
     enabled: false,
-    url: '',
+    url: 'http://localhost:8000',
     userId: null,
     lastSync: null,
   },
+};
+
+// ===== Storage Helpers =====
+
+async function getStorage(): Promise<StorageData> {
+  const data = await chrome.storage.local.get(null);
+  return {
+    settings: data.settings || DEFAULT_SETTINGS,
+    videoSessions: data.videoSessions || [],
+    browserSessions: data.browserSessions || [],
+    dailyStats: data.dailyStats || {},
+    pendingEvents: data.pendingEvents || [],
+    lastSyncTime: data.lastSyncTime || 0,
+  };
 }
 
-interface ActiveSession {
-  id: string
-  startedAt: number
-  tabId: number | null
-  videos: string[]
-  totalWatchedSeconds: number
-  activeSeconds: number
-  backgroundSeconds: number
-  shortsCount: number
-  autoplayCount: number
-  recommendationClicks: number
-  searchCount: number
+async function saveStorage(data: Partial<StorageData>): Promise<void> {
+  await chrome.storage.local.set(data);
 }
 
-let currentSession: ActiveSession | null = null
-let sessionTimeout: ReturnType<typeof setTimeout> | null = null
-let activeTimerStart: number | null = null
-let backgroundTimerStart: number | null = null
+// ===== Date Helpers =====
 
 function getTodayKey(): string {
-  return new Date().toISOString().split('T')[0]
+  return new Date().toISOString().split('T')[0];
 }
 
-async function getSettings(): Promise<Settings> {
-  const result = await chrome.storage.local.get(STORAGE_KEYS.SETTINGS)
-  return { ...DEFAULT_SETTINGS, ...result[STORAGE_KEYS.SETTINGS] }
+function getHour(): string {
+  return new Date().getHours().toString();
 }
 
-async function updateDailyStats(date: string, updates: Partial<DailyStats>): Promise<void> {
-  const result = await chrome.storage.local.get(STORAGE_KEYS.DAILY_STATS)
-  const stats: Record<string, DailyStats> = result[STORAGE_KEYS.DAILY_STATS] || {}
+function _isWeekend(): boolean {
+  const day = new Date().getDay();
+  return day === 0 || day === 6;
+}
+
+// ===== Stats Management =====
+
+function getEmptyDailyStats(dateStr: string): DailyStats {
+  const hourlySeconds: Record<string, number> = {};
+  for (let i = 0; i < 24; i++) {
+    hourlySeconds[i.toString()] = 0;
+  }
   
-  const today: DailyStats = stats[date] || {
-    date,
+  return {
+    date: dateStr,
     totalSeconds: 0,
     activeSeconds: 0,
     backgroundSeconds: 0,
+    sessionCount: 0,
+    avgSessionDurationSeconds: 0,
+    firstCheckTime: undefined,
     videoCount: 0,
+    videosCompleted: 0,
+    videosAbandoned: 0,
     shortsCount: 0,
+    uniqueChannels: 0,
     searchCount: 0,
     recommendationClicks: 0,
     autoplayCount: 0,
-    sessions: 0,
+    autoplayCancelled: 0,
+    totalScrollPixels: 0,
+    avgScrollVelocity: 0,
+    thumbnailsHovered: 0,
+    thumbnailsClicked: 0,
+    pageReloads: 0,
+    backButtonPresses: 0,
+    tabSwitches: 0,
     productiveVideos: 0,
     unproductiveVideos: 0,
     neutralVideos: 0,
     promptsShown: 0,
     promptsAnswered: 0,
-  }
-
-  for (const [key, value] of Object.entries(updates)) {
-    if (typeof value === 'number' && key in today) {
-      (today as any)[key] = ((today as any)[key] || 0) + value
-    }
-  }
-
-  stats[date] = today
-  await chrome.storage.local.set({ [STORAGE_KEYS.DAILY_STATS]: stats })
+    interventionsShown: 0,
+    interventionsEffective: 0,
+    hourlySeconds,
+    topChannels: [],
+    preSleepMinutes: 0,
+    bingeSessions: 0,
+  };
 }
 
-async function appendToArray<T>(key: string, item: T, maxItems = 5000): Promise<void> {
-  const result = await chrome.storage.local.get(key)
-  const arr: T[] = result[key] || []
-  arr.push(item)
-  if (arr.length > maxItems) arr.splice(0, arr.length - maxItems)
-  await chrome.storage.local.set({ [key]: arr })
-}
-
-// ===== INSTALL =====
-
-chrome.runtime.onInstalled.addListener(async (details) => {
-  console.log('[YT Detox] Installed:', details.reason)
-
-  if (details.reason === 'install') {
-    await chrome.storage.local.set({
-      [STORAGE_KEYS.SETTINGS]: { ...DEFAULT_SETTINGS, installDate: Date.now() },
-    })
-  } else if (details.reason === 'update') {
-    const existing = await getSettings()
-    await chrome.storage.local.set({ [STORAGE_KEYS.SETTINGS]: existing })
+async function updateDailyStats(browserSession: BrowserSession, videoSessions: VideoSession[]): Promise<void> {
+  const storage = await getStorage();
+  const today = getTodayKey();
+  
+  if (!storage.dailyStats[today]) {
+    storage.dailyStats[today] = getEmptyDailyStats(today);
   }
-
-  // Weekly summary alarm — Sunday 9pm
-  const nextSunday = getNextSunday9pm()
-  chrome.alarms.create('weeklySummary', {
-    when: nextSunday,
-    periodInMinutes: 7 * 24 * 60,
-  })
-
-  // Backend sync alarm — every 5 minutes
-  chrome.alarms.create('backendSync', { periodInMinutes: 5 })
-})
-
-function getNextSunday9pm(): number {
-  const now = new Date()
-  const day = now.getDay()
-  const daysUntilSunday = day === 0 ? 7 : 7 - day
-  const next = new Date(now)
-  next.setDate(now.getDate() + daysUntilSunday)
-  next.setHours(21, 0, 0, 0)
-  if (next <= now) next.setDate(next.getDate() + 7)
-  return next.getTime()
-}
-
-// ===== ALARMS =====
-
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === 'weeklySummary') {
-    await generateWeeklySummary()
-  } else if (alarm.name === 'backendSync') {
-    await attemptBackendSync()
+  
+  const stats = storage.dailyStats[today];
+  
+  // Update from browser session
+  stats.totalSeconds += browserSession.totalDurationSeconds;
+  stats.activeSeconds += browserSession.activeDurationSeconds;
+  stats.backgroundSeconds += browserSession.backgroundSeconds;
+  stats.sessionCount++;
+  
+  if (stats.sessionCount > 0) {
+    stats.avgSessionDurationSeconds = Math.floor(stats.totalSeconds / stats.sessionCount);
   }
-})
-
-// ===== MESSAGE HANDLER =====
-
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('[YT Detox BG]', message.type)
-
-  switch (message.type) {
-    case 'PAGE_LOAD':
-      handlePageLoad(sender.tab)
-      break
-
-    case 'PAGE_UNLOAD':
-    case 'TAB_HIDDEN':
-      handleSessionPause()
-      break
-
-    case 'TAB_VISIBLE':
-      handleSessionResume()
-      break
-
-    case 'VIDEO_WATCHED':
-      handleVideoWatched(message.data)
-      break
-
-    case 'SEARCH':
-      updateDailyStats(getTodayKey(), { searchCount: 1 })
-      if (currentSession) currentSession.searchCount++
-      break
-
-    case 'RECOMMENDATION_CLICK':
-      updateDailyStats(getTodayKey(), { recommendationClicks: 1 })
-      if (currentSession) currentSession.recommendationClicks++
-      break
-
-    case 'AUTOPLAY_PENDING':
-      updateDailyStats(getTodayKey(), { autoplayCount: 1 })
-      if (currentSession) currentSession.autoplayCount++
-      break
-
-    case 'GET_SESSION':
-      sendResponse(currentSession)
-      return true
-
-    case 'GET_STATS':
-      getStatsResponse().then(sendResponse)
-      return true
-
-    case 'GET_SETTINGS':
-      getSettings().then(sendResponse)
-      return true
-
-    case 'UPDATE_SETTINGS':
-      handleUpdateSettings(message.data).then(sendResponse)
-      return true
-
-    case 'RATE_VIDEO':
-      handleRateVideo(message.data).then(sendResponse)
-      return true
-
-    case 'PROMPT_SHOWN':
-      updateDailyStats(getTodayKey(), { promptsShown: 1 })
-      break
-
-    case 'GET_WEEKLY_SUMMARY':
-      calculateWeeklySummary().then(sendResponse)
-      return true
+  
+  // First check time
+  if (!stats.firstCheckTime) {
+    const now = new Date();
+    stats.firstCheckTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
   }
-
-  return false
-})
-
-// ===== SESSION MANAGEMENT =====
-
-async function handlePageLoad(tab?: chrome.tabs.Tab): Promise<void> {
-  if (sessionTimeout) {
-    clearTimeout(sessionTimeout)
-    sessionTimeout = null
+  
+  // Behavioral metrics
+  stats.searchCount += browserSession.searchCount;
+  stats.recommendationClicks += browserSession.recommendationClicks;
+  stats.autoplayCount += browserSession.autoplayCount;
+  stats.autoplayCancelled += browserSession.autoplayCancelled;
+  stats.totalScrollPixels += browserSession.totalScrollPixels;
+  stats.thumbnailsHovered += browserSession.thumbnailsHovered;
+  stats.thumbnailsClicked += browserSession.thumbnailsClicked;
+  stats.pageReloads += browserSession.pageReloads;
+  stats.backButtonPresses += browserSession.backButtonPresses;
+  
+  // Productivity
+  stats.productiveVideos += browserSession.productiveVideos;
+  stats.unproductiveVideos += browserSession.unproductiveVideos;
+  stats.neutralVideos += browserSession.neutralVideos;
+  
+  // Update hourly distribution
+  const hour = getHour();
+  stats.hourlySeconds[hour] = (stats.hourlySeconds[hour] || 0) + browserSession.totalDurationSeconds;
+  
+  // Binge detection (session > 1 hour)
+  if (browserSession.totalDurationSeconds > 3600) {
+    stats.bingeSessions++;
   }
-
-  if (!currentSession) {
-    currentSession = {
-      id: crypto.randomUUID(),
-      startedAt: Date.now(),
-      tabId: tab?.id ?? null,
-      videos: [],
-      totalWatchedSeconds: 0,
-      activeSeconds: 0,
-      backgroundSeconds: 0,
-      shortsCount: 0,
-      autoplayCount: 0,
-      recommendationClicks: 0,
-      searchCount: 0,
-    }
-    activeTimerStart = Date.now()
-    backgroundTimerStart = null
-    await updateDailyStats(getTodayKey(), { sessions: 1 })
-    console.log('[YT Detox BG] Session started')
-  }
-}
-
-function handleSessionPause(): void {
-  if (currentSession) {
-    if (activeTimerStart) {
-      currentSession.activeSeconds += (Date.now() - activeTimerStart) / 1000
-      activeTimerStart = null
-    }
-    backgroundTimerStart = Date.now()
-  }
-  if (!sessionTimeout) {
-    sessionTimeout = setTimeout(() => endSession(), 30000)
-  }
-}
-
-function handleSessionResume(): void {
-  if (currentSession) {
-    if (backgroundTimerStart) {
-      currentSession.backgroundSeconds += (Date.now() - backgroundTimerStart) / 1000
-      backgroundTimerStart = null
-    }
-    activeTimerStart = Date.now()
-  }
-  if (sessionTimeout) {
-    clearTimeout(sessionTimeout)
-    sessionTimeout = null
-  }
-}
-
-async function endSession(): Promise<void> {
-  if (!currentSession) return
-
-  if (activeTimerStart) {
-    currentSession.activeSeconds += (Date.now() - activeTimerStart) / 1000
-    activeTimerStart = null
-  }
-  if (backgroundTimerStart) {
-    currentSession.backgroundSeconds += (Date.now() - backgroundTimerStart) / 1000
-    backgroundTimerStart = null
-  }
-
-  const session: BrowserSession = {
-    id: currentSession.id,
-    startedAt: currentSession.startedAt,
-    endedAt: Date.now(),
-    tabId: currentSession.tabId,
-    videos: currentSession.videos,
-    totalWatchedSeconds: currentSession.totalWatchedSeconds,
-    activeSeconds: Math.round(currentSession.activeSeconds),
-    backgroundSeconds: Math.round(currentSession.backgroundSeconds),
-    durationSeconds: Math.round(currentSession.activeSeconds + currentSession.backgroundSeconds),
-    shortsCount: currentSession.shortsCount,
-    autoplayCount: currentSession.autoplayCount,
-    recommendationClicks: currentSession.recommendationClicks,
-    searchCount: currentSession.searchCount,
-  }
-
-  await appendToArray(STORAGE_KEYS.SESSIONS, session, 1000)
-  await updateDailyStats(getTodayKey(), {
-    totalSeconds: session.durationSeconds,
-    activeSeconds: session.activeSeconds,
-    backgroundSeconds: session.backgroundSeconds,
-  })
-
-  console.log('[YT Detox BG] Session ended:', session.activeSeconds, 's active,', session.backgroundSeconds, 's bg')
-  currentSession = null
-  sessionTimeout = null
-}
-
-// ===== VIDEO HANDLING =====
-
-interface VideoWatchedData {
-  videoId: string
-  title: string
-  channel: string
-  durationSeconds: number
-  watchedSeconds: number
-  source: string
-  isShort: boolean
-  playbackSpeed: number
-}
-
-async function handleVideoWatched(data: VideoWatchedData): Promise<void> {
-  const video: VideoSession = {
-    id: crypto.randomUUID(),
-    timestamp: Date.now(),
-    videoId: data.videoId,
-    title: data.title,
-    channel: data.channel,
-    durationSeconds: data.durationSeconds,
-    watchedSeconds: data.watchedSeconds,
-    watchedPercent: data.durationSeconds > 0
-      ? Math.round((data.watchedSeconds / data.durationSeconds) * 100)
-      : 0,
-    source: data.source as any,
-    isShort: data.isShort,
-    playbackSpeed: data.playbackSpeed,
-    productivityRating: null,
-    ratedAt: null,
-  }
-
-  if (currentSession) {
-    currentSession.videos.push(video.id)
-    currentSession.totalWatchedSeconds += data.watchedSeconds || 0
-    if (data.isShort) currentSession.shortsCount++
-  }
-
-  await appendToArray(STORAGE_KEYS.VIDEOS, video, 5000)
-
-  const statsUpdate: Partial<DailyStats> = { videoCount: 1 }
-  if (data.isShort) statsUpdate.shortsCount = 1
-  await updateDailyStats(getTodayKey(), statsUpdate)
-
-  console.log('[YT Detox BG] Video:', data.title?.substring(0, 30))
-}
-
-// ===== PRODUCTIVITY RATING =====
-
-async function handleRateVideo({ videoId, rating }: { videoId: string; rating: number }): Promise<{ success: boolean }> {
-  const result = await chrome.storage.local.get(STORAGE_KEYS.VIDEOS)
-  const videos: VideoSession[] = result[STORAGE_KEYS.VIDEOS] || []
-
-  for (let i = videos.length - 1; i >= 0; i--) {
-    if (videos[i].videoId === videoId) {
-      videos[i].productivityRating = rating as any
-      videos[i].ratedAt = Date.now()
-      break
-    }
-  }
-
-  await chrome.storage.local.set({ [STORAGE_KEYS.VIDEOS]: videos })
-
-  const statsUpdate: Partial<DailyStats> = { promptsAnswered: 1 }
-  if (rating === 1) statsUpdate.productiveVideos = 1
-  else if (rating === -1) statsUpdate.unproductiveVideos = 1
-  else statsUpdate.neutralVideos = 1
-  await updateDailyStats(getTodayKey(), statsUpdate)
-
-  return { success: true }
-}
-
-// ===== SETTINGS =====
-
-async function handleUpdateSettings(newSettings: Partial<Settings>): Promise<{ success: boolean }> {
-  const current = await getSettings()
-  const merged = { ...current, ...newSettings }
-  await chrome.storage.local.set({ [STORAGE_KEYS.SETTINGS]: merged })
-  return { success: true }
-}
-
-// ===== STATS =====
-
-async function getStatsResponse(): Promise<StatsResponse> {
-  const today = getTodayKey()
-  const result = await chrome.storage.local.get(STORAGE_KEYS.DAILY_STATS)
-  const dailyStats: Record<string, DailyStats> = result[STORAGE_KEYS.DAILY_STATS] || {}
-
-  const last7Days: DailyStats[] = []
-  for (let i = 0; i < 7; i++) {
-    const d = new Date()
-    d.setDate(d.getDate() - i)
-    const key = d.toISOString().split('T')[0]
-    const dayStats = dailyStats[key] || {}
-    last7Days.push({ ...dayStats, date: key } as DailyStats)
-  }
-
-  const settings = await getSettings()
-
-  const currentSessionData: CurrentSession | null = currentSession ? {
-    durationSeconds: Math.round((Date.now() - currentSession.startedAt) / 1000),
-    activeSeconds: Math.round(
-      currentSession.activeSeconds + (activeTimerStart ? (Date.now() - activeTimerStart) / 1000 : 0)
-    ),
-    backgroundSeconds: Math.round(
-      currentSession.backgroundSeconds + (backgroundTimerStart ? (Date.now() - backgroundTimerStart) / 1000 : 0)
-    ),
-    videos: currentSession.videos.length,
-    shortsCount: currentSession.shortsCount,
-  } : null
-
-  return {
-    today: dailyStats[today] || null,
-    last7Days,
-    currentSession: currentSessionData,
-    dailyGoalMinutes: settings.dailyGoalMinutes,
-  }
-}
-
-// ===== WEEKLY SUMMARY =====
-
-async function calculateWeeklySummary(): Promise<WeeklySummary> {
-  const result = await chrome.storage.local.get([STORAGE_KEYS.DAILY_STATS, STORAGE_KEYS.VIDEOS])
-  const dailyStats: Record<string, DailyStats> = result[STORAGE_KEYS.DAILY_STATS] || {}
-  const videos: VideoSession[] = result[STORAGE_KEYS.VIDEOS] || []
-
-  const thisWeek = { totalSeconds: 0, videoCount: 0, productiveVideos: 0, unproductiveVideos: 0, sessions: 0 }
-  const prevWeek = { totalSeconds: 0, videoCount: 0, productiveVideos: 0, unproductiveVideos: 0, sessions: 0 }
-
-  for (let i = 0; i < 14; i++) {
-    const date = new Date()
-    date.setDate(date.getDate() - i)
-    const key = date.toISOString().split('T')[0]
-    const day = dailyStats[key]
-    const target = i < 7 ? thisWeek : prevWeek
-    if (day) {
-      target.totalSeconds += day.totalSeconds || 0
-      target.videoCount += day.videoCount || 0
-      target.productiveVideos += day.productiveVideos || 0
-      target.unproductiveVideos += day.unproductiveVideos || 0
-      target.sessions += day.sessions || 0
-    }
-  }
-
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
-  const channelMap: Record<string, number> = {}
-  videos.filter(v => v.timestamp >= weekAgo).forEach(v => {
-    if (v.channel) {
-      channelMap[v.channel] = (channelMap[v.channel] || 0) + (v.watchedSeconds || 0)
-    }
-  })
-  const topChannels = Object.entries(channelMap)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([channel, seconds]) => ({ channel, minutes: Math.round(seconds / 60) }))
-
-  const totalMinutes = Math.round(thisWeek.totalSeconds / 60)
-  const prevMinutes = Math.round(prevWeek.totalSeconds / 60)
-  const changePercent = prevMinutes > 0
-    ? Math.round(((totalMinutes - prevMinutes) / prevMinutes) * 100)
-    : 0
-
-  return {
-    thisWeek: { ...thisWeek, totalMinutes },
-    prevWeek: { ...prevWeek, totalMinutes: prevMinutes },
-    changePercent,
-    topChannels,
-    generatedAt: Date.now(),
-  }
-}
-
-async function generateWeeklySummary(): Promise<void> {
-  const settings = await getSettings()
-  if (!settings.interventionsEnabled?.weeklyReports) return
-
-  const summary = await calculateWeeklySummary()
-  await appendToArray(STORAGE_KEYS.WEEKLY_SUMMARIES, summary, 52)
-
-  const totalMin = summary.thisWeek.totalMinutes
-  const change = summary.changePercent
-  const changeText = change > 0 ? `${change}% more` : change < 0 ? `${Math.abs(change)}% less` : 'same'
-  const topChannel = summary.topChannels[0]?.channel || 'N/A'
-
-  chrome.notifications.create('weeklySummary', {
-    type: 'basic',
-    iconUrl: 'icons/icon128.png',
-    title: 'YouTube Detox - Weekly Summary',
-    message: `This week: ${totalMin} min (${changeText} than last week). Top: ${topChannel}. Videos: ${summary.thisWeek.videoCount}`,
-  })
-
-  console.log('[YT Detox BG] Weekly summary:', totalMin, 'min')
-}
-
-// ===== BACKEND SYNC =====
-
-async function attemptBackendSync(): Promise<void> {
-  const settings = await getSettings()
-  if (!settings.backend?.enabled || !settings.backend?.url || !settings.backend?.userId) return
-
-  try {
-    const data = await chrome.storage.local.get([STORAGE_KEYS.SESSIONS, STORAGE_KEYS.VIDEOS, STORAGE_KEYS.DAILY_STATS])
-    const lastSync = settings.backend.lastSync || 0
+  
+  // Process video sessions
+  const channelMinutes: Record<string, { minutes: number; count: number }> = {};
+  
+  for (const session of videoSessions) {
+    stats.videoCount++;
     
-    const unsyncedSessions = (data[STORAGE_KEYS.SESSIONS] || [])
-      .filter((s: BrowserSession) => (s.endedAt || s.startedAt) > lastSync)
-    const unsyncedVideos = (data[STORAGE_KEYS.VIDEOS] || [])
-      .filter((v: VideoSession) => v.timestamp > lastSync)
-    const dailyStats = data[STORAGE_KEYS.DAILY_STATS] || {}
+    if (session.isShort) {
+      stats.shortsCount++;
+    }
+    
+    if (session.watchedPercent >= 90) {
+      stats.videosCompleted++;
+    } else if (session.watchedPercent < 30) {
+      stats.videosAbandoned++;
+    }
+    
+    // Track channels
+    if (session.channel) {
+      if (!channelMinutes[session.channel]) {
+        channelMinutes[session.channel] = { minutes: 0, count: 0 };
+      }
+      channelMinutes[session.channel].minutes += Math.floor(session.watchedSeconds / 60);
+      channelMinutes[session.channel].count++;
+    }
+    
+    // Tab switches
+    stats.tabSwitches += session.tabSwitchCount;
+  }
+  
+  // Update unique channels and top channels
+  const channels = Object.entries(channelMinutes)
+    .map(([channel, data]) => ({
+      channel,
+      minutes: data.minutes,
+      videoCount: data.count,
+    }))
+    .sort((a, b) => b.minutes - a.minutes);
+  
+  // Merge with existing top channels
+  const existingChannels = new Map(
+    (stats.topChannels || []).map((c: ChannelStat) => [c.channel, c])
+  );
+  
+  for (const ch of channels) {
+    if (existingChannels.has(ch.channel)) {
+      const existing = existingChannels.get(ch.channel)!;
+      existing.minutes += ch.minutes;
+      existing.videoCount += ch.videoCount;
+    } else {
+      existingChannels.set(ch.channel, ch);
+    }
+  }
+  
+  stats.topChannels = Array.from(existingChannels.values())
+    .sort((a, b) => b.minutes - a.minutes)
+    .slice(0, 10);
+  
+  stats.uniqueChannels = existingChannels.size;
+  
+  // Pre-sleep detection
+  const settings = storage.settings;
+  const [bedHour] = (settings.bedtime || '23:00').split(':').map(Number);
+  const currentHour = new Date().getHours();
+  if (currentHour >= bedHour - 2 || currentHour < 2) {
+    stats.preSleepMinutes += Math.floor(browserSession.totalDurationSeconds / 60);
+  }
+  
+  await saveStorage({ dailyStats: storage.dailyStats });
+}
 
-    if (unsyncedSessions.length === 0 && unsyncedVideos.length === 0) return
+// ===== Backend Sync =====
 
-    const response = await fetch(`${settings.backend.url}/sync/sessions`, {
+async function syncToBackend(): Promise<boolean> {
+  const storage = await getStorage();
+  const settings = storage.settings;
+  
+  if (!settings.backend.enabled || !settings.backend.url) {
+    return false;
+  }
+  
+  // Get user ID
+  let userId = settings.backend.userId;
+  if (!userId) {
+    userId = `device-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    settings.backend.userId = userId;
+    await saveStorage({ settings });
+  }
+  
+  try {
+    // Sync sessions and stats
+    const syncResponse = await fetch(`${settings.backend.url}/sync/sessions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-User-Id': settings.backend.userId,
+        'X-User-Id': userId,
       },
       body: JSON.stringify({
-        sessions: unsyncedVideos,
-        browserSessions: unsyncedSessions,
-        dailyStats,
+        sessions: storage.videoSessions.slice(-100), // Last 100 sessions
+        browserSessions: storage.browserSessions.slice(-50), // Last 50 browser sessions
+        dailyStats: storage.dailyStats,
       }),
-    })
-
-    if (response.ok) {
-      settings.backend.lastSync = Date.now()
-      await chrome.storage.local.set({ [STORAGE_KEYS.SETTINGS]: settings })
-      console.log('[YT Detox BG] Synced:', unsyncedVideos.length, 'videos,', unsyncedSessions.length, 'sessions')
+    });
+    
+    if (!syncResponse.ok) {
+      console.error('Sync failed:', await syncResponse.text());
+      return false;
     }
-  } catch (err) {
-    console.error('[YT Detox BG] Sync failed:', (err as Error).message)
+    
+    // Sync events if we have them
+    if (storage.pendingEvents.length > 0) {
+      const eventsResponse = await fetch(`${settings.backend.url}/sync/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Id': userId,
+        },
+        body: JSON.stringify({
+          sessionId: storage.browserSessions[storage.browserSessions.length - 1]?.id || 'unknown',
+          events: storage.pendingEvents,
+          moodReports: [],
+        }),
+      });
+      
+      if (eventsResponse.ok) {
+        // Clear synced events
+        await saveStorage({ pendingEvents: [] });
+      }
+    }
+    
+    // Update last sync time
+    settings.backend.lastSync = Date.now();
+    await saveStorage({ settings, lastSyncTime: Date.now() });
+    
+    return true;
+  } catch (error) {
+    console.error('Sync error:', error);
+    return false;
   }
 }
 
-// ===== TAB CLEANUP =====
+// ===== Message Handlers =====
 
-chrome.tabs.onRemoved.addListener((tabId) => {
-  if (currentSession?.tabId === tabId) endSession()
-})
+async function handlePageLoad(data: any): Promise<void> {
+  // Initialize a new browser session if needed
+  // The content script manages the session, we just track it here
+  console.log('Page load:', data.pageType, data.url);
+}
+
+async function handlePageUnload(data: { session: BrowserSession; events: any[] }): Promise<void> {
+  const storage = await getStorage();
+  
+  // Save browser session
+  storage.browserSessions.push(data.session);
+  
+  // Keep only last 100 browser sessions
+  if (storage.browserSessions.length > 100) {
+    storage.browserSessions = storage.browserSessions.slice(-100);
+  }
+  
+  // Save events
+  storage.pendingEvents.push(...data.events);
+  
+  // Keep only last 1000 events
+  if (storage.pendingEvents.length > 1000) {
+    storage.pendingEvents = storage.pendingEvents.slice(-1000);
+  }
+  
+  await saveStorage({
+    browserSessions: storage.browserSessions,
+    pendingEvents: storage.pendingEvents,
+  });
+  
+  // Update daily stats
+  const sessionsForStats = storage.videoSessions.filter(
+    (s) => s.timestamp > data.session.startedAt && s.timestamp < (data.session.endedAt || Date.now())
+  );
+  await updateDailyStats(data.session, sessionsForStats);
+  
+  // Try to sync
+  const settings = storage.settings;
+  if (settings.backend.enabled) {
+    const lastSync = settings.backend.lastSync || 0;
+    const timeSinceSync = Date.now() - lastSync;
+    // Sync every 5 minutes
+    if (timeSinceSync > 5 * 60 * 1000) {
+      syncToBackend();
+    }
+  }
+}
+
+async function handleVideoWatched(session: VideoSession): Promise<void> {
+  const storage = await getStorage();
+  
+  storage.videoSessions.push(session);
+  
+  // Keep only last 500 video sessions
+  if (storage.videoSessions.length > 500) {
+    storage.videoSessions = storage.videoSessions.slice(-500);
+  }
+  
+  await saveStorage({ videoSessions: storage.videoSessions });
+}
+
+async function handleRateVideo(data: { sessionId: string; rating: -1 | 0 | 1 }): Promise<void> {
+  const storage = await getStorage();
+  
+  const session = storage.videoSessions.find((s) => s.id === data.sessionId);
+  if (session) {
+    session.productivityRating = data.rating;
+    session.ratedAt = Date.now();
+    await saveStorage({ videoSessions: storage.videoSessions });
+  }
+  
+  // Update daily stats
+  const today = getTodayKey();
+  if (storage.dailyStats[today]) {
+    storage.dailyStats[today].promptsAnswered++;
+    if (data.rating === 1) storage.dailyStats[today].productiveVideos++;
+    else if (data.rating === -1) storage.dailyStats[today].unproductiveVideos++;
+    else storage.dailyStats[today].neutralVideos++;
+    await saveStorage({ dailyStats: storage.dailyStats });
+  }
+}
+
+async function handleGetStats(): Promise<{
+  today: DailyStats | null;
+  currentSession: any | null;
+}> {
+  const storage = await getStorage();
+  const today = getTodayKey();
+  
+  return {
+    today: storage.dailyStats[today] || null,
+    currentSession: null, // Content script manages this
+  };
+}
+
+async function handleGetSettings(): Promise<Settings> {
+  const storage = await getStorage();
+  return storage.settings;
+}
+
+async function handleUpdateSettings(newSettings: Partial<Settings>): Promise<Settings> {
+  const storage = await getStorage();
+  storage.settings = { ...storage.settings, ...newSettings };
+  await saveStorage({ settings: storage.settings });
+  return storage.settings;
+}
+
+async function handleGetWeeklySummary(): Promise<any> {
+  const storage = await getStorage();
+  const stats = storage.dailyStats;
+  
+  // Get last 7 days
+  const days: DailyStats[] = [];
+  for (let i = 0; i < 7; i++) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    const key = date.toISOString().split('T')[0];
+    if (stats[key]) {
+      days.push(stats[key]);
+    }
+  }
+  
+  // Calculate totals
+  const thisWeek = days.reduce(
+    (acc, day) => ({
+      totalSeconds: acc.totalSeconds + day.totalSeconds,
+      totalMinutes: acc.totalMinutes + Math.floor(day.totalSeconds / 60),
+      videoCount: acc.videoCount + day.videoCount,
+      shortsCount: acc.shortsCount + day.shortsCount,
+      productiveVideos: acc.productiveVideos + day.productiveVideos,
+      unproductiveVideos: acc.unproductiveVideos + day.unproductiveVideos,
+      sessions: acc.sessions + day.sessionCount,
+      avgSessionMinutes: 0,
+      recommendationRatio: 0,
+    }),
+    {
+      totalSeconds: 0,
+      totalMinutes: 0,
+      videoCount: 0,
+      shortsCount: 0,
+      productiveVideos: 0,
+      unproductiveVideos: 0,
+      sessions: 0,
+      avgSessionMinutes: 0,
+      recommendationRatio: 0,
+    }
+  );
+  
+  if (thisWeek.sessions > 0) {
+    thisWeek.avgSessionMinutes = Math.floor(thisWeek.totalMinutes / thisWeek.sessions);
+  }
+  
+  // Aggregate top channels
+  const channelMap = new Map<string, ChannelStat>();
+  for (const day of days) {
+    for (const ch of day.topChannels || []) {
+      if (channelMap.has(ch.channel)) {
+        const existing = channelMap.get(ch.channel)!;
+        existing.minutes += ch.minutes;
+        existing.videoCount += ch.videoCount;
+      } else {
+        channelMap.set(ch.channel, { ...ch });
+      }
+    }
+  }
+  
+  const topChannels = Array.from(channelMap.values())
+    .sort((a, b) => b.minutes - a.minutes)
+    .slice(0, 5);
+  
+  // Peak hours
+  const hourlyTotals: Record<string, number> = {};
+  for (const day of days) {
+    for (const [hour, seconds] of Object.entries(day.hourlySeconds || {})) {
+      hourlyTotals[hour] = (hourlyTotals[hour] || 0) + seconds;
+    }
+  }
+  
+  const peakHours = Object.entries(hourlyTotals)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([hour]) => parseInt(hour));
+  
+  return {
+    thisWeek,
+    prevWeek: { ...thisWeek, totalSeconds: 0, totalMinutes: 0 }, // TODO: Calculate prev week
+    changePercent: 0,
+    topChannels,
+    peakHours,
+    generatedAt: Date.now(),
+  };
+}
+
+async function handlePromptShown(): Promise<void> {
+  const storage = await getStorage();
+  const today = getTodayKey();
+  
+  if (!storage.dailyStats[today]) {
+    storage.dailyStats[today] = getEmptyDailyStats(today);
+  }
+  
+  storage.dailyStats[today].promptsShown++;
+  await saveStorage({ dailyStats: storage.dailyStats });
+}
+
+async function handleInterventionResponse(data: {
+  type: string;
+  response: string;
+  effective: boolean;
+}): Promise<void> {
+  const storage = await getStorage();
+  const today = getTodayKey();
+  
+  if (!storage.dailyStats[today]) {
+    storage.dailyStats[today] = getEmptyDailyStats(today);
+  }
+  
+  storage.dailyStats[today].interventionsShown++;
+  if (data.effective) {
+    storage.dailyStats[today].interventionsEffective++;
+  }
+  
+  await saveStorage({ dailyStats: storage.dailyStats });
+}
+
+// ===== Event Listeners =====
+
+chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) => {
+  const { type, data } = message;
+  
+  (async () => {
+    try {
+      let response: any = { success: true };
+      
+      switch (type) {
+        case 'PAGE_LOAD':
+          await handlePageLoad(data);
+          break;
+          
+        case 'PAGE_UNLOAD':
+          await handlePageUnload(data as any);
+          break;
+          
+        case 'VIDEO_WATCHED':
+          await handleVideoWatched(data as VideoSession);
+          break;
+          
+        case 'RATE_VIDEO':
+          await handleRateVideo(data as any);
+          break;
+          
+        case 'GET_STATS':
+          response = await handleGetStats();
+          break;
+          
+        case 'GET_SETTINGS':
+          response = await handleGetSettings();
+          break;
+          
+        case 'UPDATE_SETTINGS':
+          response = await handleUpdateSettings(data as Partial<Settings>);
+          break;
+          
+        case 'GET_WEEKLY_SUMMARY':
+          response = await handleGetWeeklySummary();
+          break;
+          
+        case 'PROMPT_SHOWN':
+          await handlePromptShown();
+          break;
+          
+        case 'INTERVENTION_RESPONSE':
+          await handleInterventionResponse(data as any);
+          break;
+          
+        case 'GET_SESSION':
+          // Content script manages this, return null
+          response = { session: null };
+          break;
+          
+        default:
+          console.log('Unknown message type:', type);
+      }
+      
+      sendResponse(response);
+    } catch (error) {
+      console.error('Message handler error:', error);
+      sendResponse({ error: String(error) });
+    }
+  })();
+  
+  return true; // Keep channel open for async response
+});
+
+// ===== Alarms for periodic sync =====
+
+chrome.alarms.create('syncToBackend', { periodInMinutes: 5 });
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === 'syncToBackend') {
+    const storage = await getStorage();
+    if (storage.settings.backend.enabled) {
+      await syncToBackend();
+    }
+  }
+});
+
+// ===== Install/Update =====
+
+chrome.runtime.onInstalled.addListener(async (details) => {
+  if (details.reason === 'install') {
+    const settings = { ...DEFAULT_SETTINGS, installDate: Date.now() };
+    await saveStorage({
+      settings,
+      videoSessions: [],
+      browserSessions: [],
+      dailyStats: {},
+      pendingEvents: [],
+      lastSyncTime: 0,
+    });
+    
+    // Open options page on first install
+    chrome.runtime.openOptionsPage();
+  }
+});
+
+console.log('YouTube Detox background service worker initialized');
