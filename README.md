@@ -1,101 +1,110 @@
 # YouTube Detox 🧘
 
-A Chrome extension for gradually reducing YouTube usage through personalized insights and gentle friction.
+A Chrome extension to help you build healthier YouTube habits through awareness and gentle intervention.
 
-**Philosophy:** Not a cold-turkey blocker. A gradual, data-driven approach to building healthier viewing habits over 1-2 months.
+## Architecture
+
+This is a monorepo with three packages:
+
+```
+youtube-detox/
+├── packages/
+│   ├── extension/        # Chrome extension (React + Vite + TypeScript)
+│   ├── backend/          # FastAPI backend (Python + PostgreSQL)
+│   └── shared/           # Shared TypeScript types
+├── docker-compose.yml    # Backend services
+└── package.json          # Workspace root
+```
 
 ## Features
 
-### Phase 1: Observation (Week 1)
-- Silent tracking of viewing patterns
-- No interventions
-- Build baseline data
+- **Usage Tracking**: Track time spent, videos watched, shorts, searches
+- **Floating Widget**: See stats directly on YouTube pages (watch/shorts)
+- **Productivity Prompts**: Optional prompts to rate video productivity
+- **Weekly Summaries**: Get notified about your weekly usage
+- **Backend Sync**: Optionally sync data to your own backend
 
-### Phase 2: Awareness (Week 2-3)
-- Surface insights about your viewing habits
-- Non-judgmental observations
+## Development
 
-### Phase 3: Friction (Week 4-6)
-- Personalized interventions based on your patterns
-- Pause before autoplay
-- Blur recommendations for algorithm-heavy users
+### Prerequisites
 
-### Phase 4: Reduction (Week 7+)
-- Weekly reduction targets
-- Progress tracking
-- Celebrate wins
+- Node.js 18+
+- pnpm 8+
+- Docker (for backend)
 
-## What It Tracks
+### Setup
 
-- **Sessions:** When you visit YouTube, how long you stay
-- **Videos:** What you watch, how much of each video
-- **Source:** Did you search for it, or did the algorithm serve it?
-- **Shorts:** The high-dopamine short-form content
-- **Autoplay:** How often you fall into autoplay chains
-- **Patterns:** Time of day, day of week, binge sessions
+```bash
+# Install dependencies
+pnpm install
 
-**All data stays local.** Nothing is ever sent anywhere.
+# Build shared types
+pnpm --filter @yt-detox/shared build
 
-## Installation
+# Build extension
+pnpm --filter @yt-detox/extension build
+```
+
+### Load Extension in Chrome
+
+1. Open `chrome://extensions`
+2. Enable "Developer mode"
+3. Click "Load unpacked"
+4. Select `packages/extension/dist`
+
+### Start Backend (Optional)
+
+```bash
+docker compose up -d
+```
+
+API runs on http://localhost:8000
 
 ### Development Mode
 
-1. Clone the repo:
-   ```bash
-   git clone https://github.com/marisancans/youtube-detox-extension.git
-   cd youtube-detox-extension
-   ```
+```bash
+# Watch mode for extension
+pnpm --filter @yt-detox/extension dev
 
-2. Add icons to `/icons/` folder:
-   - `icon16.png` (16x16)
-   - `icon48.png` (48x48)
-   - `icon128.png` (128x128)
-
-3. Open Chrome and go to `chrome://extensions/`
-
-4. Enable "Developer mode" (top right)
-
-5. Click "Load unpacked" and select the project folder
-
-6. The extension icon should appear in your toolbar
-
-## Usage
-
-1. Browse YouTube normally for the first week
-2. Click the extension icon to see your stats
-3. Export your data anytime with the "Export Data" button
-
-## Project Structure
-
-```
-youtube-detox-extension/
-├── manifest.json           # Extension manifest
-├── src/
-│   ├── background/         # Service worker (session management)
-│   │   └── index.js
-│   ├── content/            # Content scripts (YouTube DOM scraping)
-│   │   ├── index.js
-│   │   ├── scraper.js
-│   │   └── styles.css
-│   ├── popup/              # Extension popup UI
-│   │   ├── popup.html
-│   │   ├── popup.css
-│   │   └── popup.js
-│   └── utils/              # Shared utilities
-│       ├── storage.js
-│       └── logger.js
-├── icons/                  # Extension icons
-└── research/               # Research documents
-    ├── 01-academic-findings.md
-    └── 02-logging-personalization.md
+# Then reload extension in Chrome after changes
 ```
 
-## Privacy
+## Backend API
 
-- All data stored locally via `chrome.storage.local`
-- No external API calls
-- No analytics or telemetry
-- You own your data - export or delete anytime
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/sync/sessions` | POST | Sync video/browser sessions + daily stats |
+| `/sync/videos` | GET | Get synced videos |
+| `/stats/overview` | GET | Today + last 7 days stats |
+| `/stats/weekly` | GET | Week-over-week comparison |
+| `/stats/channels` | GET | Top channels by watch time |
+
+All endpoints require `X-User-Id` header.
+
+## Configuration
+
+In the extension options page:
+
+1. Enable/disable tracking
+2. Set daily goal (minutes)
+3. Configure productivity prompts
+4. Enable backend sync (optional)
+
+## Tech Stack
+
+### Extension
+- React 18 + TypeScript
+- Vite + @crxjs/vite-plugin
+- Tailwind CSS
+- Shadow DOM for style isolation
+
+### Backend
+- FastAPI
+- SQLAlchemy + asyncpg
+- PostgreSQL 16
+- Alembic migrations
+- Docker
 
 ## License
 

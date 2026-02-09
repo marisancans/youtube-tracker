@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+packages/extension/dist/
+packages/shared/dist/
+packages/backend/__pycache__/
+packages/backend/app/__pycache__/
+packages/backend/app/**/__pycache__/
+*.pyc
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Lock files (keep pnpm-lock.yaml)
+package-lock.json
+yarn.lock

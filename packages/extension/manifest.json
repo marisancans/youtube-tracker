@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Detox",
+  "version": "0.2.0",
+  "description": "Gradually reduce YouTube usage with personalized insights and gentle friction",
+  
+  "permissions": [
+    "storage",
+    "alarms",
+    "notifications"
+  ],
+  
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://youtube.com/*"
+  ],
+  
+  "background": {
+    "service_worker": "src/background/index.ts",
+    "type": "module"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/*",
+        "https://youtube.com/*"
+      ],
+      "js": ["src/content/index.tsx"],
+      "run_at": "document_idle"
+    }
+  ],
+  
+  "options_page": "src/options/options.html",
+  
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

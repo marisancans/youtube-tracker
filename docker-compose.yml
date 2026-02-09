@@ -1,29 +1,28 @@
 services:
-  youtube-detox-api:
-    build: ./backend
+  api:
+    build: ./packages/backend
     ports:
-      - "3000:3000"
+      - "8000:8000"
     environment:
-      - PORT=3000
-      - DATABASE_URL=postgresql://detox:detox_password@youtube-detox-db:5432/youtube_detox
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/ytdetox
+      - DEBUG=false
     depends_on:
-      youtube-detox-db:
+      db:
         condition: service_healthy
     restart: unless-stopped
 
-  youtube-detox-db:
+  db:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_USER=detox
-      - POSTGRES_PASSWORD=detox_password
-      - POSTGRES_DB=youtube_detox
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=ytdetox
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./backend/src/db/migrations/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U detox -d youtube_detox"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
