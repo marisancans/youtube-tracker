@@ -60,9 +60,8 @@ def upgrade() -> None:
     op.add_column('browser_sessions', sa.Column('neutral_videos', sa.Integer(), default=0))
     op.add_column('browser_sessions', sa.Column('exit_type', sa.String(20), nullable=True))
     op.add_column('browser_sessions', sa.Column('search_queries', postgresql.JSONB(), nullable=True))
-    # Rename columns to match new schema
-    op.alter_column('browser_sessions', 'duration_seconds', new_column_name='background_seconds')
-    op.alter_column('browser_sessions', 'video_count', new_column_name='videos_watched')
+    # Note: background_seconds already exists in 001, and video_count stays as-is
+    # The rename operations were removed as the schema already has the correct columns
 
     # Add new columns to daily_stats
     op.add_column('daily_stats', sa.Column('avg_session_duration_seconds', sa.Integer(), default=0))
@@ -270,9 +269,7 @@ def downgrade() -> None:
     op.drop_column('daily_stats', 'first_check_time')
     op.drop_column('daily_stats', 'avg_session_duration_seconds')
     
-    # Revert browser_sessions changes
-    op.alter_column('browser_sessions', 'background_seconds', new_column_name='duration_seconds')
-    op.alter_column('browser_sessions', 'videos_watched', new_column_name='video_count')
+    # Revert browser_sessions changes (no renames needed, columns already existed)
     op.drop_column('browser_sessions', 'search_queries')
     op.drop_column('browser_sessions', 'exit_type')
     op.drop_column('browser_sessions', 'neutral_videos')
