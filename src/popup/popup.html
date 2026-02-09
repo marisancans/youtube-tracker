@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Detox</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🧘 YouTube Detox</h1>
+      <span class="phase-badge" id="phase">Observation</span>
+    </header>
+    
+    <section class="today-stats">
+      <h2>Today</h2>
+      <div class="stat-grid">
+        <div class="stat">
+          <span class="stat-value" id="todayMinutes">--</span>
+          <span class="stat-label">minutes</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="todayVideos">--</span>
+          <span class="stat-label">videos</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="todayShorts">--</span>
+          <span class="stat-label">shorts</span>
+        </div>
+      </div>
+    </section>
+    
+    <section class="current-session" id="sessionSection" style="display: none;">
+      <h2>Current Session</h2>
+      <div class="session-time">
+        <span id="sessionDuration">0:00</span>
+      </div>
+    </section>
+    
+    <section class="weekly-summary">
+      <h2>This Week</h2>
+      <div class="week-chart" id="weekChart">
+        <!-- Filled by JS -->
+      </div>
+    </section>
+    
+    <footer>
+      <button id="exportBtn" class="btn-secondary">Export Data</button>
+      <a href="#" id="settingsLink">Settings</a>
+    </footer>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

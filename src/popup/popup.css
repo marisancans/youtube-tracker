@@ -1,0 +1,178 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+  width: 320px;
+  background: #0f0f0f;
+  color: #f1f1f1;
+}
+
+.container {
+  padding: 16px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+h1 {
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.phase-badge {
+  background: #263850;
+  color: #8ab4f8;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+h2 {
+  font-size: 12px;
+  font-weight: 500;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+section {
+  margin-bottom: 20px;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.stat {
+  background: #1a1a1a;
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+
+.stat-value {
+  display: block;
+  font-size: 24px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.stat-label {
+  display: block;
+  font-size: 11px;
+  color: #888;
+  margin-top: 4px;
+}
+
+.current-session {
+  background: linear-gradient(135deg, #1e3a5f 0%, #1a1a1a 100%);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.session-time {
+  font-size: 32px;
+  font-weight: 300;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.week-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  height: 60px;
+  padding: 8px 0;
+}
+
+.week-bar {
+  flex: 1;
+  margin: 0 2px;
+  background: #333;
+  border-radius: 3px;
+  min-height: 4px;
+  position: relative;
+}
+
+.week-bar .bar-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, #3ea6ff, #065fd4);
+  border-radius: 3px;
+  transition: height 0.3s ease;
+}
+
+.week-bar .bar-label {
+  position: absolute;
+  bottom: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: #666;
+}
+
+footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 12px;
+  border-top: 1px solid #333;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: #8ab4f8;
+  border: 1px solid #333;
+  border-radius: 16px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background: #1a1a1a;
+}
+
+#settingsLink {
+  color: #888;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+#settingsLink:hover {
+  color: #fff;
+}
+
+/* Goal indicator */
+.goal-indicator {
+  text-align: center;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.goal-indicator.under {
+  background: #1e3323;
+  color: #81c995;
+}
+
+.goal-indicator.over {
+  background: #3c1f1f;
+  color: #f28b82;
+}

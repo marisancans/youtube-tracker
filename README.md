@@ -1,65 +1,101 @@
-# YouTube Detox Extension
+# YouTube Detox 🧘
 
-**Wean off YouTube addiction gradually, not cold turkey.**
+A Chrome extension for gradually reducing YouTube usage through personalized insights and gentle friction.
 
-A Chrome extension that helps you develop a healthier relationship with YouTube through awareness, friction, and gradual behavior change over 6-8 weeks.
+**Philosophy:** Not a cold-turkey blocker. A gradual, data-driven approach to building healthier viewing habits over 1-2 months.
 
-## Why This Exists
+## Features
 
-Cold turkey doesn't work for most people. Blocking apps leads to:
-- Workarounds and bypasses
-- Guilt and shame cycles
-- Binge-relapse patterns
-- No lasting behavior change
+### Phase 1: Observation (Week 1)
+- Silent tracking of viewing patterns
+- No interventions
+- Build baseline data
 
-This extension takes a different approach based on behavioral science:
-1. **Observe** your patterns (Week 1-2)
-2. **Become aware** of unconscious habits (Week 3-4)
-3. **Add friction** to mindless consumption (Week 5-6)
-4. **Replace** with healthier alternatives (Week 7-8)
+### Phase 2: Awareness (Week 2-3)
+- Surface insights about your viewing habits
+- Non-judgmental observations
 
-## Core Features
+### Phase 3: Friction (Week 4-6)
+- Personalized interventions based on your patterns
+- Pause before autoplay
+- Blur recommendations for algorithm-heavy users
 
-- 📊 **Track everything** — Watch time, channels, how you got there
-- 🤔 **Productivity prompts** — "Was this video valuable?" (builds self-awareness)
-- 🐢 **Gradual friction** — Delays, confirmations, hidden recommendations
-- 📈 **Progress visualization** — See your improvement over time
-- 🔒 **Privacy-first** — All data stays local, no accounts, no tracking
+### Phase 4: Reduction (Week 7+)
+- Weekly reduction targets
+- Progress tracking
+- Celebrate wins
 
-## Research
+## What It Tracks
 
-This project is backed by academic research on:
-- Dopamine and social media addiction (see `/research`)
-- Nudge theory and choice architecture
-- Variable-ratio reinforcement schedules
-- Habit formation and breaking
+- **Sessions:** When you visit YouTube, how long you stay
+- **Videos:** What you watch, how much of each video
+- **Source:** Did you search for it, or did the algorithm serve it?
+- **Shorts:** The high-dopamine short-form content
+- **Autoplay:** How often you fall into autoplay chains
+- **Patterns:** Time of day, day of week, binge sessions
 
-## Status
+**All data stays local.** Nothing is ever sent anywhere.
 
-🚧 **In Development**
+## Installation
 
-Currently in research and design phase. See `/docs/PRODUCT-DESIGN.md` for the full plan.
+### Development Mode
+
+1. Clone the repo:
+   ```bash
+   git clone https://github.com/marisancans/youtube-detox-extension.git
+   cd youtube-detox-extension
+   ```
+
+2. Add icons to `/icons/` folder:
+   - `icon16.png` (16x16)
+   - `icon48.png` (48x48)
+   - `icon128.png` (128x128)
+
+3. Open Chrome and go to `chrome://extensions/`
+
+4. Enable "Developer mode" (top right)
+
+5. Click "Load unpacked" and select the project folder
+
+6. The extension icon should appear in your toolbar
+
+## Usage
+
+1. Browse YouTube normally for the first week
+2. Click the extension icon to see your stats
+3. Export your data anytime with the "Export Data" button
 
 ## Project Structure
 
 ```
 youtube-detox-extension/
-├── README.md
-├── research/           # Academic findings, user research
-│   ├── 01-academic-findings.md
-│   └── 02-intervention-strategies.md
-├── docs/              # Product design, architecture
-│   └── PRODUCT-DESIGN.md
-└── src/               # Extension source code (coming)
+├── manifest.json           # Extension manifest
+├── src/
+│   ├── background/         # Service worker (session management)
+│   │   └── index.js
+│   ├── content/            # Content scripts (YouTube DOM scraping)
+│   │   ├── index.js
+│   │   ├── scraper.js
+│   │   └── styles.css
+│   ├── popup/              # Extension popup UI
+│   │   ├── popup.html
+│   │   ├── popup.css
+│   │   └── popup.js
+│   └── utils/              # Shared utilities
+│       ├── storage.js
+│       └── logger.js
+├── icons/                  # Extension icons
+└── research/               # Research documents
+    ├── 01-academic-findings.md
+    └── 02-logging-personalization.md
 ```
 
-## Philosophy
+## Privacy
 
-> "The goal is NOT to block YouTube. The goal is to make unconscious watching conscious, reduce mindless consumption to intentional use, and break automatic habits into deliberate choices."
-
-## Contributing
-
-This is a personal project to solve a personal problem. If it helps you too, that's a bonus.
+- All data stored locally via `chrome.storage.local`
+- No external API calls
+- No analytics or telemetry
+- You own your data - export or delete anytime
 
 ## License
 

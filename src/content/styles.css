@@ -1,0 +1,62 @@
+/**
+ * YouTube Detox - Injected Styles
+ * For future UI overlays and interventions
+ */
+
+/* Placeholder - interventions will be added later */
+.yt-detox-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.yt-detox-modal {
+  background: #1a1a1a;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  color: #fff;
+  font-family: 'Roboto', Arial, sans-serif;
+}
+
+.yt-detox-modal h2 {
+  margin: 0 0 16px 0;
+  font-size: 20px;
+}
+
+.yt-detox-modal p {
+  margin: 0 0 16px 0;
+  color: #aaa;
+  line-height: 1.5;
+}
+
+.yt-detox-modal button {
+  background: #065fd4;
+  color: #fff;
+  border: none;
+  border-radius: 18px;
+  padding: 10px 20px;
+  font-size: 14px;
+  cursor: pointer;
+  margin-right: 8px;
+}
+
+.yt-detox-modal button:hover {
+  background: #0056b3;
+}
+
+.yt-detox-modal button.secondary {
+  background: transparent;
+  border: 1px solid #555;
+}
+
+.yt-detox-modal button.secondary:hover {
+  background: #333;
+}
