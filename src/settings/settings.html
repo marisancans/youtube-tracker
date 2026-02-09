@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Detox - Settings</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <div class="settings-container">
+    <header class="settings-header">
+      <span class="settings-logo">&#x1F9D8;</span>
+      <h1>YouTube Detox</h1>
+      <span class="settings-version">v0.1.0</span>
+    </header>
+
+    <!-- Phase -->
+    <section class="settings-section">
+      <h2>Phase</h2>
+      <div class="settings-row">
+        <label class="radio-label">
+          <input type="radio" name="phase" value="observation" checked>
+          <span class="radio-text">Observation</span>
+          <span class="radio-desc">Track your habits without interference</span>
+        </label>
+        <label class="radio-label disabled">
+          <input type="radio" name="phase" value="awareness" disabled>
+          <span class="radio-text">Awareness <span class="coming-soon">Coming soon</span></span>
+          <span class="radio-desc">Get gentle nudges about your viewing patterns</span>
+        </label>
+        <label class="radio-label disabled">
+          <input type="radio" name="phase" value="friction" disabled>
+          <span class="radio-text">Friction <span class="coming-soon">Coming soon</span></span>
+          <span class="radio-desc">Add intentional friction to reduce mindless watching</span>
+        </label>
+        <label class="radio-label disabled">
+          <input type="radio" name="phase" value="replacement" disabled>
+          <span class="radio-text">Replacement <span class="coming-soon">Coming soon</span></span>
+          <span class="radio-desc">Replace unproductive viewing with better alternatives</span>
+        </label>
+      </div>
+    </section>
+
+    <!-- Daily Goal -->
+    <section class="settings-section">
+      <h2>Daily Goal</h2>
+      <div class="settings-row inline">
+        <label for="dailyGoal">Target daily YouTube time</label>
+        <div class="input-group">
+          <input type="number" id="dailyGoal" min="0" max="480" step="5" value="60">
+          <span class="input-suffix">minutes</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interventions -->
+    <section class="settings-section">
+      <h2>Interventions</h2>
+      <div class="settings-row">
+        <label class="toggle-label">
+          <span class="toggle-text">
+            <strong>Productivity Prompts</strong>
+            <span class="toggle-desc">Ask "Was this productive?" after some videos</span>
+          </span>
+          <input type="checkbox" id="productivityPrompts" class="toggle-input">
+          <span class="toggle-switch"></span>
+        </label>
+      </div>
+      <div class="settings-row sub-row" id="promptChanceRow">
+        <label for="promptChance">Prompt frequency</label>
+        <div class="input-group">
+          <input type="range" id="promptChance" min="10" max="100" step="10" value="30">
+          <span class="input-suffix" id="promptChanceVal">30%</span>
+        </div>
+      </div>
+      <div class="settings-row">
+        <label class="toggle-label">
+          <span class="toggle-text">
+            <strong>Weekly Reports</strong>
+            <span class="toggle-desc">Get a summary notification every Sunday evening</span>
+          </span>
+          <input type="checkbox" id="weeklyReports" class="toggle-input">
+          <span class="toggle-switch"></span>
+        </label>
+      </div>
+    </section>
+
+    <!-- Channel Whitelist -->
+    <section class="settings-section">
+      <h2>Channel Whitelist</h2>
+      <p class="section-desc">Videos from these channels are auto-rated as productive.</p>
+      <div class="tags-container" id="whitelistTags"></div>
+      <div class="settings-row inline">
+        <input type="text" id="whitelistInput" placeholder="Channel name" class="text-input">
+        <button id="whitelistAdd" class="btn-small">Add</button>
+      </div>
+    </section>
+
+    <!-- Backend Sync -->
+    <section class="settings-section">
+      <h2>Backend Sync</h2>
+      <div class="settings-row">
+        <label class="toggle-label">
+          <span class="toggle-text">
+            <strong>Enable Sync</strong>
+            <span class="toggle-desc">Sync data to your self-hosted backend</span>
+          </span>
+          <input type="checkbox" id="backendEnabled" class="toggle-input">
+          <span class="toggle-switch"></span>
+        </label>
+      </div>
+      <div id="backendFields" class="backend-fields">
+        <div class="settings-row inline">
+          <label for="backendUrl">Server URL</label>
+          <input type="url" id="backendUrl" placeholder="http://localhost:3000" class="text-input wide">
+        </div>
+        <div class="settings-row inline">
+          <label for="backendUserId">User ID</label>
+          <input type="text" id="backendUserId" placeholder="your-user-id" class="text-input wide">
+        </div>
+        <div class="settings-row inline">
+          <button id="testConnection" class="btn-small">Test Connection</button>
+          <span id="connectionStatus" class="connection-status"></span>
+        </div>
+      </div>
+    </section>
+
+    <div class="settings-footer">
+      <span id="saveStatus" class="save-status"></span>
+    </div>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>

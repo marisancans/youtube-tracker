@@ -1,9 +1,298 @@
 /**
  * YouTube Detox - Injected Styles
- * For future UI overlays and interventions
+ * Widget sits inline above the YouTube player
  */
 
-/* Placeholder - interventions will be added later */
+/* ===== Widget Container ===== */
+#yt-detox-widget {
+  width: 100%;
+  font-family: 'Roboto', 'Segoe UI', Arial, sans-serif;
+  font-size: 13px;
+  color: #f1f1f1;
+  margin-bottom: 0;
+  z-index: 100;
+  position: relative;
+}
+
+#yt-detox-widget * {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Inner wrapper */
+.yt-detox-inner {
+  background: #1a1a1a;
+  border-bottom: 1px solid #333;
+}
+
+/* ===== Header bar (always visible) ===== */
+.yt-detox-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px;
+  cursor: default;
+  user-select: none;
+}
+
+.yt-detox-logo {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.yt-detox-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #aaa;
+}
+
+.yt-detox-header-timer {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 14px;
+  color: #fff;
+  margin-left: auto;
+}
+
+.yt-detox-header-stat {
+  font-size: 12px;
+  color: #888;
+}
+
+.yt-detox-toggle {
+  font-size: 10px;
+  color: #666;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: background 0.15s, transform 0.2s;
+}
+
+.yt-detox-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+/* ===== Body (expandable) ===== */
+.yt-detox-body {
+  display: none;
+  padding: 8px 16px 10px;
+}
+
+#yt-detox-widget.expanded .yt-detox-body {
+  display: block;
+}
+
+/* ===== Session section ===== */
+.yt-detox-session {
+  display: none;
+  margin-bottom: 10px;
+  background: linear-gradient(135deg, rgba(30, 58, 95, 0.4) 0%, transparent 100%);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.yt-detox-session.active {
+  display: block;
+}
+
+.yt-detox-session-title {
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.yt-detox-session-timers {
+  display: flex;
+  justify-content: space-around;
+  text-align: center;
+}
+
+.yt-detox-session-timer-val {
+  display: block;
+  font-size: 20px;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+
+.yt-detox-session-timer-val.dim {
+  color: #666;
+}
+
+.yt-detox-session-timer-lbl {
+  font-size: 10px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+/* ===== Stats row ===== */
+.yt-detox-stats-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.yt-detox-stat {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  padding: 6px 12px;
+  text-align: center;
+  min-width: 64px;
+}
+
+.yt-detox-stat-val {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.yt-detox-stat-lbl {
+  display: block;
+  font-size: 10px;
+  color: #666;
+  margin-top: 2px;
+}
+
+/* ===== Mini week chart (inline) ===== */
+.yt-detox-week-mini {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 32px;
+  margin-left: auto;
+  padding: 0 4px;
+}
+
+.yt-detox-week-bar {
+  width: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  min-height: 3px;
+  position: relative;
+}
+
+.yt-detox-week-bar .fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, #3ea6ff, #065fd4);
+  border-radius: 2px;
+  transition: height 0.3s ease;
+}
+
+/* ===== Productivity row ===== */
+.yt-detox-productivity-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 4px 0;
+}
+
+.yt-detox-prod-item {
+  font-size: 12px;
+  color: #888;
+}
+
+.yt-detox-prod-item.good span {
+  color: #4caf50;
+}
+
+.yt-detox-prod-item.bad span {
+  color: #f44336;
+}
+
+.yt-detox-prod-item.goal {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: #aaa;
+}
+
+/* ===== Productivity Prompt ===== */
+.yt-detox-prompt-container {
+  width: 100%;
+  position: relative;
+  z-index: 101;
+  font-family: 'Roboto', 'Segoe UI', Arial, sans-serif;
+}
+
+.yt-detox-prompt-card {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border-bottom: 1px solid #333;
+  padding: 12px 16px;
+  text-align: center;
+}
+
+.yt-detox-prompt-question {
+  font-size: 15px;
+  font-weight: 500;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.yt-detox-prompt-video {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yt-detox-prompt-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.yt-detox-prompt-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 20px;
+  cursor: pointer;
+  font-size: 18px;
+  transition: background 0.15s, transform 0.1s;
+  color: #fff;
+  line-height: 1;
+}
+
+.yt-detox-prompt-btn:hover {
+  transform: scale(1.1);
+}
+
+.yt-detox-prompt-btn.productive:hover {
+  background: rgba(76, 175, 80, 0.3);
+  border-color: #4caf50;
+}
+
+.yt-detox-prompt-btn.neutral:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: #888;
+}
+
+.yt-detox-prompt-btn.unproductive:hover {
+  background: rgba(244, 67, 54, 0.3);
+  border-color: #f44336;
+}
+
+.yt-detox-prompt-timer {
+  height: 2px;
+  background: linear-gradient(90deg, #3ea6ff, #065fd4);
+  margin-top: 10px;
+  border-radius: 1px;
+  transition: width 1s linear;
+}
+
+/* ===== Overlay (for future interventions) ===== */
 .yt-detox-overlay {
   position: fixed;
   top: 0;

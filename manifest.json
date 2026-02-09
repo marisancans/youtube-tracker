@@ -6,7 +6,8 @@
   
   "permissions": [
     "storage",
-    "alarms"
+    "alarms",
+    "notifications"
   ],
   
   "host_permissions": [
@@ -30,8 +31,9 @@
     }
   ],
   
+  "options_page": "src/settings/settings.html",
+
   "action": {
-    "default_popup": "src/popup/popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",

@@ -1,0 +1,327 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #0f0f0f;
+  color: #f1f1f1;
+  font-family: 'Roboto', 'Segoe UI', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+.settings-container {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 24px 20px 40px;
+}
+
+/* Header */
+.settings-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 32px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #333;
+}
+
+.settings-logo {
+  font-size: 28px;
+}
+
+.settings-header h1 {
+  font-size: 22px;
+  font-weight: 500;
+  flex: 1;
+}
+
+.settings-version {
+  font-size: 12px;
+  color: #666;
+}
+
+/* Sections */
+.settings-section {
+  margin-bottom: 28px;
+  background: #1a1a1a;
+  border-radius: 10px;
+  padding: 16px 20px;
+}
+
+.settings-section h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #3ea6ff;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.section-desc {
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 10px;
+}
+
+/* Rows */
+.settings-row {
+  padding: 8px 0;
+}
+
+.settings-row + .settings-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.settings-row.inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-row.sub-row {
+  padding-left: 16px;
+  opacity: 0.8;
+}
+
+/* Radio buttons */
+.radio-label {
+  display: block;
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+.radio-label.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.radio-label input[type="radio"] {
+  accent-color: #3ea6ff;
+  margin-right: 8px;
+}
+
+.radio-text {
+  font-weight: 500;
+}
+
+.radio-desc {
+  display: block;
+  font-size: 12px;
+  color: #888;
+  margin-left: 24px;
+  margin-top: 2px;
+}
+
+.coming-soon {
+  font-size: 10px;
+  background: #333;
+  color: #888;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  font-weight: 400;
+}
+
+/* Toggle switches */
+.toggle-label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  gap: 12px;
+}
+
+.toggle-text {
+  flex: 1;
+}
+
+.toggle-text strong {
+  display: block;
+  font-size: 14px;
+}
+
+.toggle-desc {
+  display: block;
+  font-size: 12px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.toggle-input {
+  display: none;
+}
+
+.toggle-switch {
+  width: 40px;
+  height: 22px;
+  background: #444;
+  border-radius: 11px;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: #ccc;
+  border-radius: 50%;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.toggle-input:checked + .toggle-switch {
+  background: #065fd4;
+}
+
+.toggle-input:checked + .toggle-switch::after {
+  transform: translateX(18px);
+  background: #fff;
+}
+
+/* Inputs */
+.input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input-suffix {
+  font-size: 13px;
+  color: #888;
+  min-width: 40px;
+}
+
+input[type="number"] {
+  background: #262626;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: #fff;
+  padding: 6px 10px;
+  font-size: 14px;
+  width: 80px;
+  text-align: center;
+}
+
+input[type="number"]:focus {
+  outline: none;
+  border-color: #3ea6ff;
+}
+
+input[type="range"] {
+  flex: 1;
+  accent-color: #3ea6ff;
+}
+
+.text-input {
+  background: #262626;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: #fff;
+  padding: 6px 10px;
+  font-size: 14px;
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: #3ea6ff;
+}
+
+.text-input.wide {
+  flex: 1;
+}
+
+/* Tags */
+.tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+  min-height: 24px;
+}
+
+.tag {
+  background: #262626;
+  border: 1px solid #444;
+  border-radius: 14px;
+  padding: 4px 10px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tag-remove {
+  cursor: pointer;
+  color: #888;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.tag-remove:hover {
+  color: #f44336;
+}
+
+/* Buttons */
+.btn-small {
+  background: #065fd4;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.btn-small:hover {
+  background: #0056b3;
+}
+
+/* Backend fields */
+.backend-fields {
+  display: none;
+  margin-top: 8px;
+}
+
+.backend-fields.visible {
+  display: block;
+}
+
+/* Connection status */
+.connection-status {
+  font-size: 13px;
+}
+
+.connection-status.success {
+  color: #4caf50;
+}
+
+.connection-status.error {
+  color: #f44336;
+}
+
+/* Footer */
+.settings-footer {
+  text-align: center;
+  padding-top: 12px;
+}
+
+.save-status {
+  font-size: 13px;
+  color: #4caf50;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.save-status.visible {
+  opacity: 1;
+}

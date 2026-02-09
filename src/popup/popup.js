@@ -31,7 +31,7 @@
       
       if (stats.currentSession) {
         document.getElementById('sessionSection').style.display = 'block';
-        updateSessionDisplay(stats.currentSession.durationSeconds);
+        updateSessionDisplay(stats.currentSession.activeSeconds, stats.currentSession.backgroundSeconds);
       }
       
       renderWeekChart(stats.last7Days);
@@ -69,24 +69,27 @@
   }
   
   function updateSessionTimer() {
-    chrome.runtime.sendMessage({ type: 'GET_SESSION' }, (session) => {
+    chrome.runtime.sendMessage({ type: 'GET_STATS' }, (stats) => {
       if (chrome.runtime.lastError) return;
-      
-      if (session) {
-        const seconds = Math.round((Date.now() - session.startedAt) / 1000);
+
+      if (stats?.currentSession) {
         document.getElementById('sessionSection').style.display = 'block';
-        updateSessionDisplay(seconds);
+        updateSessionDisplay(stats.currentSession.activeSeconds, stats.currentSession.backgroundSeconds);
       } else {
         document.getElementById('sessionSection').style.display = 'none';
       }
     });
   }
-  
-  function updateSessionDisplay(totalSeconds) {
+
+  function updateSessionDisplay(activeTotal, backgroundTotal) {
+    document.getElementById('sessionActive').textContent = formatTime(activeTotal);
+    document.getElementById('sessionBackground').textContent = formatTime(backgroundTotal);
+  }
+
+  function formatTime(totalSeconds) {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
-    document.getElementById('sessionDuration').textContent = 
-      `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
   
   function setupExport() {
