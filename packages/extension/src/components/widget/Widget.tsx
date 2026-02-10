@@ -87,6 +87,10 @@ interface WidgetState {
   productiveUrls: ProductiveUrl[];
   suggestedUrl: ProductiveUrl | null;
   dismissedSuggestion: boolean;
+  // Sync status
+  lastSyncTime: number | null;
+  showSyncStatus: boolean;
+  syncEnabled: boolean;
 }
 
 function formatTime(seconds: number): string {
@@ -153,6 +157,9 @@ const Icons = {
   Lightbulb: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>,
   ExternalLink: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>,
   Sparkles: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>,
+  Cloud: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>,
+  CloudOff: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m2 2 20 20"/><path d="M5.782 5.782A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.307-.193"/><path d="M21.532 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7.008 7.008 0 0 0 10 5.07"/></svg>,
+  Check: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>,
 };
 
 // Mini sparkline component - full width with proper circles
@@ -361,6 +368,9 @@ export default function Widget(): JSX.Element {
     productiveUrls: [],
     suggestedUrl: null,
     dismissedSuggestion: false,
+    lastSyncTime: null,
+    showSyncStatus: false,
+    syncEnabled: false,
   });
   
   // Inject animation styles once
@@ -386,12 +396,18 @@ export default function Widget(): JSX.Element {
         setState(p => ({ ...p, streak: response.streak }));
       }
     });
-    // Load xp, weeklyData, phase, and productiveUrls from storage
-    chrome.storage.local.get(['xp', 'weeklyData', 'settings', 'productiveUrls'], (result) => {
+    // Load xp, weeklyData, phase, productiveUrls, and sync status from storage
+    chrome.storage.local.get(['xp', 'weeklyData', 'settings', 'productiveUrls', 'syncState'], (result) => {
       if (result.xp) setState(p => ({ ...p, xp: result.xp }));
       if (result.weeklyData) setState(p => ({ ...p, weeklyData: result.weeklyData }));
       if (result.settings?.phase) setState(p => ({ ...p, phase: result.settings.phase }));
       if (result.productiveUrls) setState(p => ({ ...p, productiveUrls: result.productiveUrls }));
+      if (result.syncState?.lastSyncTime) {
+        setState(p => ({ ...p, lastSyncTime: result.syncState.lastSyncTime }));
+      }
+      if (result.settings?.backend?.enabled) {
+        setState(p => ({ ...p, syncEnabled: result.settings.backend.enabled }));
+      }
     });
     // Load drift
     chrome.runtime.sendMessage({ type: 'GET_DRIFT' }, (response) => {
@@ -438,13 +454,19 @@ export default function Widget(): JSX.Element {
           });
         }
       });
-      // Update XP (might have changed from achievements)
-      chrome.storage.local.get(['xp', 'productiveUrls'], (result) => {
+      // Update XP, productive URLs, and sync state
+      chrome.storage.local.get(['xp', 'productiveUrls', 'syncState', 'settings'], (result) => {
         if (result.xp !== undefined) {
           setState(p => ({ ...p, xp: result.xp }));
         }
         if (result.productiveUrls) {
           setState(p => ({ ...p, productiveUrls: result.productiveUrls }));
+        }
+        if (result.syncState?.lastSyncTime) {
+          setState(p => ({ ...p, lastSyncTime: result.syncState.lastSyncTime }));
+        }
+        if (result.settings?.backend?.enabled !== undefined) {
+          setState(p => ({ ...p, syncEnabled: result.settings.backend.enabled }));
         }
       });
     }, 10000); // Update every 10 seconds
@@ -686,9 +708,18 @@ export default function Widget(): JSX.Element {
       <div style={s.card}>
         {/* Header */}
         <div style={s.header}>
-          <div style={s.headerLeft}>
+          <div 
+            style={{ ...s.headerLeft, cursor: 'pointer' }}
+            onClick={() => setState(p => ({ ...p, showSyncStatus: !p.showSyncStatus }))}
+            title="Click to see sync status"
+          >
             <div style={s.statusDot} />
             <span style={s.headerTitle}>YouTube Detox</span>
+            {state.syncEnabled && (
+              <span style={{ marginLeft: '4px', opacity: 0.5 }}>
+                {state.lastSyncTime ? <Icons.Cloud /> : <Icons.CloudOff />}
+              </span>
+            )}
           </div>
           <div style={s.headerButtons}>
             <button style={s.iconBtn} onClick={() => setState(p => ({ ...p, minimized: true }))}><Icons.Minus /></button>
@@ -697,6 +728,43 @@ export default function Widget(): JSX.Element {
             </button>
           </div>
         </div>
+        
+        {/* Sync Status Popup */}
+        {state.showSyncStatus && (
+          <div style={{
+            padding: '10px 16px',
+            background: 'rgba(0,0,0,0.3)',
+            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            fontSize: '11px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ color: 'rgba(255,255,255,0.6)' }}>Cloud Sync</span>
+              {state.syncEnabled ? (
+                <span style={{ color: '#4ade80', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Icons.Check /> Enabled
+                </span>
+              ) : (
+                <span style={{ color: 'rgba(255,255,255,0.4)' }}>Disabled</span>
+              )}
+            </div>
+            {state.syncEnabled && state.lastSyncTime && (
+              <div style={{ marginTop: '6px', color: 'rgba(255,255,255,0.5)' }}>
+                Last synced: {(() => {
+                  const diff = Date.now() - state.lastSyncTime;
+                  if (diff < 60000) return 'Just now';
+                  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+                  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+                  return new Date(state.lastSyncTime).toLocaleDateString();
+                })()}
+              </div>
+            )}
+            {state.syncEnabled && !state.lastSyncTime && (
+              <div style={{ marginTop: '6px', color: 'rgba(255,255,255,0.4)' }}>
+                Not synced yet — sign in to sync
+              </div>
+            )}
+          </div>
+        )}
         
         {!state.collapsed && (
           <div style={s.body}>
