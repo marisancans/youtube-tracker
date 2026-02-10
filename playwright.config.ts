@@ -50,8 +50,8 @@ export default defineConfig({
     },
   ],
 
-  // Ensure backend is running
-  webServer: {
+  // Ensure backend is running (skip in Docker - handled by docker-compose)
+  webServer: process.env.API_BASE_URL ? undefined : {
     command: 'docker compose up -d && sleep 3',
     cwd: __dirname,
     url: 'http://localhost:8000/health',

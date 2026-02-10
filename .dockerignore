@@ -1,0 +1,26 @@
+# Data directories
+data/
+*.db
+
+# Node
+node_modules/
+**/node_modules/
+
+# Build outputs (we rebuild in container)
+packages/extension/dist/
+packages/shared/dist/
+
+# Test artifacts
+playwright-report/
+test-results/
+
+# Git
+.git/
+
+# IDE
+.idea/
+.vscode/
+
+# Misc
+*.log
+.DS_Store

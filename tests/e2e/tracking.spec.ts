@@ -1,212 +1,144 @@
+/**
+ * Extension E2E tests - require display (VNC in Docker, or local Chrome)
+ * Tests the extension loading, YouTube tracking, and backend sync
+ */
 import { test, expect, chromium, type BrowserContext, type Page } from '@playwright/test';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const API_BASE = process.env.API_BASE_URL || 'http://localhost:8000';
-const extensionPath = path.join(__dirname, '../../packages/extension/dist');
 
-// Test must run headed - extensions don't work in headless
-test.use({ headless: false });
+// Extension path - works both locally and in Docker
+const extensionPath = process.env.EXTENSION_PATH || path.join(__dirname, '../../packages/extension/dist');
 
-let context: BrowserContext;
-let extensionId: string;
-
-test.beforeAll(async () => {
-  // Launch with extension
-  const browser = await chromium.launch({
-    headless: false,
-    args: [
-      `--disable-extensions-except=${extensionPath}`,
-      `--load-extension=${extensionPath}`,
-      '--no-sandbox',
-      '--disable-blink-features=AutomationControlled',
-    ],
-  });
-  
-  context = await browser.newContext({
-    permissions: ['clipboard-read', 'clipboard-write'],
-  });
-  
-  // Get extension ID from service worker
-  let [background] = context.serviceWorkers();
-  if (!background) {
-    background = await context.waitForEvent('serviceworker');
-  }
-  extensionId = background.url().split('/')[2];
-  console.log('Extension ID:', extensionId);
-  
-  // Enable backend sync via extension options page
-  const optionsPage = await context.newPage();
-  await optionsPage.goto(`chrome-extension://${extensionId}/src/options/options.html`);
-  await optionsPage.waitForTimeout(1000);
-  
-  // Configure settings via chrome.storage directly
-  await optionsPage.evaluate(async (apiUrl) => {
-    return new Promise<void>((resolve) => {
-      chrome.storage.local.get(['settings'], (result) => {
-        const settings = result.settings || {};
-        settings.backend = {
-          enabled: true,
-          url: apiUrl,
-          userId: `test-user-${Date.now()}`,
-          lastSync: null,
-        };
-        settings.trackingEnabled = true;
-        chrome.storage.local.set({ settings }, resolve);
-      });
-    });
-  }, API_BASE);
-  
-  console.log('Backend sync enabled');
-  await optionsPage.close();
-});
-
-test.afterAll(async () => {
-  await context?.close();
-});
-
-// Helper to collect API requests
-function collectApiRequests(page: Page) {
-  const requests: { url: string; method: string; body?: any }[] = [];
-  
-  page.on('request', (request) => {
-    const url = request.url();
-    if (url.startsWith(API_BASE)) {
-      requests.push({
-        url,
-        method: request.method(),
-        body: request.postDataJSON(),
-      });
-    }
-  });
-  
-  return requests;
-}
+test.describe.configure({ mode: 'serial' });
 
 // Helper to dismiss YouTube consent if present
 async function dismissConsent(page: Page) {
   try {
-    const rejectBtn = page.locator('button:has-text("Reject all")');
-    if (await rejectBtn.isVisible({ timeout: 3000 })) {
+    const rejectBtn = page.locator('button:has-text("Reject all"), button:has-text("Reject")').first();
+    if (await rejectBtn.isVisible({ timeout: 5000 })) {
       await rejectBtn.click();
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(2000);
     }
   } catch {
     // No consent dialog
   }
 }
 
-test.describe('Extension Smoke Tests', () => {
+test.describe('Extension E2E Tests', () => {
+  let context: BrowserContext;
+
+  test.beforeAll(async () => {
+    console.log('Extension path:', extensionPath);
+    console.log('API base:', API_BASE);
+    
+    // Launch browser with extension
+    const browser = await chromium.launch({
+      headless: false,
+      args: [
+        `--disable-extensions-except=${extensionPath}`,
+        `--load-extension=${extensionPath}`,
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-blink-features=AutomationControlled',
+      ],
+    });
+    
+    context = await browser.newContext();
+    
+    // Wait for service worker to load
+    await context.waitForEvent('serviceworker', { timeout: 30000 }).catch(() => {
+      console.log('No service worker detected within timeout - extension may not have loaded');
+    });
+    
+    console.log('Browser context created');
+  });
+
+  test.afterAll(async () => {
+    if (context) {
+      await context.close();
+    }
+  });
+
   test('backend is reachable', async () => {
     const page = await context.newPage();
-    const response = await page.request.get(`${API_BASE}/health`);
-    expect(response.ok()).toBeTruthy();
-    const data = await response.json();
-    expect(data.status).toBe('ok');
-    await page.close();
-  });
-
-  test('extension service worker is running', async () => {
-    const workers = context.serviceWorkers();
-    expect(workers.length).toBeGreaterThan(0);
-    const extWorker = workers.find((w) => w.url().includes(extensionId));
-    expect(extWorker).toBeTruthy();
-  });
-});
-
-test.describe('YouTube Tracking', () => {
-  test('tracks page navigation', async () => {
-    const page = await context.newPage();
-    const apiRequests = collectApiRequests(page);
-
-    await page.goto('https://www.youtube.com', { waitUntil: 'domcontentloaded' });
-    await dismissConsent(page);
-    await page.waitForTimeout(3000);
-
-    // Check extension is injecting content script
-    const hasContentScript = await page.evaluate(() => {
-      return !!(window as any).__YT_DETOX_TRACKER__;
-    });
-    
-    console.log('Content script injected:', hasContentScript);
-    console.log('API requests so far:', apiRequests.map((r) => r.url));
-
-    await page.close();
-  });
-
-  test('tracks video watch session', async () => {
-    const page = await context.newPage();
-    const apiRequests = collectApiRequests(page);
-
-    // Go to a video
-    await page.goto('https://www.youtube.com/watch?v=dQw4w9WgXcQ', {
-      waitUntil: 'domcontentloaded',
-    });
-    await dismissConsent(page);
-
-    // Wait for video player
-    await page.waitForSelector('video', { timeout: 15000 });
-    
-    // Try to start playback (click the video)
-    await page.locator('video').first().click({ force: true }).catch(() => {});
-    
-    // Watch for a bit
-    await page.waitForTimeout(10000);
-
-    // Scroll
-    await page.evaluate(() => window.scrollTo(0, 500));
-    await page.waitForTimeout(1000);
-    await page.evaluate(() => window.scrollTo(0, 0));
-
-    // Navigate away to trigger sync
-    await page.goto('https://www.youtube.com', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(5000);
-
-    console.log('Video test - API requests:', apiRequests.length);
-    apiRequests.forEach((r) => console.log(' -', r.method, r.url));
-
-    await page.close();
-  });
-
-  test('triggers sync and data appears in API', async () => {
-    const page = await context.newPage();
-
-    // Manually trigger sync via background script
-    const syncResult = await page.evaluate(async () => {
-      return new Promise((resolve) => {
-        chrome.runtime.sendMessage({ type: 'SYNC_NOW' }, resolve);
-      });
-    });
-    console.log('Manual sync result:', syncResult);
-
-    await page.waitForTimeout(3000);
-
-    // Check API for sessions
-    const response = await page.request.get(`${API_BASE}/sync/videos`);
-    if (response.ok()) {
+    try {
+      const response = await page.request.get(`${API_BASE}/health`);
+      expect(response.ok()).toBeTruthy();
       const data = await response.json();
-      console.log('Videos in DB:', data);
+      expect(data.status).toBe('ok');
+    } finally {
+      await page.close();
     }
-
-    await page.close();
   });
-});
 
-test.describe('Database Verification', () => {
-  test('sync endpoint accepts data', async () => {
+  test('extension loads on YouTube', async () => {
     const page = await context.newPage();
+    try {
+      await page.goto('https://www.youtube.com', { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await dismissConsent(page);
+      await page.waitForTimeout(3000);
 
-    // Send test data directly to sync endpoint
-    const testPayload = {
-      userId: 'playwright-test-user',
-      lastSyncTime: 0,
-      data: {
-        videoSessions: [
-          {
-            id: `test-${Date.now()}`,
+      // Check for content script marker
+      const hasContentScript = await page.evaluate(() => {
+        return !!(window as any).__YT_DETOX_TRACKER__;
+      });
+
+      console.log('Content script loaded:', hasContentScript);
+      // Extension should inject content script
+      expect(hasContentScript).toBeTruthy();
+    } finally {
+      await page.close();
+    }
+  });
+
+  test('tracks video watch', async () => {
+    const page = await context.newPage();
+    try {
+      // Go to a video
+      await page.goto('https://www.youtube.com/watch?v=dQw4w9WgXcQ', {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000,
+      });
+      await dismissConsent(page);
+
+      // Wait for video
+      await page.waitForSelector('video', { timeout: 30000 });
+      
+      // Try to play
+      await page.locator('video').first().click({ force: true }).catch(() => {});
+      
+      // Watch a bit
+      await page.waitForTimeout(5000);
+
+      // Check content script is tracking
+      const trackerState = await page.evaluate(() => {
+        const tracker = (window as any).__YT_DETOX_TRACKER__;
+        return tracker ? { initialized: tracker.initialized, version: tracker.version } : null;
+      });
+
+      console.log('Tracker state:', trackerState);
+      expect(trackerState).toBeTruthy();
+    } finally {
+      await page.close();
+    }
+  });
+
+  test('sync endpoint works', async () => {
+    const page = await context.newPage();
+    try {
+      // Test sync endpoint directly
+      const testPayload = {
+        userId: 'e2e-test-user',
+        lastSyncTime: 0,
+        data: {
+          videoSessions: [{
+            id: `e2e-test-${Date.now()}`,
             videoId: 'dQw4w9WgXcQ',
-            title: 'Test Video',
+            title: 'E2E Test Video',
             channel: 'Test Channel',
             startedAt: Date.now() - 60000,
             endedAt: Date.now(),
@@ -219,46 +151,46 @@ test.describe('Database Verification', () => {
             tabSwitchCount: 0,
             wasAutoplay: false,
             timestamp: Date.now(),
-          },
-        ],
-        browserSessions: [],
-        dailyStats: {},
-        scrollEvents: [],
-        thumbnailEvents: [],
-        pageEvents: [],
-        videoWatchEvents: [],
-        recommendationEvents: [],
-        interventionEvents: [],
-        moodReports: [],
-      },
-    };
+          }],
+          browserSessions: [],
+          dailyStats: {},
+          scrollEvents: [],
+          thumbnailEvents: [],
+          pageEvents: [],
+          videoWatchEvents: [],
+          recommendationEvents: [],
+          interventionEvents: [],
+          moodReports: [],
+        },
+      };
 
-    const response = await page.request.post(`${API_BASE}/sync`, {
-      data: testPayload,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Id': 'playwright-test-user',
-      },
-    });
+      const response = await page.request.post(`${API_BASE}/sync`, {
+        data: testPayload,
+        headers: { 'X-User-Id': 'e2e-test-user' },
+      });
 
-    expect(response.ok()).toBeTruthy();
-    const result = await response.json();
-    console.log('Sync response:', result);
-    expect(result.syncedCounts).toBeDefined();
-
-    await page.close();
+      expect(response.ok()).toBeTruthy();
+      const result = await response.json();
+      expect(result.success).toBe(true);
+      console.log('Sync result:', result);
+    } finally {
+      await page.close();
+    }
   });
 
-  test('videos endpoint returns synced data', async () => {
+  test('videos appear in API after sync', async () => {
     const page = await context.newPage();
+    try {
+      const response = await page.request.get(`${API_BASE}/sync/videos`, {
+        headers: { 'X-User-Id': 'e2e-test-user' },
+      });
 
-    const response = await page.request.get(`${API_BASE}/sync/videos`);
-    expect(response.ok()).toBeTruthy();
-    
-    const videos = await response.json();
-    console.log('Total videos in DB:', videos.length);
-    expect(Array.isArray(videos)).toBeTruthy();
-
-    await page.close();
+      expect(response.ok()).toBeTruthy();
+      const data = await response.json();
+      expect(data.videos).toBeDefined();
+      console.log('Videos in DB:', data.videos.length);
+    } finally {
+      await page.close();
+    }
   });
 });

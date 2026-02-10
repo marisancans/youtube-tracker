@@ -1,8 +1,9 @@
 # Playwright test runner with VNC support
-FROM mcr.microsoft.com/playwright:v1.52.0-jammy
+FROM mcr.microsoft.com/playwright:v1.58.2-jammy
 
 # Install VNC and window manager
-RUN apt-get update && apt-get install -y \
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
     x11vnc \
     xvfb \
     fluxbox \
@@ -25,8 +26,8 @@ RUN pnpm install --frozen-lockfile
 # Copy rest of the code
 COPY . .
 
-# Build extension
-RUN pnpm build:ext
+# Build shared package first, then extension
+RUN pnpm --filter @yt-detox/shared build && pnpm build:ext
 
 # Expose VNC port
 EXPOSE 5900

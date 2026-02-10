@@ -36,6 +36,7 @@ services:
       dockerfile: Dockerfile.test
     environment:
       - API_BASE_URL=http://api:8000
+      - EXTENSION_PATH=/app/packages/extension/dist
     volumes:
       # Mount for live code updates (optional)
       - ./tests:/app/tests:ro
