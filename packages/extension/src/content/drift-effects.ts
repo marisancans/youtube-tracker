@@ -23,15 +23,38 @@ let styleElement: HTMLStyleElement | null = null;
 function generateDriftCSS(effects: DriftEffects): string {
   const css: string[] = [];
 
-  // Base transition for smooth changes
+  // Base transition for smooth changes + CSS custom properties
   css.push(`
+    :root {
+      --yt-detox-drift: ${effects.thumbnailBlur};
+      --yt-detox-grayscale: ${effects.thumbnailGrayscale};
+      --yt-detox-blur: ${effects.thumbnailBlur}px;
+    }
+    
     ytd-thumbnail img,
     #secondary,
     #comments,
     ytd-rich-item-renderer,
-    ytd-compact-video-renderer {
-      transition: filter 0.5s ease, opacity 0.5s ease, font-size 0.3s ease !important;
+    ytd-compact-video-renderer,
+    ytd-playlist-thumbnail,
+    yt-image {
+      transition: filter 0.8s cubic-bezier(0.4, 0, 0.2, 1), 
+                  opacity 0.5s ease, 
+                  font-size 0.3s ease,
+                  transform 0.3s ease !important;
     }
+    
+    /* Subtle animation for high drift */
+    ${effects.thumbnailGrayscale >= 50 ? `
+      @keyframes drift-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.92; }
+      }
+      
+      ytd-thumbnail img {
+        animation: drift-pulse 3s ease-in-out infinite;
+      }
+    ` : ''}
   `);
 
   // Thumbnail effects

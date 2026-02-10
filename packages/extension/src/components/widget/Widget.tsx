@@ -217,14 +217,36 @@ function FocusRing({ score }: { score: number }) {
   );
 }
 
+// Keyframes for animations (injected via style element)
+const animationStyles = `
+  @keyframes yt-detox-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  @keyframes yt-detox-wave {
+    0% { transform: translateX(0); }
+    50% { transform: translateX(3px); }
+    100% { transform: translateX(0); }
+  }
+  @keyframes yt-detox-shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-2px); }
+    75% { transform: translateX(2px); }
+  }
+  @keyframes yt-detox-glow {
+    0%, 100% { box-shadow: 0 0 5px rgba(239, 68, 68, 0.3); }
+    50% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.5); }
+  }
+`;
+
 const s = {
   container: { fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', fontSize: '14px', color: '#fff' },
-  pill: { display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(8px)', borderRadius: '9999px', fontSize: '13px', fontWeight: '500', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)', cursor: 'pointer' },
-  nudge: { display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', marginBottom: '12px', position: 'relative' as const },
+  pill: { display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(8px)', borderRadius: '9999px', fontSize: '13px', fontWeight: '500', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)', cursor: 'pointer', transition: 'transform 0.2s ease, box-shadow 0.2s ease' },
+  nudge: { display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', marginBottom: '12px', position: 'relative' as const, animation: 'yt-detox-shake 0.3s ease' },
   nudgeIcon: { flexShrink: 0 },
   nudgeText: { flex: 1, fontSize: '12px', lineHeight: '1.3' },
-  nudgeClose: { position: 'absolute' as const, top: '4px', right: '4px', background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '2px' },
-  card: { background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.97) 0%, rgba(30, 41, 59, 0.97) 100%)', backdropFilter: 'blur(16px)', borderRadius: '16px', boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)', border: '1px solid rgba(255, 255, 255, 0.1)', overflow: 'hidden', width: '300px' },
+  nudgeClose: { position: 'absolute' as const, top: '4px', right: '4px', background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '2px', transition: 'color 0.2s ease' },
+  card: { background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.97) 0%, rgba(30, 41, 59, 0.97) 100%)', backdropFilter: 'blur(16px)', borderRadius: '16px', boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)', border: '1px solid rgba(255, 255, 255, 0.1)', overflow: 'hidden', width: '300px', transition: 'transform 0.2s ease, box-shadow 0.2s ease' },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' },
   headerLeft: { display: 'flex', alignItems: 'center', gap: '8px' },
   statusDot: { width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', animation: 'pulse 2s infinite' },
@@ -301,6 +323,17 @@ export default function Widget(): JSX.Element {
       },
     },
   });
+  
+  // Inject animation styles once
+  useEffect(() => {
+    const styleId = 'yt-detox-widget-animations';
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = animationStyles;
+      document.head.appendChild(style);
+    }
+  }, []);
   
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, (response) => {
@@ -626,6 +659,8 @@ export default function Widget(): JSX.Element {
                 state.drift.level === 'medium' ? 'rgba(250, 204, 21, 0.3)' :
                 'rgba(34, 197, 94, 0.3)'
               }`,
+              animation: state.drift.level === 'critical' ? 'yt-detox-glow 2s ease-in-out infinite' : undefined,
+              transition: 'background 0.5s ease, border-color 0.5s ease',
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'rgba(255,255,255,0.9)' }}>
