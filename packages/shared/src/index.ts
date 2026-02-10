@@ -404,6 +404,7 @@ export interface BackendSettings {
 // ===== Message Types (Extension Internal) =====
 
 export type MessageType =
+  // Page events
   | 'PAGE_LOAD'
   | 'PAGE_UNLOAD'
   | 'TAB_HIDDEN'
@@ -419,21 +420,46 @@ export type MessageType =
   | 'SCROLL_EVENT'
   | 'THUMBNAIL_EVENT'
   | 'PAGE_EVENT'
+  | 'PAGE_RELOAD'
+  | 'BACK_BUTTON'
+  // Stats
   | 'GET_SESSION'
   | 'GET_STATS'
+  | 'GET_WEEKLY_SUMMARY'
+  | 'GET_BASELINE_STATS'
+  // Settings
   | 'GET_SETTINGS'
   | 'UPDATE_SETTINGS'
+  // Prompts & Interventions
   | 'RATE_VIDEO'
   | 'PROMPT_SHOWN'
   | 'INTERVENTION_RESPONSE'
   | 'INTERVENTION_SHOWN'
   | 'MOOD_REPORT'
-  | 'GET_WEEKLY_SUMMARY'
-  | 'PAGE_RELOAD'
-  | 'BACK_BUTTON'
+  // Sync
   | 'SYNC_NOW'
   | 'GET_SYNC_STATUS'
-  | 'BATCH_EVENTS';
+  | 'BATCH_EVENTS'
+  // Auth
+  | 'AUTH_SIGN_IN'
+  | 'AUTH_SIGN_OUT'
+  | 'AUTH_GET_STATE'
+  // Phase
+  | 'GET_PHASE_INFO'
+  | 'SET_PHASE'
+  // Drift
+  | 'GET_DRIFT'
+  | 'GET_DRIFT_EFFECTS'
+  | 'DRIFT_UPDATED'
+  // Challenge
+  | 'GET_CHALLENGE_PROGRESS'
+  | 'UPGRADE_TIER'
+  | 'DOWNGRADE_TIER'
+  | 'AWARD_XP'
+  | 'SET_CHALLENGE_TIER'
+  | 'SET_GOAL_MODE'
+  // Tabs
+  | 'GET_TAB_INFO';
 
 // ===== Batch Sync Types =====
 

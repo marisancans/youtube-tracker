@@ -19,7 +19,8 @@
     "test:docker:interactive": "docker compose -f docker-compose.test.yml run --service-ports test-runner shell",
     "test:sync": "playwright test --project=sync-flow",
     "test:ui": "playwright test --ui",
-    "test:headed": "playwright test --headed"
+    "test:headed": "playwright test --headed",
+    "test:live": "playwright test --project=live-youtube"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

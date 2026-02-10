@@ -1,770 +1,69 @@
-import type {
-  VideoSession,
-  BrowserSession,
-  DailyStats,
-  Settings,
-  Message,
-  ScrollEvent,
-  ThumbnailEvent,
-  PageEvent,
-  VideoWatchEvent,
-  RecommendationEvent,
-  InterventionEvent,
-  MoodReport,
-  ChannelStat,
-} from '@yt-detox/shared';
+/**
+ * Background Service Worker - Message Routing
+ * All logic is in separate modules, this file handles message routing and initialization.
+ */
 
-// ===== Google Auth =====
+import type { VideoSession, BrowserSession, Settings, Message } from '@yt-detox/shared';
 
-interface GoogleUser {
-  id: string;
-  email: string;
-  name: string;
-  picture: string;
-}
+// ===== Module Imports =====
 
-interface AuthState {
-  user: GoogleUser | null;
-  token: string | null;
-  expiresAt: number | null;
-}
+import {
+  getStorage,
+  saveStorage,
+  getTodayKey,
+  DEFAULT_SETTINGS,
+  EMPTY_EVENT_QUEUES,
+  DEFAULT_SYNC_STATE,
+} from './storage';
 
-let authState: AuthState = {
-  user: null,
-  token: null,
-  expiresAt: null,
-};
+import { signIn, signOut, getAuthState, initAuth } from './auth';
 
-async function getAuthToken(interactive: boolean = false): Promise<string | null> {
-  return new Promise((resolve) => {
-    chrome.identity.getAuthToken({ interactive }, (token) => {
-      if (chrome.runtime.lastError) {
-        console.log('[YT Detox] Auth error:', chrome.runtime.lastError.message);
-        resolve(null);
-        return;
-      }
-      resolve(token || null);
-    });
-  });
-}
+import {
+  getEmptyDailyStats,
+  updateDailyStats,
+  calculateBaselineStats,
+  getWeeklySummary,
+} from './stats';
 
-async function fetchGoogleUserInfo(token: string): Promise<GoogleUser | null> {
-  try {
-    const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    
-    if (!response.ok) {
-      console.error('[YT Detox] Failed to fetch user info:', response.status);
-      return null;
-    }
-    
-    const data = await response.json();
-    return {
-      id: data.id,
-      email: data.email,
-      name: data.name,
-      picture: data.picture,
-    };
-  } catch (err) {
-    console.error('[YT Detox] Error fetching user info:', err);
-    return null;
-  }
-}
+import {
+  calculateDrift,
+  getDriftLevel,
+  getDriftEffects,
+  getDriftState,
+  initDrift,
+  startDriftCalculation,
+} from './drift';
 
-async function signIn(): Promise<{ success: boolean; user: GoogleUser | null; error?: string }> {
-  try {
-    const token = await getAuthToken(true); // interactive = true
-    if (!token) {
-      return { success: false, user: null, error: 'Failed to get auth token' };
-    }
-    
-    const user = await fetchGoogleUserInfo(token);
-    if (!user) {
-      return { success: false, user: null, error: 'Failed to fetch user info' };
-    }
-    
-    authState = {
-      user,
-      token,
-      expiresAt: Date.now() + 3600 * 1000, // 1 hour
-    };
-    
-    // Save to storage
-    await chrome.storage.local.set({ authState });
-    
-    // Update settings with user ID
-    const storage = await getStorage();
-    storage.settings.backend.userId = user.id;
-    await saveStorage({ settings: storage.settings });
-    
-    console.log('[YT Detox] Signed in as:', user.email);
-    return { success: true, user };
-  } catch (err) {
-    console.error('[YT Detox] Sign in error:', err);
-    return { success: false, user: null, error: String(err) };
-  }
-}
+import { checkAndUpdatePhase, setPhase, initPhase } from './phase';
 
-async function signOut(): Promise<{ success: boolean }> {
-  return new Promise((resolve) => {
-    if (authState.token) {
-      chrome.identity.removeCachedAuthToken({ token: authState.token }, async () => {
-        authState = { user: null, token: null, expiresAt: null };
-        await chrome.storage.local.remove('authState');
-        
-        // Clear user ID from settings
-        const storage = await getStorage();
-        storage.settings.backend.userId = null;
-        await saveStorage({ settings: storage.settings });
-        
-        console.log('[YT Detox] Signed out');
-        resolve({ success: true });
-      });
-    } else {
-      resolve({ success: true });
-    }
-  });
-}
+import {
+  getChallengeProgress,
+  upgradeTier,
+  downgradeTier,
+  awardXp,
+  setGoalMode,
+  setChallengeTier,
+  startChallengeChecks,
+  handleNotificationClick,
+} from './challenge';
 
-async function getAuthState(): Promise<AuthState> {
-  // Check if we have a cached state
-  const stored = await chrome.storage.local.get('authState');
-  if (stored.authState) {
-    authState = stored.authState;
-    
-    // Check if token is still valid (refresh if needed)
-    if (authState.token && authState.expiresAt && Date.now() < authState.expiresAt) {
-      return authState;
-    }
-    
-    // Try to silently refresh
-    const token = await getAuthToken(false);
-    if (token) {
-      const user = await fetchGoogleUserInfo(token);
-      if (user) {
-        authState = {
-          user,
-          token,
-          expiresAt: Date.now() + 3600 * 1000,
-        };
-        await chrome.storage.local.set({ authState });
-        return authState;
-      }
-    }
-    
-    // Token expired and couldn't refresh
-    authState = { user: null, token: null, expiresAt: null };
-  }
-  
-  return authState;
-}
+import { syncToBackend, queueEvents, getSyncStatus, startPeriodicSync, handleSyncAlarm } from './sync';
 
-// Initialize auth state on startup
-getAuthState().then((state) => {
-  if (state.user) {
-    console.log('[YT Detox] Restored auth state for:', state.user.email);
-  }
-});
+import { getTabState, initTabs, registerTabListeners } from './tabs';
 
-// ===== Drift System 🌊 =====
-
-type GoalMode = 'music' | 'time_reduction' | 'strict' | 'cold_turkey';
-type ChallengeTier = 'casual' | 'focused' | 'disciplined' | 'monk' | 'ascetic';
-
-interface DriftState {
-  current: number; // 0.0 - 1.0
-  history: Array<{ timestamp: number; value: number }>; // Hourly snapshots
-  lastCalculated: number;
-}
-
-interface DriftFactors {
-  timeRatio: number;
-  unproductiveRatio: number;
-  recommendationRatio: number;
-  bingeBonus: number;
-  lateNightBonus: number;
-  productiveDiscount: number;
-  breakDiscount: number;
-}
-
-const CHALLENGE_TIERS: Record<ChallengeTier, { goalMinutes: number; xpMultiplier: number }> = {
-  casual: { goalMinutes: 60, xpMultiplier: 1.0 },
-  focused: { goalMinutes: 45, xpMultiplier: 1.5 },
-  disciplined: { goalMinutes: 30, xpMultiplier: 2.0 },
-  monk: { goalMinutes: 15, xpMultiplier: 3.0 },
-  ascetic: { goalMinutes: 5, xpMultiplier: 5.0 },
-};
-
-let driftState: DriftState = {
-  current: 0,
-  history: [],
-  lastCalculated: 0,
-};
-
-async function calculateDrift(): Promise<{ drift: number; factors: DriftFactors }> {
-  const storage = await getStorage();
-  const settings = storage.settings;
-  const todayKey = getTodayKey();
-  const todayStats = storage.dailyStats[todayKey];
-  
-  // Get goal based on challenge tier (stored in settings or default to casual)
-  const challengeTier = (settings as any).challengeTier as ChallengeTier || 'casual';
-  const goalMinutes = CHALLENGE_TIERS[challengeTier]?.goalMinutes || 60;
-  
-  // If no data yet, drift is 0
-  if (!todayStats) {
-    return {
-      drift: 0,
-      factors: {
-        timeRatio: 0,
-        unproductiveRatio: 0,
-        recommendationRatio: 0,
-        bingeBonus: 0,
-        lateNightBonus: 0,
-        productiveDiscount: 0,
-        breakDiscount: 0,
-      },
-    };
-  }
-  
-  const todayMinutes = Math.floor((todayStats.totalSeconds || 0) / 60);
-  const totalRated = (todayStats.productiveVideos || 0) + 
-                     (todayStats.unproductiveVideos || 0) + 
-                     (todayStats.neutralVideos || 0);
-  const totalVideos = todayStats.videoCount || 0;
-  
-  // Calculate factors
-  const factors: DriftFactors = {
-    // Base: time spent relative to goal
-    timeRatio: Math.min(todayMinutes / goalMinutes, 1.5), // Cap at 1.5
-    
-    // Unproductive video ratio (0-0.3 contribution)
-    unproductiveRatio: totalRated > 0 
-      ? ((todayStats.unproductiveVideos || 0) / totalRated) * 0.3 
-      : 0,
-    
-    // Recommendation clicks vs total (0-0.2 contribution)
-    recommendationRatio: totalVideos > 0 
-      ? ((todayStats.recommendationClicks || 0) / totalVideos) * 0.2 
-      : 0,
-    
-    // Binge bonus: current session over 60 minutes
-    bingeBonus: 0, // Will be set from current session
-    
-    // Late night (23:00 - 06:00)
-    lateNightBonus: (() => {
-      const hour = new Date().getHours();
-      return (hour >= 23 || hour < 6) ? 0.15 : 0;
-    })(),
-    
-    // Productive video discount (negative, reduces drift)
-    productiveDiscount: totalRated > 0 
-      ? -((todayStats.productiveVideos || 0) / totalRated) * 0.2 
-      : 0,
-    
-    // Break discount (if took breaks recently)
-    breakDiscount: 0, // TODO: track breaks taken
-  };
-  
-  // Check for binge session (current session > 60 min)
-  const browserSessions = storage.browserSessions || [];
-  const activeSessions = browserSessions.filter(s => !s.endedAt);
-  if (activeSessions.length > 0) {
-    const currentSession = activeSessions[activeSessions.length - 1];
-    const sessionMinutes = (currentSession.totalDurationSeconds || 0) / 60;
-    if (sessionMinutes > 60) {
-      factors.bingeBonus = 0.2;
-    } else if (sessionMinutes > 30) {
-      factors.bingeBonus = 0.1;
-    }
-  }
-  
-  // Calculate final drift
-  let drift = factors.timeRatio * 0.6 + // Time is 60% of drift
-              factors.unproductiveRatio +
-              factors.recommendationRatio +
-              factors.bingeBonus +
-              factors.lateNightBonus +
-              factors.productiveDiscount +
-              factors.breakDiscount;
-  
-  // Apply mode modifiers
-  const goalMode = (settings as any).goalMode as GoalMode || 'time_reduction';
-  if (goalMode === 'strict') {
-    drift *= 1.5; // 50% faster drift in strict mode
-  } else if (goalMode === 'music') {
-    // In music mode, would need to check if current content is music
-    // For now, apply a small discount
-    drift *= 0.8;
-  }
-  
-  // Clamp to 0-1
-  drift = Math.max(0, Math.min(1, drift));
-  
-  // Update state
-  driftState.current = drift;
-  driftState.lastCalculated = Date.now();
-  
-  // Add to history (keep hourly snapshots)
-  const lastSnapshot = driftState.history[driftState.history.length - 1];
-  const hourAgo = Date.now() - 60 * 60 * 1000;
-  if (!lastSnapshot || lastSnapshot.timestamp < hourAgo) {
-    driftState.history.push({ timestamp: Date.now(), value: drift });
-    // Keep only last 24 hours
-    driftState.history = driftState.history.filter(h => h.timestamp > Date.now() - 24 * 60 * 60 * 1000);
-  }
-  
-  // Persist drift state
-  await chrome.storage.local.set({ driftState });
-  
-  return { drift, factors };
-}
-
-function getDriftLevel(drift: number): 'low' | 'medium' | 'high' | 'critical' {
-  if (drift < 0.3) return 'low';
-  if (drift < 0.5) return 'medium';
-  if (drift < 0.7) return 'high';
-  return 'critical';
-}
-
-function getDriftEffects(drift: number): {
-  thumbnailBlur: number;
-  thumbnailGrayscale: number;
-  commentsReduction: number;
-  sidebarReduction: number;
-  autoplayDelay: number;
-  showTextOnly: boolean;
-} {
-  return {
-    thumbnailBlur: drift < 0.5 ? 0 : drift < 0.7 ? 2 : drift < 0.9 ? 4 : 8,
-    thumbnailGrayscale: drift < 0.3 ? 0 : drift < 0.5 ? 20 : drift < 0.7 ? 30 : drift < 0.9 ? 60 : 100,
-    commentsReduction: drift < 0.3 ? 0 : drift < 0.5 ? 10 : drift < 0.7 ? 20 : drift < 0.9 ? 50 : 100,
-    sidebarReduction: drift < 0.3 ? 0 : drift < 0.5 ? 50 : drift < 0.7 ? 75 : 100,
-    autoplayDelay: drift < 0.3 ? 5 : drift < 0.5 ? 15 : drift < 0.7 ? 30 : 999,
-    showTextOnly: drift >= 0.9,
-  };
-}
-
-// Load drift state on startup
-chrome.storage.local.get('driftState').then((data) => {
-  if (data.driftState) {
-    driftState = data.driftState;
-    console.log('[YT Detox] Restored drift state:', driftState.current);
-  }
-});
-
-// Calculate drift periodically
-setInterval(async () => {
-  const { drift, factors } = await calculateDrift();
-  console.log('[YT Detox] Drift calculated:', drift.toFixed(2), 'factors:', factors);
-}, 30000); // Every 30 seconds
-
-// ===== State =====
-
-interface EventQueues {
-  scroll: ScrollEvent[];
-  thumbnail: ThumbnailEvent[];
-  page: PageEvent[];
-  video_watch: VideoWatchEvent[];
-  recommendation: RecommendationEvent[];
-  intervention: InterventionEvent[];
-  mood: MoodReport[];
-}
-
-interface SyncState {
-  lastSyncTime: number;
-  syncInProgress: boolean;
-  retryCount: number;
-}
-
-interface StorageData {
-  settings: Settings;
-  videoSessions: VideoSession[];
-  browserSessions: BrowserSession[];
-  dailyStats: Record<string, DailyStats>;
-  pendingEvents: EventQueues;
-  syncState: SyncState;
-}
-
-const DEFAULT_SETTINGS: Settings = {
-  trackingEnabled: true,
-  privacyTier: 'standard',
-  phase: 'observation',
-  installDate: Date.now(),
-  dailyGoalMinutes: 60,
-  weekendGoalMinutes: 120,
-  bedtime: '23:00',
-  wakeTime: '07:00',
-  interventionsEnabled: {
-    productivityPrompts: true,
-    timeWarnings: true,
-    intentionPrompts: false,
-    frictionDelay: false,
-    weeklyReports: true,
-    bedtimeWarning: false,
-  },
-  productivityPromptChance: 0.3,
-  whitelistedChannels: [],
-  blockedChannels: [],
-  backend: {
-    enabled: false,
-    url: 'http://localhost:8000',
-    userId: null,
-    lastSync: null,
-  },
-};
-
-const DEFAULT_SYNC_STATE: SyncState = {
-  lastSyncTime: 0,
-  syncInProgress: false,
-  retryCount: 0,
-};
-
-const EMPTY_EVENT_QUEUES: EventQueues = {
-  scroll: [],
-  thumbnail: [],
-  page: [],
-  video_watch: [],
-  recommendation: [],
-  intervention: [],
-  mood: [],
-};
-
-// ===== Storage Helpers =====
-
-async function getStorage(): Promise<StorageData> {
-  const data = await chrome.storage.local.get(null);
-  return {
-    settings: data.settings || DEFAULT_SETTINGS,
-    videoSessions: data.videoSessions || [],
-    browserSessions: data.browserSessions || [],
-    dailyStats: data.dailyStats || {},
-    pendingEvents: data.pendingEvents || { ...EMPTY_EVENT_QUEUES },
-    syncState: data.syncState || { ...DEFAULT_SYNC_STATE },
-  };
-}
-
-async function saveStorage(data: Partial<StorageData>): Promise<void> {
-  await chrome.storage.local.set(data);
-}
-
-// ===== Date Helpers =====
-
-function getTodayKey(): string {
-  return new Date().toISOString().split('T')[0];
-}
-
-function getHour(): string {
-  return new Date().getHours().toString();
-}
-
-// ===== Stats Management =====
-
-function getEmptyDailyStats(dateStr: string): DailyStats {
-  const hourlySeconds: Record<string, number> = {};
-  for (let i = 0; i < 24; i++) {
-    hourlySeconds[i.toString()] = 0;
-  }
-  
-  return {
-    date: dateStr,
-    totalSeconds: 0,
-    activeSeconds: 0,
-    backgroundSeconds: 0,
-    sessionCount: 0,
-    avgSessionDurationSeconds: 0,
-    firstCheckTime: undefined,
-    videoCount: 0,
-    videosCompleted: 0,
-    videosAbandoned: 0,
-    shortsCount: 0,
-    uniqueChannels: 0,
-    searchCount: 0,
-    recommendationClicks: 0,
-    autoplayCount: 0,
-    autoplayCancelled: 0,
-    totalScrollPixels: 0,
-    avgScrollVelocity: 0,
-    thumbnailsHovered: 0,
-    thumbnailsClicked: 0,
-    pageReloads: 0,
-    backButtonPresses: 0,
-    tabSwitches: 0,
-    productiveVideos: 0,
-    unproductiveVideos: 0,
-    neutralVideos: 0,
-    promptsShown: 0,
-    promptsAnswered: 0,
-    interventionsShown: 0,
-    interventionsEffective: 0,
-    hourlySeconds,
-    topChannels: [],
-    preSleepMinutes: 0,
-    bingeSessions: 0,
-  };
-}
-
-async function updateDailyStats(browserSession: BrowserSession, videoSessions: VideoSession[], temporal?: any): Promise<void> {
-  const storage = await getStorage();
-  const today = getTodayKey();
-  
-  if (!storage.dailyStats[today]) {
-    storage.dailyStats[today] = getEmptyDailyStats(today);
-  }
-  
-  const stats = storage.dailyStats[today];
-  
-  // Update from browser session
-  stats.totalSeconds += browserSession.totalDurationSeconds;
-  stats.activeSeconds += browserSession.activeDurationSeconds;
-  stats.backgroundSeconds += browserSession.backgroundSeconds;
-  stats.sessionCount++;
-  
-  if (stats.sessionCount > 0) {
-    stats.avgSessionDurationSeconds = Math.floor(stats.totalSeconds / stats.sessionCount);
-  }
-  
-  // First check time from temporal tracking
-  if (temporal?.firstCheckTime && !stats.firstCheckTime) {
-    stats.firstCheckTime = temporal.firstCheckTime;
-  }
-  
-  // Behavioral metrics
-  stats.searchCount += browserSession.searchCount;
-  stats.recommendationClicks += browserSession.recommendationClicks;
-  stats.autoplayCount += browserSession.autoplayCount;
-  stats.autoplayCancelled += browserSession.autoplayCancelled;
-  stats.totalScrollPixels += browserSession.totalScrollPixels;
-  stats.thumbnailsHovered += browserSession.thumbnailsHovered;
-  stats.thumbnailsClicked += browserSession.thumbnailsClicked;
-  stats.pageReloads += browserSession.pageReloads;
-  stats.backButtonPresses += browserSession.backButtonPresses;
-  
-  // Productivity
-  stats.productiveVideos += browserSession.productiveVideos;
-  stats.unproductiveVideos += browserSession.unproductiveVideos;
-  stats.neutralVideos += browserSession.neutralVideos;
-  
-  // Update hourly distribution from temporal data
-  if (temporal?.hourlySeconds) {
-    for (const [hour, seconds] of Object.entries(temporal.hourlySeconds)) {
-      stats.hourlySeconds[hour] = (stats.hourlySeconds[hour] || 0) + (seconds as number);
-    }
-  } else {
-    const hour = getHour();
-    stats.hourlySeconds[hour] = (stats.hourlySeconds[hour] || 0) + browserSession.totalDurationSeconds;
-  }
-  
-  // Binge detection
-  if (browserSession.totalDurationSeconds > 3600 || temporal?.bingeModeActive) {
-    stats.bingeSessions++;
-  }
-  
-  // Pre-sleep tracking
-  if (temporal?.preSleepActive) {
-    stats.preSleepMinutes += Math.floor(browserSession.totalDurationSeconds / 60);
-  }
-  
-  // Process video sessions
-  const channelMinutes: Record<string, { minutes: number; count: number }> = {};
-  
-  for (const session of videoSessions) {
-    stats.videoCount++;
-    
-    if (session.isShort) {
-      stats.shortsCount++;
-    }
-    
-    if (session.watchedPercent >= 90) {
-      stats.videosCompleted++;
-    } else if (session.watchedPercent < 30) {
-      stats.videosAbandoned++;
-    }
-    
-    if (session.channel) {
-      if (!channelMinutes[session.channel]) {
-        channelMinutes[session.channel] = { minutes: 0, count: 0 };
-      }
-      channelMinutes[session.channel].minutes += Math.floor(session.watchedSeconds / 60);
-      channelMinutes[session.channel].count++;
-    }
-    
-    stats.tabSwitches += session.tabSwitchCount;
-  }
-  
-  // Update top channels
-  const channels = Object.entries(channelMinutes)
-    .map(([channel, data]) => ({
-      channel,
-      minutes: data.minutes,
-      videoCount: data.count,
-    }))
-    .sort((a, b) => b.minutes - a.minutes);
-  
-  const existingChannels = new Map(
-    (stats.topChannels || []).map((c: ChannelStat) => [c.channel, c])
-  );
-  
-  for (const ch of channels) {
-    if (existingChannels.has(ch.channel)) {
-      const existing = existingChannels.get(ch.channel)!;
-      existing.minutes += ch.minutes;
-      existing.videoCount += ch.videoCount;
-    } else {
-      existingChannels.set(ch.channel, ch);
-    }
-  }
-  
-  stats.topChannels = Array.from(existingChannels.values())
-    .sort((a, b) => b.minutes - a.minutes)
-    .slice(0, 10);
-  
-  stats.uniqueChannels = existingChannels.size;
-  
-  await saveStorage({ dailyStats: storage.dailyStats });
-}
-
-// ===== Unified Backend Sync =====
-
-async function syncToBackend(): Promise<boolean> {
-  const storage = await getStorage();
-  const settings = storage.settings;
-  
-  if (!settings.backend.enabled || !settings.backend.url) {
-    return false;
-  }
-  
-  if (storage.syncState.syncInProgress) {
-    return false;
-  }
-  
-  // Check if there's anything to sync
-  const hasData = 
-    storage.videoSessions.length > 0 ||
-    storage.browserSessions.length > 0 ||
-    Object.keys(storage.dailyStats).length > 0 ||
-    storage.pendingEvents.scroll.length > 0 ||
-    storage.pendingEvents.thumbnail.length > 0 ||
-    storage.pendingEvents.page.length > 0 ||
-    storage.pendingEvents.video_watch.length > 0 ||
-    storage.pendingEvents.recommendation.length > 0 ||
-    storage.pendingEvents.intervention.length > 0 ||
-    storage.pendingEvents.mood.length > 0;
-  
-  if (!hasData) {
-    return true;
-  }
-  
-  storage.syncState.syncInProgress = true;
-  await saveStorage({ syncState: storage.syncState });
-  
-  // Get or create user ID
-  let userId = settings.backend.userId;
-  if (!userId) {
-    userId = `device-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    settings.backend.userId = userId;
-    await saveStorage({ settings });
-  }
-  
-  try {
-    // Build unified sync request
-    const syncRequest = {
-      userId,
-      lastSyncTime: storage.syncState.lastSyncTime,
-      data: {
-        videoSessions: storage.videoSessions.slice(-100),
-        browserSessions: storage.browserSessions.slice(-50),
-        dailyStats: storage.dailyStats,
-        scrollEvents: storage.pendingEvents.scroll,
-        thumbnailEvents: storage.pendingEvents.thumbnail,
-        pageEvents: storage.pendingEvents.page,
-        videoWatchEvents: storage.pendingEvents.video_watch,
-        recommendationEvents: storage.pendingEvents.recommendation,
-        interventionEvents: storage.pendingEvents.intervention,
-        moodReports: storage.pendingEvents.mood,
-      },
-    };
-    
-    const response = await fetch(`${settings.backend.url}/sync`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Id': userId,
-      },
-      body: JSON.stringify(syncRequest),
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Sync failed:', errorText);
-      storage.syncState.retryCount++;
-      return false;
-    }
-    
-    const result = await response.json();
-    
-    // Clear synced data
-    storage.pendingEvents = { ...EMPTY_EVENT_QUEUES };
-    storage.syncState.lastSyncTime = result.lastSyncTime;
-    storage.syncState.retryCount = 0;
-    settings.backend.lastSync = Date.now();
-    
-    await saveStorage({
-      settings,
-      pendingEvents: storage.pendingEvents,
-      syncState: storage.syncState,
-    });
-    
-    console.log('[YT Detox] Sync successful:', result.syncedCounts);
-    return true;
-    
-  } catch (error) {
-    console.error('[YT Detox] Sync error:', error);
-    storage.syncState.retryCount++;
-    return false;
-  } finally {
-    storage.syncState.syncInProgress = false;
-    await saveStorage({ syncState: storage.syncState });
-  }
-}
-
-// ===== Event Queue Management =====
-
-async function queueEvents(events: Record<string, any[]>): Promise<void> {
-  const storage = await getStorage();
-  
-  for (const [eventType, eventList] of Object.entries(events)) {
-    if (eventList && eventList.length > 0 && eventType in storage.pendingEvents) {
-      (storage.pendingEvents as any)[eventType].push(...eventList);
-    }
-  }
-  
-  // Keep queues bounded
-  const maxQueueSize = 500;
-  for (const eventType of Object.keys(storage.pendingEvents)) {
-    const queue = (storage.pendingEvents as any)[eventType];
-    if (queue.length > maxQueueSize) {
-      (storage.pendingEvents as any)[eventType] = queue.slice(-maxQueueSize);
-    }
-  }
-  
-  await saveStorage({ pendingEvents: storage.pendingEvents });
-}
-
-// ===== Message Handlers =====
+// ===== Page Event Handlers =====
 
 async function handlePageLoad(data: any): Promise<void> {
   console.log('[YT Detox] Page load:', data.pageType, data.url);
-  
+
   if (data.firstCheckTime) {
     const storage = await getStorage();
     const today = getTodayKey();
-    
+
     if (!storage.dailyStats[today]) {
       storage.dailyStats[today] = getEmptyDailyStats(today);
     }
-    
+
     if (!storage.dailyStats[today].firstCheckTime) {
       storage.dailyStats[today].firstCheckTime = data.firstCheckTime;
       await saveStorage({ dailyStats: storage.dailyStats });
@@ -772,33 +71,40 @@ async function handlePageLoad(data: any): Promise<void> {
   }
 }
 
-async function handlePageUnload(data: { session: BrowserSession; events: Record<string, any[]>; temporal?: any }): Promise<void> {
+async function handlePageUnload(data: {
+  session: BrowserSession;
+  events: Record<string, any[]>;
+  temporal?: any;
+}): Promise<void> {
   const storage = await getStorage();
-  
+
   // Save browser session
   storage.browserSessions.push(data.session);
   if (storage.browserSessions.length > 100) {
     storage.browserSessions = storage.browserSessions.slice(-100);
   }
-  
+
   await saveStorage({ browserSessions: storage.browserSessions });
-  
+
   // Queue events
   await queueEvents(data.events);
-  
+
   // Update daily stats
   const sessionsForStats = storage.videoSessions.filter(
     (s) => s.timestamp > data.session.startedAt && s.timestamp < (data.session.endedAt || Date.now())
   );
   await updateDailyStats(data.session, sessionsForStats, data.temporal);
-  
+
   // Trigger sync if backend enabled
   const settings = storage.settings;
   if (settings.backend.enabled) {
     const lastSync = settings.backend.lastSync || 0;
     const timeSinceSync = Date.now() - lastSync;
-    const totalPending = Object.values(storage.pendingEvents).reduce((sum, arr) => sum + arr.length, 0);
-    
+    const totalPending = Object.values(storage.pendingEvents).reduce(
+      (sum, arr) => sum + arr.length,
+      0
+    );
+
     // Sync every 5 minutes or if queue is getting large
     if (timeSinceSync > 5 * 60 * 1000 || totalPending > 100) {
       syncToBackend();
@@ -808,25 +114,25 @@ async function handlePageUnload(data: { session: BrowserSession; events: Record<
 
 async function handleVideoWatched(session: VideoSession): Promise<void> {
   const storage = await getStorage();
-  
+
   storage.videoSessions.push(session);
   if (storage.videoSessions.length > 500) {
     storage.videoSessions = storage.videoSessions.slice(-500);
   }
-  
+
   await saveStorage({ videoSessions: storage.videoSessions });
 }
 
 async function handleRateVideo(data: { sessionId: string; rating: -1 | 0 | 1 }): Promise<void> {
   const storage = await getStorage();
-  
+
   const session = storage.videoSessions.find((s) => s.id === data.sessionId);
   if (session) {
     session.productivityRating = data.rating;
     session.ratedAt = Date.now();
     await saveStorage({ videoSessions: storage.videoSessions });
   }
-  
+
   const today = getTodayKey();
   if (storage.dailyStats[today]) {
     storage.dailyStats[today].promptsAnswered++;
@@ -837,7 +143,7 @@ async function handleRateVideo(data: { sessionId: string; rating: -1 | 0 | 1 }):
   }
 }
 
-async function handleGetStats(): Promise<{ today: DailyStats | null; currentSession: any | null }> {
+async function handleGetStats(): Promise<{ today: any | null; currentSession: any | null }> {
   const storage = await getStorage();
   const today = getTodayKey();
   return {
@@ -858,154 +164,49 @@ async function handleUpdateSettings(newSettings: Partial<Settings>): Promise<Set
   return storage.settings;
 }
 
-async function handleGetWeeklySummary(): Promise<any> {
-  const storage = await getStorage();
-  const stats = storage.dailyStats;
-  
-  const days: DailyStats[] = [];
-  for (let i = 0; i < 7; i++) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    const key = date.toISOString().split('T')[0];
-    if (stats[key]) {
-      days.push(stats[key]);
-    }
-  }
-  
-  const thisWeek = days.reduce(
-    (acc, day) => ({
-      totalSeconds: acc.totalSeconds + day.totalSeconds,
-      totalMinutes: acc.totalMinutes + Math.floor(day.totalSeconds / 60),
-      videoCount: acc.videoCount + day.videoCount,
-      shortsCount: acc.shortsCount + day.shortsCount,
-      productiveVideos: acc.productiveVideos + day.productiveVideos,
-      unproductiveVideos: acc.unproductiveVideos + day.unproductiveVideos,
-      sessions: acc.sessions + day.sessionCount,
-      avgSessionMinutes: 0,
-      recommendationRatio: 0,
-    }),
-    {
-      totalSeconds: 0,
-      totalMinutes: 0,
-      videoCount: 0,
-      shortsCount: 0,
-      productiveVideos: 0,
-      unproductiveVideos: 0,
-      sessions: 0,
-      avgSessionMinutes: 0,
-      recommendationRatio: 0,
-    }
-  );
-  
-  if (thisWeek.sessions > 0) {
-    thisWeek.avgSessionMinutes = Math.floor(thisWeek.totalMinutes / thisWeek.sessions);
-  }
-  
-  const channelMap = new Map<string, ChannelStat>();
-  for (const day of days) {
-    for (const ch of day.topChannels || []) {
-      if (channelMap.has(ch.channel)) {
-        const existing = channelMap.get(ch.channel)!;
-        existing.minutes += ch.minutes;
-        existing.videoCount += ch.videoCount;
-      } else {
-        channelMap.set(ch.channel, { ...ch });
-      }
-    }
-  }
-  
-  const topChannels = Array.from(channelMap.values())
-    .sort((a, b) => b.minutes - a.minutes)
-    .slice(0, 5);
-  
-  const hourlyTotals: Record<string, number> = {};
-  for (const day of days) {
-    for (const [hour, seconds] of Object.entries(day.hourlySeconds || {})) {
-      hourlyTotals[hour] = (hourlyTotals[hour] || 0) + seconds;
-    }
-  }
-  
-  const peakHours = Object.entries(hourlyTotals)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([hour]) => parseInt(hour));
-  
-  return {
-    thisWeek,
-    prevWeek: { ...thisWeek, totalSeconds: 0, totalMinutes: 0 },
-    changePercent: 0,
-    topChannels,
-    peakHours,
-    generatedAt: Date.now(),
-  };
-}
-
 async function handlePromptShown(): Promise<void> {
   const storage = await getStorage();
   const today = getTodayKey();
-  
+
   if (!storage.dailyStats[today]) {
     storage.dailyStats[today] = getEmptyDailyStats(today);
   }
-  
+
   storage.dailyStats[today].promptsShown++;
   await saveStorage({ dailyStats: storage.dailyStats });
 }
 
-async function handleInterventionResponse(data: { type: string; response: string; effective: boolean }): Promise<void> {
+async function handleInterventionResponse(data: {
+  type: string;
+  response: string;
+  effective: boolean;
+}): Promise<void> {
   const storage = await getStorage();
   const today = getTodayKey();
-  
+
   if (!storage.dailyStats[today]) {
     storage.dailyStats[today] = getEmptyDailyStats(today);
   }
-  
+
   storage.dailyStats[today].interventionsShown++;
   if (data.effective) {
     storage.dailyStats[today].interventionsEffective++;
   }
-  
+
   await saveStorage({ dailyStats: storage.dailyStats });
 }
 
-async function handleSyncNow(): Promise<{ success: boolean; error?: string }> {
-  try {
-    const result = await syncToBackend();
-    return { success: result };
-  } catch (error) {
-    return { success: false, error: String(error) };
-  }
-}
-
-async function handleGetSyncStatus(): Promise<{
-  lastSyncTime: number;
-  pendingCounts: Record<string, number>;
-  syncInProgress: boolean;
-}> {
-  const storage = await getStorage();
-  
-  const pendingCounts: Record<string, number> = {};
-  for (const [key, value] of Object.entries(storage.pendingEvents)) {
-    pendingCounts[key] = value.length;
-  }
-  
-  return {
-    lastSyncTime: storage.syncState.lastSyncTime,
-    pendingCounts,
-    syncInProgress: storage.syncState.syncInProgress,
-  };
-}
-
-// ===== Event Listeners =====
+// ===== Main Message Handler =====
 
 chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) => {
   const { type, data } = message;
-  
+
   (async () => {
     try {
       let response: any = { success: true };
-      
+
       switch (type) {
+        // Page events
         case 'PAGE_LOAD':
           await handlePageLoad(data);
           break;
@@ -1018,59 +219,138 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
         case 'RATE_VIDEO':
           await handleRateVideo(data as any);
           break;
+
+        // Stats
         case 'GET_STATS':
           response = await handleGetStats();
           break;
+        case 'GET_WEEKLY_SUMMARY':
+          response = await getWeeklySummary();
+          break;
+        case 'GET_BASELINE_STATS':
+          response = await calculateBaselineStats();
+          break;
+
+        // Settings
         case 'GET_SETTINGS':
           response = await handleGetSettings();
           break;
         case 'UPDATE_SETTINGS':
           response = await handleUpdateSettings(data as Partial<Settings>);
           break;
-        case 'GET_WEEKLY_SUMMARY':
-          response = await handleGetWeeklySummary();
-          break;
+
+        // Prompts/Interventions
         case 'PROMPT_SHOWN':
           await handlePromptShown();
           break;
         case 'INTERVENTION_RESPONSE':
           await handleInterventionResponse(data as any);
           break;
+
+        // Session
         case 'GET_SESSION':
           response = { session: null };
           break;
-        case 'SYNC_NOW' as any:
-          response = await handleSyncNow();
+
+        // Sync
+        case 'SYNC_NOW':
+          const syncResult = await syncToBackend();
+          response = { success: syncResult };
           break;
-        case 'GET_SYNC_STATUS' as any:
-          response = await handleGetSyncStatus();
+        case 'GET_SYNC_STATUS':
+          response = await getSyncStatus();
           break;
+
+        // Auth
+        case 'AUTH_SIGN_IN':
+          response = await signIn();
+          break;
+        case 'AUTH_SIGN_OUT':
+          response = await signOut();
+          break;
+        case 'AUTH_GET_STATE':
+          response = await getAuthState();
+          break;
+
+        // Phase
+        case 'GET_PHASE_INFO':
+          response = await checkAndUpdatePhase();
+          break;
+        case 'SET_PHASE':
+          response = await setPhase((data as any).phase);
+          break;
+
+        // Drift
+        case 'GET_DRIFT':
+          const { drift, factors } = await calculateDrift();
+          const driftState = getDriftState();
+          response = {
+            drift,
+            factors,
+            level: getDriftLevel(drift),
+            effects: getDriftEffects(drift),
+            history: driftState.history,
+          };
+          break;
+        case 'GET_DRIFT_EFFECTS':
+          response = getDriftEffects(getDriftState().current);
+          break;
+
+        // Challenge
+        case 'GET_CHALLENGE_PROGRESS':
+          response = await getChallengeProgress();
+          break;
+        case 'UPGRADE_TIER':
+          response = await upgradeTier();
+          break;
+        case 'DOWNGRADE_TIER':
+          response = await downgradeTier();
+          break;
+        case 'AWARD_XP':
+          const awarded = await awardXp((data as any).baseXp, (data as any).reason);
+          response = { awarded };
+          break;
+        case 'SET_CHALLENGE_TIER':
+          const tierResult = await setChallengeTier((data as any).tier);
+          const { drift: newDrift } = await calculateDrift();
+          response = { ...tierResult, newDrift };
+          break;
+        case 'SET_GOAL_MODE':
+          const modeResult = await setGoalMode((data as any).mode);
+          const { drift: driftAfterMode } = await calculateDrift();
+          response = { ...modeResult, newDrift: driftAfterMode };
+          break;
+
+        // Tabs
+        case 'GET_TAB_INFO':
+          response = getTabState();
+          break;
+
         default:
           console.log('[YT Detox] Unknown message type:', type);
       }
-      
+
       sendResponse(response);
     } catch (error) {
       console.error('[YT Detox] Message handler error:', error);
       sendResponse({ error: String(error) });
     }
   })();
-  
-  return true;
+
+  return true; // Keep channel open for async response
 });
 
 // ===== Alarms =====
 
-chrome.alarms.create('syncToBackend', { periodInMinutes: 5 });
-
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'syncToBackend') {
-    const storage = await getStorage();
-    if (storage.settings.backend.enabled) {
-      await syncToBackend();
-    }
+    await handleSyncAlarm();
   }
 });
+
+// ===== Notifications =====
+
+chrome.notifications.onButtonClicked.addListener(handleNotificationClick);
 
 // ===== Install/Update =====
 
@@ -1099,661 +379,27 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   }
 });
 
-// ===== Tab Tracking =====
+// ===== Initialization =====
 
-interface TabInfo {
-  id: number;
-  url: string;
-  openedAt: number;
-  closedAt?: number;
-  activeDuration: number;
-  lastActiveAt?: number;
+async function initialize(): Promise<void> {
+  console.log('[YT Detox] Initializing background service worker...');
+
+  // Initialize modules
+  await initAuth();
+  await initDrift();
+  await initPhase();
+  await initTabs();
+
+  // Register tab listeners
+  registerTabListeners();
+
+  // Start periodic tasks
+  startDriftCalculation(30000); // Calculate drift every 30 seconds
+  startChallengeChecks(60 * 60 * 1000); // Check challenges every hour
+  startPeriodicSync(5 * 60 * 1000); // Sync every 5 minutes
+
+  console.log('[YT Detox] Background service worker initialized (v0.5.0 - modular refactor)');
 }
 
-interface TabState {
-  youtubeTabs: Map<number, TabInfo>;
-  activeTabId: number | null;
-  tabEvents: Array<{
-    type: 'open' | 'close' | 'activate' | 'deactivate';
-    tabId: number;
-    url?: string;
-    timestamp: number;
-    totalYouTubeTabs: number;
-  }>;
-}
-
-const tabState: TabState = {
-  youtubeTabs: new Map(),
-  activeTabId: null,
-  tabEvents: [],
-};
-
-function isYouTubeUrl(url: string | undefined): boolean {
-  if (!url) return false;
-  return url.includes('youtube.com') || url.includes('youtu.be');
-}
-
-async function getYouTubeTabCount(): Promise<number> {
-  const tabs = await chrome.tabs.query({ url: ['*://*.youtube.com/*', '*://youtu.be/*'] });
-  return tabs.length;
-}
-
-// Track tab creation
-chrome.tabs.onCreated.addListener(async (tab) => {
-  if (tab.id && isYouTubeUrl(tab.pendingUrl || tab.url)) {
-    const tabInfo: TabInfo = {
-      id: tab.id,
-      url: tab.pendingUrl || tab.url || '',
-      openedAt: Date.now(),
-      activeDuration: 0,
-    };
-    tabState.youtubeTabs.set(tab.id, tabInfo);
-    
-    const totalTabs = await getYouTubeTabCount();
-    tabState.tabEvents.push({
-      type: 'open',
-      tabId: tab.id,
-      url: tabInfo.url,
-      timestamp: Date.now(),
-      totalYouTubeTabs: totalTabs,
-    });
-    
-    console.log(`[YT Detox] YouTube tab opened. Total: ${totalTabs}`);
-  }
-});
-
-// Track tab URL changes (navigating to/from YouTube)
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, _tab) => {
-  if (changeInfo.url) {
-    const wasYouTube = tabState.youtubeTabs.has(tabId);
-    const isYouTube = isYouTubeUrl(changeInfo.url);
-    
-    if (!wasYouTube && isYouTube) {
-      // Navigated TO YouTube
-      const tabInfo: TabInfo = {
-        id: tabId,
-        url: changeInfo.url,
-        openedAt: Date.now(),
-        activeDuration: 0,
-      };
-      tabState.youtubeTabs.set(tabId, tabInfo);
-      
-      const totalTabs = await getYouTubeTabCount();
-      tabState.tabEvents.push({
-        type: 'open',
-        tabId,
-        url: changeInfo.url,
-        timestamp: Date.now(),
-        totalYouTubeTabs: totalTabs,
-      });
-      console.log(`[YT Detox] Navigated to YouTube. Total tabs: ${totalTabs}`);
-    } else if (wasYouTube && !isYouTube) {
-      // Navigated AWAY from YouTube
-      const tabInfo = tabState.youtubeTabs.get(tabId);
-      if (tabInfo) {
-        tabInfo.closedAt = Date.now();
-        tabState.youtubeTabs.delete(tabId);
-        
-        const totalTabs = await getYouTubeTabCount();
-        tabState.tabEvents.push({
-          type: 'close',
-          tabId,
-          timestamp: Date.now(),
-          totalYouTubeTabs: totalTabs,
-        });
-        console.log(`[YT Detox] Navigated away from YouTube. Total tabs: ${totalTabs}`);
-      }
-    }
-  }
-});
-
-// Track tab close
-chrome.tabs.onRemoved.addListener(async (tabId) => {
-  if (tabState.youtubeTabs.has(tabId)) {
-    const tabInfo = tabState.youtubeTabs.get(tabId);
-    if (tabInfo) {
-      tabInfo.closedAt = Date.now();
-    }
-    tabState.youtubeTabs.delete(tabId);
-    
-    // Need to count manually since tab is already gone
-    const totalTabs = tabState.youtubeTabs.size;
-    tabState.tabEvents.push({
-      type: 'close',
-      tabId,
-      timestamp: Date.now(),
-      totalYouTubeTabs: totalTabs,
-    });
-    console.log(`[YT Detox] YouTube tab closed. Remaining: ${totalTabs}`);
-  }
-});
-
-// Track active tab changes
-chrome.tabs.onActivated.addListener(async (activeInfo) => {
-  const { tabId } = activeInfo;
-  
-  // Deactivate previous tab
-  if (tabState.activeTabId && tabState.youtubeTabs.has(tabState.activeTabId)) {
-    const prevTab = tabState.youtubeTabs.get(tabState.activeTabId);
-    if (prevTab && prevTab.lastActiveAt) {
-      prevTab.activeDuration += Date.now() - prevTab.lastActiveAt;
-      prevTab.lastActiveAt = undefined;
-    }
-    
-    tabState.tabEvents.push({
-      type: 'deactivate',
-      tabId: tabState.activeTabId,
-      timestamp: Date.now(),
-      totalYouTubeTabs: tabState.youtubeTabs.size,
-    });
-  }
-  
-  // Activate new tab if it's YouTube
-  const tab = await chrome.tabs.get(tabId).catch(() => null);
-  if (tab && isYouTubeUrl(tab.url)) {
-    if (!tabState.youtubeTabs.has(tabId)) {
-      // Tab wasn't tracked yet (might have been opened before extension)
-      tabState.youtubeTabs.set(tabId, {
-        id: tabId,
-        url: tab.url || '',
-        openedAt: Date.now(),
-        activeDuration: 0,
-        lastActiveAt: Date.now(),
-      });
-    } else {
-      const tabInfo = tabState.youtubeTabs.get(tabId);
-      if (tabInfo) {
-        tabInfo.lastActiveAt = Date.now();
-      }
-    }
-    
-    tabState.tabEvents.push({
-      type: 'activate',
-      tabId,
-      url: tab.url,
-      timestamp: Date.now(),
-      totalYouTubeTabs: tabState.youtubeTabs.size,
-    });
-    
-    tabState.activeTabId = tabId;
-    console.log(`[YT Detox] YouTube tab activated. Total: ${tabState.youtubeTabs.size}`);
-  } else {
-    tabState.activeTabId = null;
-  }
-});
-
-// Initialize: scan for existing YouTube tabs on startup
-(async () => {
-  const existingTabs = await chrome.tabs.query({ url: ['*://*.youtube.com/*', '*://youtu.be/*'] });
-  for (const tab of existingTabs) {
-    if (tab.id) {
-      tabState.youtubeTabs.set(tab.id, {
-        id: tab.id,
-        url: tab.url || '',
-        openedAt: Date.now(), // We don't know actual open time
-        activeDuration: 0,
-      });
-    }
-  }
-  console.log(`[YT Detox] Found ${existingTabs.length} existing YouTube tabs`);
-})();
-
-// Message handler for tab info
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'GET_TAB_INFO') {
-    sendResponse({
-      youtubeTabs: tabState.youtubeTabs.size,
-      activeTabId: tabState.activeTabId,
-      recentEvents: tabState.tabEvents.slice(-20), // Last 20 events
-    });
-    return true;
-  }
-});
-
-// ===== Phase Management =====
-
-const OBSERVATION_DAYS = 7;
-const AWARENESS_DAYS = 14;
-const INTERVENTION_DAYS = 30;
-
-type Phase = 'observation' | 'awareness' | 'intervention' | 'reduction';
-
-interface BaselineStats {
-  avgDailyMinutes: number;
-  avgDailyVideos: number;
-  avgSessionMinutes: number;
-  totalDays: number;
-  peakHours: number[];
-  topChannels: Array<{ channel: string; minutes: number }>;
-  productivityRatio: number;
-  recommendationRatio: number;
-  completionRate: number;
-  shortsRatio: number;
-}
-
-function getDaysSinceInstall(installDate: number): number {
-  return Math.floor((Date.now() - installDate) / (1000 * 60 * 60 * 24));
-}
-
-function calculateRecommendedPhase(installDate: number): Phase {
-  const days = getDaysSinceInstall(installDate);
-  
-  if (days < OBSERVATION_DAYS) return 'observation';
-  if (days < OBSERVATION_DAYS + AWARENESS_DAYS) return 'awareness';
-  if (days < OBSERVATION_DAYS + AWARENESS_DAYS + INTERVENTION_DAYS) return 'intervention';
-  return 'reduction';
-}
-
-async function checkAndUpdatePhase(): Promise<{ phase: Phase; daysRemaining: number; shouldNotify: boolean }> {
-  const storage = await getStorage();
-  const settings = storage.settings;
-  
-  const installDate = settings.installDate || Date.now();
-  const days = getDaysSinceInstall(installDate);
-  const recommendedPhase = calculateRecommendedPhase(installDate);
-  const currentPhase = settings.phase;
-  
-  let daysRemaining = 0;
-  let shouldNotify = false;
-  
-  if (recommendedPhase === 'observation') {
-    daysRemaining = OBSERVATION_DAYS - days;
-  } else if (recommendedPhase === 'awareness') {
-    daysRemaining = OBSERVATION_DAYS + AWARENESS_DAYS - days;
-  } else if (recommendedPhase === 'intervention') {
-    daysRemaining = OBSERVATION_DAYS + AWARENESS_DAYS + INTERVENTION_DAYS - days;
-  }
-  
-  // Auto-advance phase if time has come
-  if (currentPhase !== recommendedPhase) {
-    settings.phase = recommendedPhase;
-    await saveStorage({ settings });
-    shouldNotify = true;
-    console.log(`[YT Detox] Phase advanced: ${currentPhase} → ${recommendedPhase}`);
-  }
-  
-  return { phase: recommendedPhase, daysRemaining, shouldNotify };
-}
-
-async function calculateBaselineStats(): Promise<BaselineStats> {
-  const storage = await getStorage();
-  const dailyStats = storage.dailyStats || {};
-  const videoSessions = storage.videoSessions || [];
-  
-  const stats = Object.values(dailyStats);
-  const daysWithData = stats.length;
-  
-  if (daysWithData === 0) {
-    return {
-      avgDailyMinutes: 0,
-      avgDailyVideos: 0,
-      avgSessionMinutes: 0,
-      totalDays: 0,
-      peakHours: [],
-      topChannels: [],
-      productivityRatio: 0,
-      recommendationRatio: 0,
-      completionRate: 0,
-      shortsRatio: 0,
-    };
-  }
-  
-  // Calculate averages
-  const totalSeconds = stats.reduce((sum, d) => sum + (d.totalSeconds || 0), 0);
-  const totalVideos = stats.reduce((sum, d) => sum + (d.videoCount || 0), 0);
-  const totalSessions = stats.reduce((sum, d) => sum + (d.sessionCount || 0), 0);
-  const totalProductive = stats.reduce((sum, d) => sum + (d.productiveVideos || 0), 0);
-  const totalUnproductive = stats.reduce((sum, d) => sum + (d.unproductiveVideos || 0), 0);
-  const totalNeutral = stats.reduce((sum, d) => sum + (d.neutralVideos || 0), 0);
-  const totalRated = totalProductive + totalUnproductive + totalNeutral;
-  const totalCompleted = stats.reduce((sum, d) => sum + (d.videosCompleted || 0), 0);
-  const totalAbandoned = stats.reduce((sum, d) => sum + (d.videosAbandoned || 0), 0);
-  const totalShorts = stats.reduce((sum, d) => sum + (d.shortsCount || 0), 0);
-  const totalRecommendationClicks = stats.reduce((sum, d) => sum + (d.recommendationClicks || 0), 0);
-  
-  // Peak hours (aggregate hourly data)
-  const hourlyTotals: Record<string, number> = {};
-  for (let i = 0; i < 24; i++) hourlyTotals[i.toString()] = 0;
-  
-  stats.forEach(d => {
-    if (d.hourlySeconds) {
-      Object.entries(d.hourlySeconds).forEach(([hour, secs]) => {
-        hourlyTotals[hour] = (hourlyTotals[hour] || 0) + secs;
-      });
-    }
-  });
-  
-  // Top 3 peak hours
-  const peakHours = Object.entries(hourlyTotals)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([hour]) => parseInt(hour));
-  
-  // Top channels from video sessions
-  const channelMap = new Map<string, number>();
-  videoSessions.forEach(v => {
-    if (v.channel) {
-      channelMap.set(v.channel, (channelMap.get(v.channel) || 0) + (v.watchedSeconds || 0));
-    }
-  });
-  
-  const topChannels = Array.from(channelMap.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([channel, seconds]) => ({ channel, minutes: Math.round(seconds / 60) }));
-  
-  const avgSessionSeconds = totalSessions > 0 ? totalSeconds / totalSessions : 0;
-  
-  return {
-    avgDailyMinutes: Math.round(totalSeconds / 60 / daysWithData),
-    avgDailyVideos: Math.round(totalVideos / daysWithData),
-    avgSessionMinutes: Math.round(avgSessionSeconds / 60),
-    totalDays: daysWithData,
-    peakHours,
-    topChannels,
-    productivityRatio: totalRated > 0 ? Math.round((totalProductive / totalRated) * 100) : 0,
-    recommendationRatio: totalVideos > 0 ? Math.round((totalRecommendationClicks / totalVideos) * 100) : 0,
-    completionRate: (totalCompleted + totalAbandoned) > 0 
-      ? Math.round((totalCompleted / (totalCompleted + totalAbandoned)) * 100) 
-      : 0,
-    shortsRatio: totalVideos > 0 ? Math.round((totalShorts / totalVideos) * 100) : 0,
-  };
-}
-
-// Phase-related message handlers
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'GET_PHASE_INFO') {
-    checkAndUpdatePhase().then(sendResponse);
-    return true;
-  }
-  
-  if (message.type === 'GET_BASELINE_STATS') {
-    calculateBaselineStats().then(sendResponse);
-    return true;
-  }
-  
-  if (message.type === 'SET_PHASE') {
-    (async () => {
-      const storage = await getStorage();
-      storage.settings.phase = message.data.phase;
-      await saveStorage({ settings: storage.settings });
-      sendResponse({ success: true, phase: message.data.phase });
-    })();
-    return true;
-  }
-});
-
-// Auth-related message handlers
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'AUTH_SIGN_IN') {
-    signIn().then(sendResponse);
-    return true;
-  }
-  
-  if (message.type === 'AUTH_SIGN_OUT') {
-    signOut().then(sendResponse);
-    return true;
-  }
-  
-  if (message.type === 'AUTH_GET_STATE') {
-    getAuthState().then(sendResponse);
-    return true;
-  }
-});
-
-// Drift-related message handlers
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'GET_DRIFT') {
-    calculateDrift().then(({ drift, factors }) => {
-      sendResponse({
-        drift,
-        factors,
-        level: getDriftLevel(drift),
-        effects: getDriftEffects(drift),
-        history: driftState.history,
-      });
-    });
-    return true;
-  }
-  
-  if (message.type === 'GET_DRIFT_EFFECTS') {
-    sendResponse(getDriftEffects(driftState.current));
-    return true;
-  }
-  
-  if (message.type === 'SET_CHALLENGE_TIER') {
-    (async () => {
-      const storage = await getStorage();
-      (storage.settings as any).challengeTier = message.data.tier;
-      await saveStorage({ settings: storage.settings });
-      const { drift } = await calculateDrift();
-      sendResponse({ success: true, tier: message.data.tier, newDrift: drift });
-    })();
-    return true;
-  }
-  
-  if (message.type === 'SET_GOAL_MODE') {
-    (async () => {
-      const storage = await getStorage();
-      (storage.settings as any).goalMode = message.data.mode;
-      await saveStorage({ settings: storage.settings });
-      const { drift } = await calculateDrift();
-      sendResponse({ success: true, mode: message.data.mode, newDrift: drift });
-    })();
-    return true;
-  }
-});
-
-// Check phase on startup
-checkAndUpdatePhase().then(({ phase, daysRemaining, shouldNotify }) => {
-  console.log(`[YT Detox] Current phase: ${phase}, days remaining: ${daysRemaining}`);
-  if (shouldNotify) {
-    // Could show a notification here about phase change
-  }
-});
-
-// ===== Challenge System =====
-
-interface ChallengeProgress {
-  currentTier: ChallengeTier;
-  daysUnderGoal: number;
-  lastUnderGoalDate: string | null;
-  totalXp: number;
-  tierHistory: Array<{ tier: ChallengeTier; date: string }>;
-  eligibleForUpgrade: boolean;
-}
-
-const TIER_ORDER: ChallengeTier[] = ['casual', 'focused', 'disciplined', 'monk', 'ascetic'];
-const DAYS_TO_UPGRADE = 5; // Days under goal to unlock next tier
-
-async function getChallengeProgress(): Promise<ChallengeProgress> {
-  const data = await chrome.storage.local.get(['challengeProgress', 'settings', 'dailyStats', 'xp']);
-  const settings = data.settings || {};
-  const currentTier: ChallengeTier = (settings.challengeTier as ChallengeTier) || 'casual';
-  const dailyStats = data.dailyStats || {};
-  
-  let progress: ChallengeProgress = data.challengeProgress || {
-    currentTier,
-    daysUnderGoal: 0,
-    lastUnderGoalDate: null,
-    totalXp: data.xp || 0,
-    tierHistory: [{ tier: currentTier, date: new Date().toISOString().split('T')[0] }],
-    eligibleForUpgrade: false,
-  };
-  
-  // Calculate consecutive days under goal
-  const goalMinutes = CHALLENGE_TIERS[currentTier]?.goalMinutes || 60;
-  const today = new Date().toISOString().split('T')[0];
-  
-  // Check recent days
-  let consecutiveDays = 0;
-  for (let i = 0; i < 14; i++) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    const dateKey = date.toISOString().split('T')[0];
-    const dayStats = dailyStats[dateKey];
-    
-    if (dayStats) {
-      const dayMinutes = Math.floor((dayStats.totalSeconds || 0) / 60);
-      if (dayMinutes <= goalMinutes) {
-        consecutiveDays++;
-      } else {
-        break; // Streak broken
-      }
-    } else if (i === 0) {
-      // Today with no data counts as under goal
-      consecutiveDays++;
-    } else {
-      break;
-    }
-  }
-  
-  progress.daysUnderGoal = consecutiveDays;
-  progress.lastUnderGoalDate = today;
-  
-  // Check eligibility for upgrade
-  const currentTierIndex = TIER_ORDER.indexOf(currentTier);
-  const canUpgrade = currentTierIndex < TIER_ORDER.length - 1;
-  progress.eligibleForUpgrade = canUpgrade && consecutiveDays >= DAYS_TO_UPGRADE;
-  
-  // Save progress
-  await chrome.storage.local.set({ challengeProgress: progress });
-  
-  return progress;
-}
-
-async function upgradeTier(): Promise<{ success: boolean; newTier: ChallengeTier; xpBonus: number }> {
-  const storage = await getStorage();
-  const settings = storage.settings as any;
-  const currentTier = settings.challengeTier || 'casual';
-  const currentIndex = TIER_ORDER.indexOf(currentTier);
-  
-  if (currentIndex >= TIER_ORDER.length - 1) {
-    return { success: false, newTier: currentTier, xpBonus: 0 };
-  }
-  
-  const newTier = TIER_ORDER[currentIndex + 1];
-  const xpBonus = 100; // Bonus XP for accepting challenge
-  
-  // Update settings
-  settings.challengeTier = newTier;
-  settings.dailyGoalMinutes = CHALLENGE_TIERS[newTier].goalMinutes;
-  await saveStorage({ settings });
-  
-  // Update XP
-  const currentXp = (await chrome.storage.local.get('xp')).xp || 0;
-  await chrome.storage.local.set({ xp: currentXp + xpBonus });
-  
-  // Update progress
-  const progress = await getChallengeProgress();
-  progress.currentTier = newTier;
-  progress.daysUnderGoal = 0;
-  progress.eligibleForUpgrade = false;
-  progress.tierHistory.push({ tier: newTier, date: new Date().toISOString().split('T')[0] });
-  await chrome.storage.local.set({ challengeProgress: progress });
-  
-  console.log(`[YT Detox] Tier upgraded: ${currentTier} → ${newTier}, +${xpBonus} XP`);
-  
-  return { success: true, newTier, xpBonus };
-}
-
-async function downgradeTier(): Promise<{ success: boolean; newTier: ChallengeTier }> {
-  const storage = await getStorage();
-  const settings = storage.settings as any;
-  const currentTier = settings.challengeTier || 'casual';
-  const currentIndex = TIER_ORDER.indexOf(currentTier);
-  
-  if (currentIndex <= 0) {
-    return { success: false, newTier: currentTier };
-  }
-  
-  const newTier = TIER_ORDER[currentIndex - 1];
-  
-  // Update settings
-  settings.challengeTier = newTier;
-  settings.dailyGoalMinutes = CHALLENGE_TIERS[newTier].goalMinutes;
-  await saveStorage({ settings });
-  
-  console.log(`[YT Detox] Tier downgraded: ${currentTier} → ${newTier}`);
-  
-  return { success: true, newTier };
-}
-
-function getXpMultiplier(tier: ChallengeTier): number {
-  return CHALLENGE_TIERS[tier]?.xpMultiplier || 1.0;
-}
-
-async function awardXp(baseXp: number, reason: string): Promise<number> {
-  const storage = await getStorage();
-  const tier = (storage.settings as any).challengeTier || 'casual';
-  const multiplier = getXpMultiplier(tier);
-  const totalXp = Math.floor(baseXp * multiplier);
-  
-  const currentXp = (await chrome.storage.local.get('xp')).xp || 0;
-  const newXp = currentXp + totalXp;
-  await chrome.storage.local.set({ xp: newXp });
-  
-  console.log(`[YT Detox] XP awarded: +${totalXp} (${baseXp} × ${multiplier}x) for ${reason}`);
-  
-  return totalXp;
-}
-
-// Challenge message handlers
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'GET_CHALLENGE_PROGRESS') {
-    getChallengeProgress().then(sendResponse);
-    return true;
-  }
-  
-  if (message.type === 'UPGRADE_TIER') {
-    upgradeTier().then(sendResponse);
-    return true;
-  }
-  
-  if (message.type === 'DOWNGRADE_TIER') {
-    downgradeTier().then(sendResponse);
-    return true;
-  }
-  
-  if (message.type === 'AWARD_XP') {
-    awardXp(message.data.baseXp, message.data.reason).then((xp) => {
-      sendResponse({ awarded: xp });
-    });
-    return true;
-  }
-});
-
-// Check challenge progress daily
-async function checkDailyChallenge(): Promise<void> {
-  const progress = await getChallengeProgress();
-  
-  if (progress.eligibleForUpgrade) {
-    // Notify user they can upgrade
-    chrome.notifications.create('challenge-upgrade', {
-      type: 'basic',
-      iconUrl: 'icons/icon128.png',
-      title: '🏆 Challenge Unlocked!',
-      message: `You've been under goal for ${progress.daysUnderGoal} days! Ready to level up?`,
-      buttons: [
-        { title: 'Accept Challenge' },
-        { title: 'Maybe Later' },
-      ],
-    });
-  }
-}
-
-// Run challenge check once per hour
-setInterval(checkDailyChallenge, 60 * 60 * 1000);
-
-// Handle notification button clicks
-chrome.notifications.onButtonClicked.addListener((notificationId, buttonIndex) => {
-  if (notificationId === 'challenge-upgrade') {
-    if (buttonIndex === 0) {
-      // Accept
-      upgradeTier();
-    }
-    chrome.notifications.clear(notificationId);
-  }
-});
-
-console.log('[YT Detox] Background service worker initialized (v0.4.0 - unified sync + tab tracking + phase management)');
+// Run initialization
+initialize();

@@ -78,6 +78,17 @@ export default defineConfig({
         },
       },
     },
+    // Live YouTube tests - tests on real YouTube
+    {
+      name: 'live-youtube',
+      testDir: './tests',
+      testMatch: /live-youtube\.spec\.ts/,
+      timeout: 120000, // 2 minutes per test (YouTube can be slow)
+      use: {
+        ...devices['Desktop Chrome'],
+        headless: false, // Must be headed for extensions
+      },
+    },
   ],
 
   // Ensure backend is running (skip in Docker - handled by docker-compose)
