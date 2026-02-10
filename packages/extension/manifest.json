@@ -1,19 +1,31 @@
 {
   "manifest_version": 3,
   "name": "YouTube Detox",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Gradually reduce YouTube usage with personalized insights and gentle friction",
   
   "permissions": [
     "storage",
     "alarms",
-    "notifications"
+    "notifications",
+    "identity"
   ],
   
   "host_permissions": [
     "https://www.youtube.com/*",
     "https://youtube.com/*"
   ],
+  
+  "oauth2": {
+    "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
+    "scopes": [
+      "openid",
+      "email",
+      "profile"
+    ]
+  },
+  
+  "key": "YOUR_EXTENSION_KEY",
   
   "background": {
     "service_worker": "src/background/index.ts",
