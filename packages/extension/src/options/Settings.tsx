@@ -69,6 +69,12 @@ interface SettingsState {
     autoplay: boolean;
   };
   whitelistedChannels: string[];
+  devFeatures: {
+    driftEffects: boolean;
+    frictionOverlay: boolean;
+    musicDetection: boolean;
+    nudges: boolean;
+  };
 }
 
 // ===== Constants =====
@@ -99,6 +105,7 @@ const defaultSettings: SettingsState = {
   challengeTier: 'casual',
   frictionEnabled: { thumbnails: true, sidebar: true, comments: true, autoplay: true },
   whitelistedChannels: [],
+  devFeatures: { driftEffects: false, frictionOverlay: false, musicDetection: false, nudges: false },
 };
 
 // ===== Helpers =====
@@ -655,6 +662,41 @@ export default function Settings() {
                       onCheckedChange={(v) => setSettings(p => ({
                         ...p,
                         frictionEnabled: { ...p.frictionEnabled, [key]: v }
+                      }))}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Dev Switches */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-1">
+                Dev Switches
+              </h2>
+              <p className="text-sm text-slate-400 mb-4">
+                Toggle extension features on/off (all off by default)
+              </p>
+              <div className="space-y-3">
+                {[
+                  { key: 'driftEffects', label: 'Drift CSS Effects', desc: 'Blur thumbnails, hide sidebar/comments based on drift' },
+                  { key: 'frictionOverlay', label: 'Friction Overlay', desc: 'Drift rating popup over video player' },
+                  { key: 'musicDetection', label: 'Music Detection', desc: 'Detect music videos and exempt from drift' },
+                  { key: 'nudges', label: 'Nudges', desc: 'Time warnings, break reminders, bedtime alerts' },
+                ].map(({ key, label, desc }) => (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between py-2"
+                  >
+                    <div>
+                      <div className="font-medium text-slate-700">{label}</div>
+                      <div className="text-sm text-slate-400">{desc}</div>
+                    </div>
+                    <Switch
+                      checked={(settings.devFeatures as any)[key]}
+                      onCheckedChange={(v) => setSettings(p => ({
+                        ...p,
+                        devFeatures: { ...p.devFeatures, [key]: v }
                       }))}
                     />
                   </div>

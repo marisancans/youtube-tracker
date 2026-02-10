@@ -33,6 +33,8 @@ let updateIntervalId: number | null = null;
 let scrollTimeoutId: number | null = null;
 let lastUrl = window.location.href;
 let isInitialized = false;
+let mountRetries = 0;
+const MAX_MOUNT_RETRIES = 10;
 
 // ===== Widget Mounting =====
 
@@ -44,55 +46,54 @@ function getPageType(): 'watch' | 'shorts' | 'search' | 'other' {
   return 'other';
 }
 
-function getWidgetContainer(): HTMLElement | null {
-  const pageType = getPageType();
-  
-  if (pageType === 'watch') {
-    // Try different selectors for the video player area
-    return (
-      document.querySelector('#secondary.ytd-watch-flexy') || // Sidebar
-      document.querySelector('#related') ||
-      document.querySelector('ytd-watch-flexy #secondary') ||
-      document.querySelector('#player') // Fallback
-    );
-  }
-  
-  if (pageType === 'shorts') {
-    return document.querySelector('ytd-shorts ytd-reel-video-renderer[is-active]');
-  }
-  
-  return null;
-}
-
 function mountWidget(): void {
   const pageType = getPageType();
-  if (pageType === 'other') {
+
+  if (pageType !== 'watch' && pageType !== 'shorts') {
     unmountWidget();
     return;
   }
-  
+
   // Check if already mounted
   if (document.getElementById(WIDGET_CONTAINER_ID)) {
     return;
   }
-  
-  const container = getWidgetContainer();
-  if (!container) {
-    // Retry in 500ms
-    setTimeout(mountWidget, 500);
-    return;
-  }
-  
-  // Create shadow DOM host
+
+  // Try to find sidebar, fall back to floating if not found
+  const sidebar = document.querySelector('#secondary-inner, #secondary, #related');
+
   const host = document.createElement('div');
   host.id = WIDGET_CONTAINER_ID;
-  host.style.cssText = 'all: initial; display: block; margin-bottom: 16px;';
-  
-  // Insert at the beginning of the container
-  if (container.firstChild) {
-    container.insertBefore(host, container.firstChild);
+
+  if (sidebar) {
+    console.log('[YT Detox] Mounting widget in sidebar');
+    mountRetries = 0;
+    host.style.cssText = `
+      all: initial;
+      display: block;
+      width: 100%;
+      margin-bottom: 16px;
+    `;
+    sidebar.insertBefore(host, sidebar.firstChild);
+  } else if (mountRetries < MAX_MOUNT_RETRIES) {
+    mountRetries++;
+    console.log(`[YT Detox] Sidebar not found, retry ${mountRetries}/${MAX_MOUNT_RETRIES}...`);
+    setTimeout(mountWidget, 500);
+    return;
   } else {
-    container.appendChild(host);
+    // Fallback: floating widget
+    console.log('[YT Detox] Sidebar not found after retries, using floating widget');
+    mountRetries = 0;
+    host.style.cssText = `
+      all: initial;
+      display: block;
+      position: fixed;
+      top: 80px;
+      right: 16px;
+      z-index: 9999;
+      width: 340px;
+    `;
+    document.body.appendChild(host);
   }
   
   // Create shadow root
@@ -515,20 +516,40 @@ function setupAutoplayTracking(): void {
 async function init(): Promise<void> {
   if (isInitialized) return;
   isInitialized = true;
-  
+
   // Global marker for testing
   (window as any).__YT_DETOX_TRACKER__ = { version: '0.4.0', initialized: true };
-  
+
   console.log('[YT Detox] Initializing...');
-  
+
+  // Load dev feature flags
+  const storage = await new Promise<any>((resolve) => chrome.storage.local.get('settings', resolve));
+  const devFeatures = storage?.settings?.devFeatures || {
+    driftEffects: false,
+    frictionOverlay: false,
+    musicDetection: false,
+    nudges: false,
+  };
+  // Expose to window for Widget to read
+  (window as any).__YT_DETOX_DEV_FEATURES__ = devFeatures;
+  console.log('[YT Detox] Dev features:', devFeatures);
+
   // Initialize browser session
   await initBrowserSession();
-  
-  // Initialize drift effects (CSS friction)
-  initDriftEffects();
-  
-  // Initialize music detection (for Music Mode)
-  initMusicDetection();
+
+  // Initialize drift effects (CSS friction) - gated
+  if (devFeatures.driftEffects) {
+    initDriftEffects();
+  } else {
+    console.log('[YT Detox] Drift effects DISABLED (dev switch)');
+  }
+
+  // Initialize music detection (for Music Mode) - gated
+  if (devFeatures.musicDetection) {
+    initMusicDetection();
+  } else {
+    console.log('[YT Detox] Music detection DISABLED (dev switch)');
+  }
   
   // Set up event listeners
   document.addEventListener('visibilitychange', handleVisibilityChange);

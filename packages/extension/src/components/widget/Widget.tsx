@@ -289,7 +289,7 @@ const s = {
   nudgeIcon: { flexShrink: 0 },
   nudgeText: { flex: 1, fontSize: '12px', lineHeight: '1.3' },
   nudgeClose: { position: 'absolute' as const, top: '4px', right: '4px', background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '2px', transition: 'color 0.2s ease' },
-  card: { background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.97) 0%, rgba(30, 41, 59, 0.97) 100%)', backdropFilter: 'blur(16px)', borderRadius: '16px', boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)', border: '1px solid rgba(255, 255, 255, 0.1)', overflow: 'hidden', width: '300px', transition: 'transform 0.2s ease, box-shadow 0.2s ease' },
+  card: { background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.97) 0%, rgba(30, 41, 59, 0.97) 100%)', backdropFilter: 'blur(16px)', borderRadius: '16px', boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)', border: '1px solid rgba(255, 255, 255, 0.1)', overflow: 'hidden', width: '100%', transition: 'transform 0.2s ease, box-shadow 0.2s ease' },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' },
   headerLeft: { display: 'flex', alignItems: 'center', gap: '8px' },
   statusDot: { width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', animation: 'pulse 2s infinite' },
@@ -548,6 +548,9 @@ export default function Widget(): JSX.Element {
   
   // Nudge logic - check for nudges every update
   const checkNudges = useCallback(() => {
+    // Gated by dev switch
+    const devFeatures = (window as any).__YT_DETOX_DEV_FEATURES__ || {};
+    if (!devFeatures.nudges) return;
     // Don't show nudges during observation phase
     if (state.phase === 'observation') return;
     
@@ -653,16 +656,22 @@ export default function Widget(): JSX.Element {
         }
       });
       
-      if (videoSession && !videoSession.productivityRating && state.lastRatedVideo !== videoSession.id) {
-        const shouldPrompt = (videoSession.watchedSeconds > 30 && Math.random() < 0.3) || videoSession.watchedPercent >= 80;
+      const devFeatures = (window as any).__YT_DETOX_DEV_FEATURES__ || {};
+      if (devFeatures.frictionOverlay && videoSession && !videoSession.productivityRating && state.lastRatedVideo !== videoSession.id) {
+        // Trigger drift rating after 30s of watching or at 80% progress
+        const shouldPrompt = videoSession.watchedSeconds > 30 || videoSession.watchedPercent >= 80;
         if (shouldPrompt && !state.showPrompt && !isFrictionOverlayVisible()) {
           setState(p => ({ ...p, showPrompt: true }));
           safeSendMessage('PROMPT_SHOWN');
-          // Show full-screen friction overlay
           const title = videoInfo?.title || videoSession.title || 'this video';
-          showFrictionOverlay(title).then((rating) => {
-            rateVideo(rating);
-            const xpGain = rating === 1 ? 15 : rating === 0 ? 5 : 2;
+          showFrictionOverlay(title).then((driftRating) => {
+            // Map 1-5 drift scale to -1/0/1 for storage compatibility
+            // 1-2 (Anchored/Steady) = productive (1)
+            // 3 (Drifting) = neutral (0)
+            // 4-5 (Adrift/Lost) = unproductive (-1)
+            const storageRating: -1 | 0 | 1 = driftRating <= 2 ? 1 : driftRating === 3 ? 0 : -1;
+            rateVideo(storageRating);
+            const xpGain = storageRating === 1 ? 15 : storageRating === 0 ? 5 : 2;
             setState(p => ({ ...p, showPrompt: false, lastRatedVideo: videoSession.id, xp: p.xp + xpGain }));
           });
         }

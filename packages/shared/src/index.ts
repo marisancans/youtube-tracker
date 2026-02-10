@@ -390,6 +390,14 @@ export interface Settings {
   whitelistedChannels: string[];
   blockedChannels: string[];
   backend: BackendSettings;
+  devFeatures: DevFeatures;
+}
+
+export interface DevFeatures {
+  driftEffects: boolean;
+  frictionOverlay: boolean;
+  musicDetection: boolean;
+  nudges: boolean;
 }
 
 export type PrivacyTier = 'minimal' | 'standard' | 'full';

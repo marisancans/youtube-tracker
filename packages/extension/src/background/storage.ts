@@ -121,6 +121,12 @@ export const DEFAULT_SETTINGS: Settings = {
     userId: null,
     lastSync: null,
   },
+  devFeatures: {
+    driftEffects: false,
+    frictionOverlay: false,
+    musicDetection: false,
+    nudges: false,
+  },
 };
 
 export const DEFAULT_SYNC_STATE: SyncState = {

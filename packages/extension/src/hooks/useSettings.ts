@@ -28,6 +28,12 @@ const DEFAULT_SETTINGS: Settings = {
     userId: null,
     lastSync: null,
   },
+  devFeatures: {
+    driftEffects: false,
+    frictionOverlay: false,
+    musicDetection: false,
+    nudges: false,
+  },
 }
 
 export function useSettings() {
