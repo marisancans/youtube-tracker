@@ -24,6 +24,7 @@ interface WidgetState {
   level: number;
   xp: number;
   achievements: string[];
+  youtubeTabs: number;
 }
 
 function formatTime(seconds: number): string {
@@ -81,45 +82,75 @@ const Icons = {
   TrendingUp: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>,
   Award: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>,
   Brain: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3 4 4.5 4.5 0 0 1-3-4"/><path d="M12 9v4"/><path d="M12 6v.01"/></svg>,
+  Layers: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/></svg>,
 };
 
-// Mini sparkline component - full width
+// Mini sparkline component - full width with proper circles
 function Sparkline({ data, color }: { data: number[]; color: string }) {
   const max = Math.max(...data, 1);
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * 100;
-    const y = 24 - (v / max) * 20;
-    return `${x},${y}`;
-  }).join(' ');
+  const height = 32;
+  const padding = 4;
   
   return (
-    <svg width="100%" height="28" viewBox="0 0 100 28" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
-      {/* Gradient fill under line */}
-      <defs>
-        <linearGradient id="sparklineGradient" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.3"/>
-          <stop offset="100%" stopColor={color} stopOpacity="0"/>
-        </linearGradient>
-      </defs>
-      <polygon
-        points={`0,28 ${points} 100,28`}
-        fill="url(#sparklineGradient)"
-      />
-      <polyline
-        points={points}
-        fill="none"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
+    <div style={{ position: 'relative', width: '100%', height: `${height}px` }}>
+      {/* SVG for line and gradient - stretches */}
+      <svg 
+        width="100%" 
+        height={height} 
+        viewBox={`0 0 100 ${height}`} 
+        preserveAspectRatio="none"
+        style={{ position: 'absolute', top: 0, left: 0 }}
+      >
+        <defs>
+          <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.3"/>
+            <stop offset="100%" stopColor={color} stopOpacity="0"/>
+          </linearGradient>
+        </defs>
+        <polygon
+          points={data.map((v, i) => {
+            const x = (i / (data.length - 1)) * 100;
+            const y = height - padding - (v / max) * (height - padding * 2);
+            return `${x},${y}`;
+          }).join(' ') + ` 100,${height} 0,${height}`}
+          fill="url(#sparkGrad)"
+        />
+        <polyline
+          points={data.map((v, i) => {
+            const x = (i / (data.length - 1)) * 100;
+            const y = height - padding - (v / max) * (height - padding * 2);
+            return `${x},${y}`;
+          }).join(' ')}
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      {/* Circles positioned with percentages - stay round */}
       {data.map((v, i) => {
-        const x = (i / (data.length - 1)) * 100;
-        const y = 24 - (v / max) * 20;
-        return <circle key={i} cx={x} cy={y} r="3" fill={color} style={{ filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.3))' }} />;
+        const leftPercent = (i / (data.length - 1)) * 100;
+        const top = height - padding - (v / max) * (height - padding * 2);
+        return (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              left: `${leftPercent}%`,
+              top: `${top}px`,
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: color,
+              transform: 'translate(-50%, -50%)',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+            }}
+          />
+        );
       })}
-    </svg>
+    </div>
   );
 }
 
@@ -168,7 +199,7 @@ const s = {
   streakBadge: { display: 'flex', flexDirection: 'column' as const, alignItems: 'center', padding: '8px 12px', background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.2) 0%, rgba(245, 158, 11, 0.2) 100%)', borderRadius: '12px', border: '1px solid rgba(251, 191, 36, 0.3)' },
   streakNumber: { fontSize: '20px', fontWeight: '700', color: '#fbbf24' },
   streakLabel: { fontSize: '9px', color: 'rgba(251, 191, 36, 0.8)', textTransform: 'uppercase' as const, letterSpacing: '0.5px' },
-  statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '16px' },
+  statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '16px' },
   statCard: { padding: '10px 6px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '10px', textAlign: 'center' as const },
   statIcon: { display: 'flex', justifyContent: 'center', marginBottom: '4px' },
   statValue: { fontSize: '18px', fontWeight: '700', color: '#fff' },
@@ -212,6 +243,7 @@ export default function Widget(): JSX.Element {
     productiveCount: 0, unproductiveCount: 0, currentVideoSeconds: 0,
     streak: 5, weeklyData: [45, 32, 60, 28, 55, 40, 35], level: 1, xp: 0,
     achievements: ['🔥 5-day streak', '🎯 Under goal'],
+    youtubeTabs: 1,
   });
   
   useEffect(() => {
@@ -247,6 +279,13 @@ export default function Widget(): JSX.Element {
       
       chrome.runtime.sendMessage({ type: 'GET_STATS' }, (response) => {
         if (response?.today) setState(p => ({ ...p, todayMinutes: Math.floor(response.today.totalSeconds / 60) }));
+      });
+      
+      // Get tab count
+      chrome.runtime.sendMessage({ type: 'GET_TAB_INFO' }, (response) => {
+        if (response?.youtubeTabs !== undefined) {
+          setState(p => ({ ...p, youtubeTabs: response.youtubeTabs }));
+        }
       });
       
       if (videoSession && !videoSession.productivityRating && state.lastRatedVideo !== videoSession.id) {
@@ -358,6 +397,11 @@ export default function Widget(): JSX.Element {
                 <div style={{ ...s.statIcon, color: '#60a5fa' }}><Icons.Video /></div>
                 <div style={s.statValue}>{state.videosWatched}</div>
                 <div style={s.statLabel}>Videos</div>
+              </div>
+              <div style={s.statCard}>
+                <div style={{ ...s.statIcon, color: '#a78bfa' }}><Icons.Layers /></div>
+                <div style={s.statValue}>{state.youtubeTabs}</div>
+                <div style={s.statLabel}>Tabs</div>
               </div>
               <div style={s.statCard}>
                 <div style={{ ...s.statIcon, color: '#4ade80' }}><Icons.ThumbsUp /></div>
