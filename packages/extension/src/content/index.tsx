@@ -102,15 +102,23 @@ function mountWidget(): void {
     :host {
       all: initial;
       display: block;
-      font-family: 'Roboto', 'Arial', sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 14px;
       color: #fff;
     }
     
     * {
       box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
     
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    /* Legacy styles - keeping for backwards compatibility */
     .widget-root {
       background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
       border-radius: 12px;
