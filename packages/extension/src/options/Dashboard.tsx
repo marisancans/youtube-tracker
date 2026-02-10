@@ -216,29 +216,71 @@ export default function Dashboard({
         });
         const dailyStats = data.dailyStats || {};
 
-        // Build last 7 days
+        // Build last 7 days (this week)
         const last7Days: DailyData[] = [];
         for (let i = 6; i >= 0; i--) {
           const d = new Date();
           d.setDate(d.getDate() - i);
           const key = d.toISOString().split('T')[0];
           const dayData = dailyStats[key];
-          last7Days.push({
-            date: key,
-            totalSeconds: dayData?.totalSeconds || 0,
-            videoCount: dayData?.videoCount || 0,
-            productiveVideos: dayData?.productiveVideos || 0,
-            unproductiveVideos: dayData?.unproductiveVideos || 0,
-            neutralVideos: dayData?.neutralVideos || 0,
-          });
+          if (dayData) {
+            last7Days.push({
+              date: key,
+              totalSeconds: dayData.totalSeconds,
+              videoCount: dayData.videoCount,
+              productiveVideos: dayData.productiveVideos || 0,
+              unproductiveVideos: dayData.unproductiveVideos || 0,
+              neutralVideos: dayData.neutralVideos || 0,
+            });
+          }
+        }
+
+        // Build previous week (days 7-13 ago)
+        const prevWeekDays: DailyData[] = [];
+        for (let i = 13; i >= 7; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          const key = d.toISOString().split('T')[0];
+          const dayData = dailyStats[key];
+          if (dayData) {
+            prevWeekDays.push({
+              date: key,
+              totalSeconds: dayData.totalSeconds,
+              videoCount: dayData.videoCount,
+              productiveVideos: dayData.productiveVideos || 0,
+              unproductiveVideos: dayData.unproductiveVideos || 0,
+              neutralVideos: dayData.neutralVideos || 0,
+            });
+          }
         }
 
         const todayKey = new Date().toISOString().split('T')[0];
         const today = dailyStats[todayKey] || null;
 
-        // Calculate weekly comparison
-        const thisWeekSeconds = last7Days.slice(-7).reduce((sum, d) => sum + d.totalSeconds, 0);
-        const thisWeekVideos = last7Days.slice(-7).reduce((sum, d) => sum + d.videoCount, 0);
+        // Calculate weekly comparison (only if we have data)
+        const thisWeekSeconds = last7Days.reduce((sum, d) => sum + d.totalSeconds, 0);
+        const thisWeekVideos = last7Days.reduce((sum, d) => sum + d.videoCount, 0);
+        const prevWeekSeconds = prevWeekDays.reduce((sum, d) => sum + d.totalSeconds, 0);
+        const prevWeekVideos = prevWeekDays.reduce((sum, d) => sum + d.videoCount, 0);
+        
+        const thisWeekMinutes = Math.floor(thisWeekSeconds / 60);
+        const prevWeekMinutes = Math.floor(prevWeekSeconds / 60);
+        
+        // Calculate change percent (only if we have previous week data)
+        let changePercent = 0;
+        if (prevWeekMinutes > 0) {
+          changePercent = Math.round(((thisWeekMinutes - prevWeekMinutes) / prevWeekMinutes) * 100);
+        }
+        
+        // Weekly comparison is null if no data at all
+        const hasWeeklyData = last7Days.length > 0 || prevWeekDays.length > 0;
+        const weekly: WeeklyComparison | null = hasWeeklyData ? {
+          thisWeekMinutes,
+          prevWeekMinutes,
+          changePercent,
+          thisWeekVideos,
+          prevWeekVideos,
+        } : null;
 
         // Build channel stats from video sessions
         const videoSessions: any[] = data.videoSessions || [];
@@ -287,22 +329,26 @@ export default function Dashboard({
           });
         });
 
+        // Get streak from background (it calculates properly)
+        const streakData = await new Promise<{ streak: number }>((resolve) => {
+          chrome.runtime.sendMessage({ type: 'GET_STREAK' }, (response) => {
+            resolve(response || { streak: 0 });
+          });
+        });
+
+        // Get XP if exists
+        const xp = typeof data.xp === 'number' ? data.xp : 0;
+
         setStats({
           today,
           last7Days,
-          weekly: {
-            thisWeekMinutes: Math.floor(thisWeekSeconds / 60),
-            prevWeekMinutes: 0,
-            changePercent: 0,
-            thisWeekVideos,
-            prevWeekVideos: 0,
-          },
+          weekly,
           channels,
-          streak: data.streak || 0,
-          level: Math.floor((data.xp || 0) / 100) + 1,
-          xp: data.xp || 0,
-          phase: phaseInfo,
-          baseline: baselineStats,
+          streak: streakData.streak,
+          level: xp > 0 ? Math.floor(xp / 100) + 1 : 1,
+          xp,
+          phase: phaseInfo?.phase ? phaseInfo : null,
+          baseline: baselineStats?.totalDays > 0 ? baselineStats : null,
           drift: driftData,
           challengeTier: settings.challengeTier || 'casual',
           goalMode: settings.goalMode || 'time_reduction',
@@ -491,20 +537,28 @@ export default function Dashboard({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-2xl font-bold">{formatMinutes(todayMinutes)}</span>
-            <span className={`text-sm ${isOverGoal ? 'text-red-500' : 'text-green-500'}`}>
-              {isOverGoal ? `+${formatMinutes(todayMinutes - dailyGoalMinutes)} over` : `${formatMinutes(dailyGoalMinutes - todayMinutes)} left`}
-            </span>
-          </div>
-          <Progress
-            value={goalProgress}
-            className={isOverGoal ? '[&>div]:bg-red-500' : '[&>div]:bg-blue-500'}
-          />
-          <div className="flex justify-between mt-1 text-xs text-muted-foreground">
-            <span>0m</span>
-            <span>{formatMinutes(dailyGoalMinutes)} goal</span>
-          </div>
+          {stats.today ? (
+            <>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-2xl font-bold">{formatMinutes(todayMinutes)}</span>
+                <span className={`text-sm ${isOverGoal ? 'text-red-500' : 'text-green-500'}`}>
+                  {isOverGoal ? `+${formatMinutes(todayMinutes - dailyGoalMinutes)} over` : `${formatMinutes(dailyGoalMinutes - todayMinutes)} left`}
+                </span>
+              </div>
+              <Progress
+                value={goalProgress}
+                className={isOverGoal ? '[&>div]:bg-red-500' : '[&>div]:bg-blue-500'}
+              />
+              <div className="flex justify-between mt-1 text-xs text-muted-foreground">
+                <span>0m</span>
+                <span>{formatMinutes(dailyGoalMinutes)} goal</span>
+              </div>
+            </>
+          ) : (
+            <div className="py-4 text-center text-muted-foreground text-sm">
+              No activity today yet.
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -513,28 +567,28 @@ export default function Dashboard({
         <Card className="p-3">
           <div className="flex flex-col items-center">
             <Video className="w-4 h-4 text-purple-500 mb-1" />
-            <span className="text-lg font-bold">{stats.today?.videoCount || 0}</span>
+            <span className="text-lg font-bold">{stats.today?.videoCount ?? '-'}</span>
             <span className="text-[10px] text-muted-foreground">Videos</span>
           </div>
         </Card>
         <Card className="p-3">
           <div className="flex flex-col items-center">
             <Flame className="w-4 h-4 text-orange-500 mb-1" />
-            <span className="text-lg font-bold">{stats.streak}</span>
+            <span className="text-lg font-bold">{stats.streak > 0 ? stats.streak : '-'}</span>
             <span className="text-[10px] text-muted-foreground">Streak</span>
           </div>
         </Card>
         <Card className="p-3">
           <div className="flex flex-col items-center">
             <ThumbsUp className="w-4 h-4 text-green-500 mb-1" />
-            <span className="text-lg font-bold">{stats.today?.productiveVideos || 0}</span>
+            <span className="text-lg font-bold">{stats.today?.productiveVideos ?? '-'}</span>
             <span className="text-[10px] text-muted-foreground">Good</span>
           </div>
         </Card>
         <Card className="p-3">
           <div className="flex flex-col items-center">
             <ThumbsDown className="w-4 h-4 text-red-500 mb-1" />
-            <span className="text-lg font-bold">{stats.today?.unproductiveVideos || 0}</span>
+            <span className="text-lg font-bold">{stats.today?.unproductiveVideos ?? '-'}</span>
             <span className="text-[10px] text-muted-foreground">Wasted</span>
           </div>
         </Card>
@@ -548,7 +602,7 @@ export default function Dashboard({
               <Calendar className="w-4 h-4 text-blue-500" />
               This Week
             </span>
-            {stats.weekly && stats.weekly.changePercent !== 0 && (
+            {stats.weekly && stats.weekly.prevWeekMinutes > 0 && stats.weekly.changePercent !== 0 && (
               <span
                 className={`text-sm flex items-center gap-1 ${
                   stats.weekly.changePercent < 0 ? 'text-green-500' : 'text-red-500'
@@ -559,50 +613,58 @@ export default function Dashboard({
                 ) : (
                   <TrendingUp className="w-4 h-4" />
                 )}
-                {Math.abs(stats.weekly.changePercent)}%
+                {Math.abs(stats.weekly.changePercent)}% vs last week
               </span>
             )}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-32">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={weeklyChartData}>
-                <defs>
-                  <linearGradient id="colorMinutes" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.3} />
-                    <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-                <YAxis hide />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      return (
-                        <div className="bg-slate-800 text-white px-2 py-1 rounded text-xs">
-                          {formatMinutes(payload[0].value as number)} • {payload[0].payload.videos} videos
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="minutes"
-                  stroke={COLORS.primary}
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorMinutes)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="flex justify-between text-xs text-muted-foreground mt-2">
-            <span>Total: {formatMinutes(stats.weekly?.thisWeekMinutes || 0)}</span>
-            <span>{stats.weekly?.thisWeekVideos || 0} videos</span>
-          </div>
+          {stats.last7Days.length > 0 ? (
+            <>
+              <div className="h-32">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={weeklyChartData}>
+                    <defs>
+                      <linearGradient id="colorMinutes" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.3} />
+                        <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                    <YAxis hide />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div className="bg-slate-800 text-white px-2 py-1 rounded text-xs">
+                              {formatMinutes(payload[0].value as number)} • {payload[0].payload.videos} videos
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="minutes"
+                      stroke={COLORS.primary}
+                      strokeWidth={2}
+                      fillOpacity={1}
+                      fill="url(#colorMinutes)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                <span>Total: {formatMinutes(stats.weekly?.thisWeekMinutes ?? 0)}</span>
+                <span>{stats.weekly?.thisWeekVideos ?? 0} videos</span>
+              </div>
+            </>
+          ) : (
+            <div className="h-32 flex items-center justify-center text-muted-foreground text-sm">
+              No data yet. Start watching to see your stats.
+            </div>
+          )}
         </CardContent>
       </Card>
 

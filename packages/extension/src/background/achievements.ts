@@ -226,23 +226,23 @@ export async function calculateStreak(): Promise<number> {
   const today = new Date();
   
   // Start from yesterday and go backwards
+  // Streak = consecutive days where user watched AND stayed under goal
   for (let i = 1; i <= 365; i++) {
     const date = new Date(today);
     date.setDate(date.getDate() - i);
     const key = date.toISOString().split('T')[0];
     const dayStats = dailyStats[key];
     
-    // If no stats for the day, assume they didn't use YouTube (counts as under goal)
-    if (!dayStats) {
-      streak++;
-      continue;
+    // No data = no streak (they didn't track that day)
+    if (!dayStats || dayStats.totalSeconds === undefined) {
+      break;
     }
     
     // Check if under goal
-    if ((dayStats.totalSeconds || 0) <= goalSeconds) {
+    if (dayStats.totalSeconds <= goalSeconds) {
       streak++;
     } else {
-      break; // Streak broken
+      break; // Streak broken - over goal
     }
   }
   
