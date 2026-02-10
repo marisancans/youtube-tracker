@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const extensionPath = path.join(__dirname, 'packages/extension/dist');
+const apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:8000';
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -17,7 +18,7 @@ export default defineConfig({
   use: {
     trace: 'on-first-retry',
     video: 'on-first-retry',
-    baseURL: 'http://localhost:8000',
+    baseURL: apiBaseUrl,
   },
 
   projects: [

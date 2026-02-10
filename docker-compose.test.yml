@@ -1,0 +1,48 @@
+# E2E Testing with VNC visualization
+# Usage:
+#   docker compose -f docker-compose.test.yml up --build
+#   Connect VNC viewer to localhost:5900 to watch tests
+#   Or for interactive mode: docker compose -f docker-compose.test.yml run test-runner shell
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ytdetox
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: ./packages/backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/ytdetox
+      CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173","chrome-extension://*","http://test-runner:3000"]'
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      - API_BASE_URL=http://api:8000
+    volumes:
+      # Mount for live code updates (optional)
+      - ./tests:/app/tests:ro
+      - ./packages/extension/dist:/app/packages/extension/dist:ro
+    depends_on:
+      - api
+    ports:
+      - "5900:5900"  # VNC
+    # Override for interactive shell
+    # command: shell

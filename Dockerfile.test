@@ -1,0 +1,74 @@
+# Playwright test runner with VNC support
+FROM mcr.microsoft.com/playwright:v1.52.0-jammy
+
+# Install VNC and window manager
+RUN apt-get update && apt-get install -y \
+    x11vnc \
+    xvfb \
+    fluxbox \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install pnpm
+RUN npm install -g pnpm@9
+
+WORKDIR /app
+
+# Copy package files first for caching
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/extension/package.json ./packages/extension/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/backend/requirements.txt ./packages/backend/
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy rest of the code
+COPY . .
+
+# Build extension
+RUN pnpm build:ext
+
+# Expose VNC port
+EXPOSE 5900
+
+# Start script
+COPY <<'EOF' /entrypoint.sh
+#!/bin/bash
+set -e
+
+# Start virtual display
+Xvfb :99 -screen 0 1920x1080x24 &
+export DISPLAY=:99
+sleep 2
+
+# Start window manager (makes debugging easier)
+fluxbox &
+
+# Start VNC server
+x11vnc -display :99 -forever -shared -rfbport 5900 -bg -nopw
+
+echo "============================================"
+echo "🖥️  VNC server running on port 5900"
+echo "👁️  Connect with: vncviewer localhost:5900"
+echo "🌐  Or use a VNC client to connect"
+echo "============================================"
+
+# Run tests or keep alive for interactive use
+case "$1" in
+    test)
+        pnpm test:extension --reporter=list
+        ;;
+    shell)
+        echo "Interactive mode. Run tests with: pnpm test:extension"
+        /bin/bash
+        ;;
+    *)
+        echo "Container ready. Run 'pnpm test:extension' manually."
+        tail -f /dev/null
+        ;;
+esac
+EOF
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["test"]

@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const API_BASE = 'http://localhost:8000';
+const API_BASE = process.env.API_BASE_URL || 'http://localhost:8000';
 const extensionPath = path.join(__dirname, '../../packages/extension/dist');
 
 // Test must run headed - extensions don't work in headless

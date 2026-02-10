@@ -4,7 +4,7 @@
  */
 import { test, expect } from '@playwright/test';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = process.env.API_BASE_URL || 'http://localhost:8000';
 
 test.describe('API Health & Structure', () => {
   test('health endpoint returns ok', async ({ request }) => {
