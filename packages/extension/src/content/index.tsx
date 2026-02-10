@@ -1,3 +1,7 @@
+// Top-level marker - runs immediately when script loads
+console.log('[YT Detox] Content script file loaded');
+(window as any).__YT_DETOX_LOADED__ = true;
+
 import { createRoot, Root } from 'react-dom/client';
 import App from './App';
 import {

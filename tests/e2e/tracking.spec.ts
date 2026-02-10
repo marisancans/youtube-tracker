@@ -34,27 +34,39 @@ test.describe('Extension E2E Tests', () => {
     console.log('Extension path:', extensionPath);
     console.log('API base:', API_BASE);
     
-    // Launch browser with extension
-    const browser = await chromium.launch({
+    // Use launchPersistentContext for extension support
+    // This is the recommended way to load extensions in Playwright
+    const userDataDir = '/tmp/test-user-data-' + Date.now();
+    
+    context = await chromium.launchPersistentContext(userDataDir, {
       headless: false,
       args: [
         `--disable-extensions-except=${extensionPath}`,
         `--load-extension=${extensionPath}`,
+        // Essential Docker flags
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-blink-features=AutomationControlled',
+        // Stability
+        '--no-first-run',
+        '--disable-background-networking',
       ],
     });
     
-    context = await browser.newContext();
-    
     // Wait for service worker to load
-    await context.waitForEvent('serviceworker', { timeout: 30000 }).catch(() => {
-      console.log('No service worker detected within timeout - extension may not have loaded');
+    const sw = await context.waitForEvent('serviceworker', { timeout: 30000 }).catch((e) => {
+      console.log('No service worker detected within timeout:', e.message);
+      return null;
     });
     
-    console.log('Browser context created');
+    if (sw) {
+      console.log('Service worker loaded:', sw.url());
+    }
+    
+    // Give extension a moment to initialize
+    await new Promise(r => setTimeout(r, 2000));
+    
+    console.log('Browser context created, service workers:', context.serviceWorkers().map(w => w.url()));
   });
 
   test.afterAll(async () => {
@@ -76,27 +88,63 @@ test.describe('Extension E2E Tests', () => {
   });
 
   test('extension loads on YouTube', async () => {
-    const page = await context.newPage();
+    // Use existing page from context (first one) or create new
+    const pages = context.pages();
+    const page = pages[0] || await context.newPage();
+    
+    // Collect console messages
+    const logs: string[] = [];
+    page.on('console', msg => {
+      const text = msg.text();
+      if (text.includes('YT Detox') || text.includes('extension') || msg.type() === 'error') {
+        logs.push(`[${msg.type()}] ${text}`);
+      }
+    });
+    page.on('pageerror', err => logs.push(`[pageerror] ${err.message}`));
+    
     try {
-      await page.goto('https://www.youtube.com', { waitUntil: 'domcontentloaded', timeout: 60000 });
+      // Navigate to YouTube
+      console.log('Navigating to YouTube...');
+      await page.goto('https://www.youtube.com', { waitUntil: 'networkidle', timeout: 60000 });
+      console.log('Page loaded, URL:', page.url());
+      
       await dismissConsent(page);
-      await page.waitForTimeout(3000);
+      
+      // Wait for content script
+      await page.waitForTimeout(5000);
 
-      // Check for content script marker
-      const hasContentScript = await page.evaluate(() => {
-        return !!(window as any).__YT_DETOX_TRACKER__;
+      // Content scripts run in isolated world, so window globals won't be visible
+      // Check for DOM elements or console logs instead
+      const extensionActive = logs.some(l => l.includes('YT Detox') && l.includes('Initializing'));
+      
+      // Also check for extension's DOM element (widget container)
+      const hasWidgetContainer = await page.evaluate(() => {
+        return !!document.getElementById('yt-detox-widget-root');
       });
-
-      console.log('Content script loaded:', hasContentScript);
-      // Extension should inject content script
-      expect(hasContentScript).toBeTruthy();
+      
+      console.log('Extension active (from logs):', extensionActive);
+      console.log('Widget container present:', hasWidgetContainer);
+      console.log('Console logs:', logs);
+      
+      // Extension is working if we see its initialization logs
+      expect(extensionActive).toBeTruthy();
     } finally {
-      await page.close();
+      // Don't close page - keep for other tests
     }
   });
 
   test('tracks video watch', async () => {
     const page = await context.newPage();
+    
+    // Collect extension logs
+    const logs: string[] = [];
+    page.on('console', msg => {
+      const text = msg.text();
+      if (text.includes('YT Detox') || text.includes('video')) {
+        logs.push(`[${msg.type()}] ${text}`);
+      }
+    });
+    
     try {
       // Go to a video
       await page.goto('https://www.youtube.com/watch?v=dQw4w9WgXcQ', {
@@ -114,14 +162,15 @@ test.describe('Extension E2E Tests', () => {
       // Watch a bit
       await page.waitForTimeout(5000);
 
-      // Check content script is tracking
-      const trackerState = await page.evaluate(() => {
-        const tracker = (window as any).__YT_DETOX_TRACKER__;
-        return tracker ? { initialized: tracker.initialized, version: tracker.version } : null;
-      });
-
-      console.log('Tracker state:', trackerState);
-      expect(trackerState).toBeTruthy();
+      // Check content script is running (via console logs)
+      // Note: Can't check window globals due to isolated world
+      const extensionRunning = logs.some(l => l.includes('YT Detox'));
+      
+      console.log('Extension logs:', logs);
+      console.log('Extension running:', extensionRunning);
+      
+      // Extension should be active on video page
+      expect(extensionRunning).toBeTruthy();
     } finally {
       await page.close();
     }

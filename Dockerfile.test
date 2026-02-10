@@ -1,12 +1,16 @@
-# Playwright test runner with VNC support
-FROM mcr.microsoft.com/playwright:v1.58.2-jammy
+# Playwright test runner with VNC for extension testing
+# Based on official Playwright image with proper browser deps
+FROM mcr.microsoft.com/playwright:v1.58.2-noble
 
-# Install VNC and window manager
+# Install VNC and display deps
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     x11vnc \
     xvfb \
     fluxbox \
+    supervisor \
+    novnc \
+    websockify \
     && rm -rf /var/lib/apt/lists/*
 
 # Install pnpm
@@ -14,62 +18,87 @@ RUN npm install -g pnpm@9
 
 WORKDIR /app
 
-# Copy package files first for caching
+# Copy package files for layer caching
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/extension/package.json ./packages/extension/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/backend/requirements.txt ./packages/backend/
 
-# Install dependencies
+# Install deps
 RUN pnpm install --frozen-lockfile
 
-# Copy rest of the code
+# Copy source
 COPY . .
 
-# Build shared package first, then extension
+# Build shared + extension
 RUN pnpm --filter @yt-detox/shared build && pnpm build:ext
 
-# Expose VNC port
-EXPOSE 5900
+# Create supervisor config for managing services
+RUN mkdir -p /etc/supervisor/conf.d
+COPY <<'SUPERVISOR' /etc/supervisor/conf.d/services.conf
+[supervisord]
+nodaemon=true
+logfile=/dev/null
+logfile_maxbytes=0
 
-# Start script
-COPY <<'EOF' /entrypoint.sh
+[program:xvfb]
+command=Xvfb :99 -screen 0 1920x1080x24
+autorestart=true
+priority=100
+
+[program:fluxbox]
+command=fluxbox
+environment=DISPLAY=":99"
+autorestart=true
+priority=200
+
+[program:x11vnc]
+command=x11vnc -display :99 -forever -shared -rfbport 5900 -nopw
+autorestart=true
+priority=300
+
+[program:novnc]
+command=websockify --web=/usr/share/novnc/ 6080 localhost:5900
+autorestart=true
+priority=400
+SUPERVISOR
+
+# Expose ports
+EXPOSE 5900 6080
+
+# Healthcheck
+HEALTHCHECK --interval=5s --timeout=3s --start-period=10s \
+    CMD curl -f http://localhost:6080/ || exit 1
+
+# Entrypoint script
+COPY <<'ENTRY' /entrypoint.sh
 #!/bin/bash
 set -e
 
-# Start virtual display
-Xvfb :99 -screen 0 1920x1080x24 &
+# Start display services via supervisor
+supervisord -c /etc/supervisor/supervisord.conf &
+sleep 3
+
 export DISPLAY=:99
-sleep 2
-
-# Start window manager (makes debugging easier)
-fluxbox &
-
-# Start VNC server
-x11vnc -display :99 -forever -shared -rfbport 5900 -bg -nopw
 
 echo "============================================"
-echo "🖥️  VNC server running on port 5900"
-echo "👁️  Connect with: vncviewer localhost:5900"
-echo "🌐  Or use a VNC client to connect"
+echo "🖥️  VNC available:"
+echo "   - Raw VNC: localhost:5900"
+echo "   - Web VNC: http://localhost:6080/vnc.html"
 echo "============================================"
 
-# Run tests or keep alive for interactive use
-case "$1" in
-    test)
-        pnpm test:extension --reporter=list
-        ;;
-    shell)
-        echo "Interactive mode. Run tests with: pnpm test:extension"
-        /bin/bash
-        ;;
-    *)
-        echo "Container ready. Run 'pnpm test:extension' manually."
-        tail -f /dev/null
-        ;;
-esac
-EOF
+# Run command
+if [ "$1" = "test" ]; then
+    exec pnpm test:extension --reporter=list
+elif [ "$1" = "shell" ]; then
+    exec /bin/bash
+else
+    exec "$@"
+fi
+ENTRY
 RUN chmod +x /entrypoint.sh
+
+ENV DISPLAY=:99
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["test"]

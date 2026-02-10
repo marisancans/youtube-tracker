@@ -45,5 +45,6 @@ services:
       - api
     ports:
       - "5900:5900"  # VNC
+      - "6080:6080"  # noVNC web interface
     # Override for interactive shell
     # command: shell
