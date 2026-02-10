@@ -1,8 +1,11 @@
 /**
  * Backend Sync Logic
+ * 
+ * Security: Uses Google OAuth Bearer token for authentication
  */
 
 import { getStorage, saveStorage, EMPTY_EVENT_QUEUES } from './storage';
+import { getAuthState } from './auth';
 
 // ===== Unified Backend Sync =====
 
@@ -43,13 +46,17 @@ export async function syncToBackend(): Promise<boolean> {
   storage.syncState.syncInProgress = true;
   await saveStorage({ syncState: storage.syncState });
 
-  // Get or create user ID
-  let userId = settings.backend.userId;
-  if (!userId) {
-    userId = `device-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    settings.backend.userId = userId;
-    await saveStorage({ settings });
+  // Get auth state for Bearer token
+  const authState = await getAuthState();
+  if (!authState.token) {
+    console.log('[YT Detox] No auth token - skipping sync (user not signed in)');
+    storage.syncState.syncInProgress = false;
+    await saveStorage({ syncState: storage.syncState });
+    return false;
   }
+
+  // Use Google ID as user ID
+  const userId = authState.user?.id || settings.backend.userId || 'anonymous';
 
   try {
     // Build unified sync request
@@ -75,7 +82,8 @@ export async function syncToBackend(): Promise<boolean> {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-User-Id': userId,
+        'Authorization': `Bearer ${authState.token}`,
+        'X-User-Id': userId,  // Fallback for dev mode
       },
       body: JSON.stringify(syncRequest),
     });

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -12,22 +12,27 @@ from app.models.domain import (
     ScrollEvent, ThumbnailEvent, PageEvent, VideoWatchEvent,
     RecommendationEvent, InterventionEvent, MoodReport, ProductiveUrl
 )
-from app.api.deps import get_or_create_user
-from pydantic import BaseModel, Field
+from app.api.deps import get_current_user, validate_sync_payload, sanitize_string, sanitize_url
+from app.config import get_settings
+from pydantic import BaseModel, Field, field_validator
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
+settings = get_settings()
+limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
 
 
 # ===== Pydantic Schemas =====
 
 class VideoSessionCreate(BaseModel):
-    id: str
-    videoId: str
-    title: Optional[str] = None
-    channel: Optional[str] = None
-    channelId: Optional[str] = None
-    durationSeconds: int = 0
-    watchedSeconds: int = 0
+    id: str = Field(..., max_length=64)
+    videoId: str = Field(..., max_length=20)
+    title: Optional[str] = Field(None, max_length=500)
+    channel: Optional[str] = Field(None, max_length=255)
+    channelId: Optional[str] = Field(None, max_length=30)
+    durationSeconds: int = Field(0, ge=0, le=86400)  # Max 24h
+    watchedSeconds: int = Field(0, ge=0, le=86400)
     watchedPercent: int = 0
     source: Optional[str] = None
     sourcePosition: Optional[int] = None
@@ -220,10 +225,17 @@ class MoodReportCreate(BaseModel):
 
 
 class ProductiveUrlCreate(BaseModel):
-    id: str
-    url: str
-    title: str
-    addedAt: int
+    id: str = Field(..., max_length=64)
+    url: str = Field(..., max_length=2000)
+    title: str = Field(..., max_length=255)
+    addedAt: int = Field(..., ge=0)
+    
+    @field_validator('url')
+    @classmethod
+    def validate_url(cls, v: str) -> str:
+        if not v.startswith(('http://', 'https://')):
+            raise ValueError('URL must start with http:// or https://')
+        return v
 
 
 class SyncData(BaseModel):
@@ -256,15 +268,25 @@ class SyncResponse(BaseModel):
 # ===== Main Sync Endpoint =====
 
 @router.post("", response_model=SyncResponse)
+@limiter.limit(settings.rate_limit_sync)
 async def sync_all(
+    http_request: Request,
     request: SyncRequest,
-    user: User = Depends(get_or_create_user),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Single endpoint to sync all event types at once.
     Processes all data in a single atomic transaction.
+    
+    Security:
+    - Requires Google OAuth Bearer token (or X-User-Id in dev mode)
+    - Rate limited to 20 requests/minute per user
+    - Payload size validated
     """
+    
+    # Validate payload sizes
+    validate_sync_payload(request.data.model_dump())
     
     counts = {
         "videoSessions": 0,
@@ -634,11 +656,13 @@ async def sync_all(
 # ===== Query Endpoints =====
 
 @router.get("/videos")
+@limiter.limit(settings.rate_limit)
 async def get_synced_videos(
-    user: User = Depends(get_or_create_user),
+    http_request: Request,
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    limit: int = 100,
-    offset: int = 0
+    limit: int = Field(100, le=500),  # Max 500 per request
+    offset: int = Field(0, ge=0)
 ):
     """Get synced video sessions for a user."""
     result = await db.execute(
@@ -680,9 +704,11 @@ async def get_synced_videos(
 
 
 @router.get("/stats/{date_str}")
+@limiter.limit(settings.rate_limit)
 async def get_daily_stats(
+    http_request: Request,
     date_str: str,
-    user: User = Depends(get_or_create_user),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Get daily stats for a specific date."""
