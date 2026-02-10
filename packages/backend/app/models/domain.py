@@ -403,7 +403,7 @@ class MoodReport(Base):
     session_id: Mapped[str] = mapped_column(String(64), index=True)
     
     timestamp: Mapped[datetime] = mapped_column(DateTime)
-    report_type: Mapped[str] = mapped_column(String(10))  # 'pre' or 'post'
+    report_type: Mapped[str] = mapped_column(String(50))  # 'pre_session', 'post_session', 'check_in'
     mood: Mapped[int] = mapped_column(Integer)  # 1-5
     intention: Mapped[str | None] = mapped_column(Text)
     satisfaction: Mapped[int | None] = mapped_column(Integer)  # 1-5

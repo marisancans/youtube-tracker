@@ -7,7 +7,7 @@ const extensionPath = path.join(__dirname, 'packages/extension/dist');
 const apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:8000';
 
 export default defineConfig({
-  testDir: './tests/e2e',
+  testDir: './tests',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -22,9 +22,20 @@ export default defineConfig({
   },
 
   projects: [
-    // API tests - run anywhere (headless OK)
+    // Comprehensive API tests - all sync endpoints
+    {
+      name: 'api-complete',
+      testDir: './tests/api',
+      testMatch: /sync-complete\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        headless: true,
+      },
+    },
+    // Basic API tests
     {
       name: 'api',
+      testDir: './tests/e2e',
       testMatch: /api\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
@@ -34,6 +45,7 @@ export default defineConfig({
     // Extension tests - require display (headed mode)
     {
       name: 'extension',
+      testDir: './tests/e2e',
       testMatch: /tracking\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],

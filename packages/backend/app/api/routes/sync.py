@@ -617,7 +617,8 @@ async def get_synced_videos(
     return {
         "videos": [
             {
-                "id": str(s.id),
+                "id": s.ext_session_id,  # Return extension's original ID
+                "dbId": str(s.id),
                 "videoId": s.video_id,
                 "title": s.title,
                 "channel": s.channel,

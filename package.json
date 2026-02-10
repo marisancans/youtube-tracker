@@ -13,6 +13,7 @@
     "typecheck": "pnpm -r run typecheck",
     "test": "playwright test",
     "test:api": "playwright test --project=api",
+    "test:api:complete": "playwright test --project=api-complete",
     "test:extension": "playwright test --project=extension",
     "test:docker": "docker compose -f docker-compose.test.yml up --build --abort-on-container-exit",
     "test:docker:interactive": "docker compose -f docker-compose.test.yml run --service-ports test-runner shell",
