@@ -41,6 +41,11 @@ import {
   Snowflake,
   RefreshCw,
   BarChart3,
+  Link,
+  Plus,
+  Trash2,
+  ExternalLink,
+  Sparkles,
 } from 'lucide-react';
 
 // ===== Types =====
@@ -62,6 +67,13 @@ interface Achievement {
   icon: string;
   xpReward: number;
   rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+}
+
+interface ProductiveUrl {
+  id: string;
+  url: string;
+  title: string;
+  addedAt: number;
 }
 
 interface DailyStats {
@@ -181,6 +193,9 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [productiveUrls, setProductiveUrls] = useState<ProductiveUrl[]>([]);
+  const [newUrl, setNewUrl] = useState('');
+  const [newTitle, setNewTitle] = useState('');
 
   // ===== Fetch Data =====
 
@@ -223,6 +238,11 @@ export default function Settings() {
       chrome.runtime.sendMessage({ type: 'AUTH_GET_STATE' }, (response) => {
         if (response?.user) setAuthUser(response.user);
       });
+
+      // Get productive URLs
+      if (data.productiveUrls) {
+        setProductiveUrls(data.productiveUrls);
+      }
 
       // Build channel stats from video sessions
       const videoSessions = data.videoSessions || [];
@@ -397,6 +417,35 @@ export default function Settings() {
         }));
       }
     });
+  };
+
+  const addProductiveUrl = async () => {
+    if (!newUrl.trim()) return;
+    
+    // Basic URL validation
+    let url = newUrl.trim();
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+    
+    const newEntry: ProductiveUrl = {
+      id: crypto.randomUUID(),
+      url,
+      title: newTitle.trim() || new URL(url).hostname,
+      addedAt: Date.now(),
+    };
+    
+    const updated = [...productiveUrls, newEntry];
+    setProductiveUrls(updated);
+    await chrome.storage.local.set({ productiveUrls: updated });
+    setNewUrl('');
+    setNewTitle('');
+  };
+
+  const removeProductiveUrl = async (id: string) => {
+    const updated = productiveUrls.filter(u => u.id !== id);
+    setProductiveUrls(updated);
+    await chrome.storage.local.set({ productiveUrls: updated });
   };
 
   // ===== Render =====
@@ -898,6 +947,88 @@ export default function Settings() {
                     </div>
                   ))}
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Productive Alternatives */}
+            <Card className="bg-white/5 border-white/10">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-green-400" />
+                  Productive Alternatives
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-white/50 mb-4">
+                  Save links you actually want to spend time on. We'll suggest them when you're drifting.
+                </p>
+                
+                {/* Add new URL */}
+                <div className="flex gap-2 mb-4">
+                  <input
+                    type="text"
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    placeholder="Title (optional)"
+                    className="flex-[2] px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm focus:outline-none focus:border-green-500/50"
+                  />
+                  <input
+                    type="url"
+                    value={newUrl}
+                    onChange={(e) => setNewUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="flex-[3] px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm focus:outline-none focus:border-green-500/50"
+                    onKeyDown={(e) => e.key === 'Enter' && addProductiveUrl()}
+                  />
+                  <button
+                    onClick={addProductiveUrl}
+                    disabled={!newUrl.trim()}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-white/10 disabled:text-white/30 rounded-lg font-medium transition-colors flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add
+                  </button>
+                </div>
+
+                {/* URL list */}
+                {productiveUrls.length > 0 ? (
+                  <div className="space-y-2">
+                    {productiveUrls.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10 group hover:border-green-500/30 transition-colors"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Link className="w-4 h-4 text-green-400 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <div className="font-medium truncate">{item.title}</div>
+                            <a
+                              href={item.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-white/40 hover:text-green-400 truncate flex items-center gap-1"
+                            >
+                              {item.url}
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => removeProductiveUrl(item.id)}
+                          className="p-2 text-white/30 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-white/30">
+                    <Link className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p>No productive alternatives saved yet</p>
+                    <p className="text-xs mt-1">Add courses, tutorials, or projects you want to work on</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

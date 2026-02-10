@@ -59,6 +59,15 @@ export interface AuthState {
   expiresAt: number | null;
 }
 
+// ===== Productive URLs =====
+
+export interface ProductiveUrl {
+  id: string;
+  url: string;
+  title: string;
+  addedAt: number;
+}
+
 // ===== Challenge Progress =====
 
 export type GoalMode = 'music' | 'time_reduction' | 'strict' | 'cold_turkey';

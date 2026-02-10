@@ -47,6 +47,13 @@ const TIER_CONFIG: Record<ChallengeTier, { icon: string; label: string; nextLabe
 
 const TIER_ORDER: ChallengeTier[] = ['casual', 'focused', 'disciplined', 'monk', 'ascetic'];
 
+interface ProductiveUrl {
+  id: string;
+  url: string;
+  title: string;
+  addedAt: number;
+}
+
 interface WidgetState {
   collapsed: boolean;
   minimized: boolean;
@@ -76,6 +83,10 @@ interface WidgetState {
   // Challenge
   challengeProgress: ChallengeProgress | null;
   showUpgradePrompt: boolean;
+  // Productive alternatives
+  productiveUrls: ProductiveUrl[];
+  suggestedUrl: ProductiveUrl | null;
+  dismissedSuggestion: boolean;
 }
 
 function formatTime(seconds: number): string {
@@ -140,6 +151,8 @@ const Icons = {
   Moon: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>,
   X: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
   Lightbulb: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>,
+  ExternalLink: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>,
+  Sparkles: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>,
 };
 
 // Mini sparkline component - full width with proper circles
@@ -345,6 +358,9 @@ export default function Widget(): JSX.Element {
     },
     challengeProgress: null,
     showUpgradePrompt: false,
+    productiveUrls: [],
+    suggestedUrl: null,
+    dismissedSuggestion: false,
   });
   
   // Inject animation styles once
@@ -370,11 +386,12 @@ export default function Widget(): JSX.Element {
         setState(p => ({ ...p, streak: response.streak }));
       }
     });
-    // Load xp, weeklyData, and phase from storage
-    chrome.storage.local.get(['xp', 'weeklyData', 'settings'], (result) => {
+    // Load xp, weeklyData, phase, and productiveUrls from storage
+    chrome.storage.local.get(['xp', 'weeklyData', 'settings', 'productiveUrls'], (result) => {
       if (result.xp) setState(p => ({ ...p, xp: result.xp }));
       if (result.weeklyData) setState(p => ({ ...p, weeklyData: result.weeklyData }));
       if (result.settings?.phase) setState(p => ({ ...p, phase: result.settings.phase }));
+      if (result.productiveUrls) setState(p => ({ ...p, productiveUrls: result.productiveUrls }));
     });
     // Load drift
     chrome.runtime.sendMessage({ type: 'GET_DRIFT' }, (response) => {
@@ -397,20 +414,37 @@ export default function Widget(): JSX.Element {
       // Update drift
       chrome.runtime.sendMessage({ type: 'GET_DRIFT' }, (response) => {
         if (response && typeof response.drift === 'number') {
-          setState(p => ({ 
-            ...p, 
-            drift: {
-              drift: response.drift,
-              level: response.level,
-              effects: response.effects,
+          setState(p => {
+            const newLevel = response.level;
+            const wasLow = p.drift.level === 'low';
+            const nowDrifting = newLevel !== 'low';
+            
+            // Suggest a productive URL when transitioning to drifting state
+            let suggestedUrl = p.suggestedUrl;
+            if (wasLow && nowDrifting && p.productiveUrls.length > 0 && !p.dismissedSuggestion) {
+              const randomIdx = Math.floor(Math.random() * p.productiveUrls.length);
+              suggestedUrl = p.productiveUrls[randomIdx];
             }
-          }));
+            
+            return { 
+              ...p, 
+              drift: {
+                drift: response.drift,
+                level: response.level,
+                effects: response.effects,
+              },
+              suggestedUrl,
+            };
+          });
         }
       });
       // Update XP (might have changed from achievements)
-      chrome.storage.local.get(['xp'], (result) => {
+      chrome.storage.local.get(['xp', 'productiveUrls'], (result) => {
         if (result.xp !== undefined) {
           setState(p => ({ ...p, xp: result.xp }));
+        }
+        if (result.productiveUrls) {
+          setState(p => ({ ...p, productiveUrls: result.productiveUrls }));
         }
       });
     }, 10000); // Update every 10 seconds
@@ -468,6 +502,23 @@ export default function Widget(): JSX.Element {
       ...p,
       showUpgradePrompt: false,
       dismissedNudges: new Set([...p.dismissedNudges, 'upgrade_prompt']),
+    }));
+  }, []);
+  
+  const dismissSuggestion = useCallback(() => {
+    setState(p => ({
+      ...p,
+      suggestedUrl: null,
+      dismissedSuggestion: true,
+    }));
+  }, []);
+  
+  const openSuggestion = useCallback((url: string) => {
+    window.open(url, '_blank');
+    setState(p => ({
+      ...p,
+      suggestedUrl: null,
+      dismissedSuggestion: true,
     }));
   }, []);
   
@@ -880,6 +931,56 @@ export default function Widget(): JSX.Element {
                 {state.drift.level === 'critical' && "High drift — friction active 🔴"}
               </div>
             </div>
+            
+            {/* Productive Alternative Suggestion */}
+            {state.suggestedUrl && state.drift.level !== 'low' && (
+              <div style={{
+                padding: '12px',
+                background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(22, 163, 74, 0.15) 100%)',
+                borderRadius: '12px',
+                marginBottom: '16px',
+                border: '1px solid rgba(34, 197, 94, 0.3)',
+                animation: 'yt-detox-wave 2s ease-in-out infinite',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <div style={{ color: '#4ade80' }}><Icons.Sparkles /></div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>
+                      How about something productive?
+                    </div>
+                    <div style={{ fontSize: '13px', fontWeight: '600', color: '#fff' }}>
+                      {state.suggestedUrl.title}
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => dismissSuggestion()}
+                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: '4px' }}
+                  >
+                    <Icons.X />
+                  </button>
+                </div>
+                <button
+                  onClick={() => openSuggestion(state.suggestedUrl!.url)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: 'rgba(34, 197, 94, 0.2)',
+                    border: '1px solid rgba(34, 197, 94, 0.4)',
+                    borderRadius: '8px',
+                    color: '#4ade80',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  Open Instead <Icons.ExternalLink />
+                </button>
+              </div>
+            )}
             
             {/* Weekly Trend */}
             <div style={s.weeklySection}>
