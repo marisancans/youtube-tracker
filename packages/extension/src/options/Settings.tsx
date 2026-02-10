@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   AreaChart,
   Area,
@@ -40,6 +40,7 @@ import {
   Lock,
   Snowflake,
   RefreshCw,
+  BarChart3,
 } from 'lucide-react';
 
 // ===== Types =====
@@ -178,7 +179,7 @@ export default function Settings() {
   const [authUser, setAuthUser] = useState<GoogleUser | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // ===== Fetch Data =====
@@ -450,121 +451,29 @@ export default function Settings() {
             <button
               onClick={fetchData}
               className="p-2 hover:bg-white/10 rounded-lg"
+              title="Refresh data"
             >
               <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-            
-            {/* Settings Toggle */}
-            <button
-              onClick={() => setSettingsOpen(!settingsOpen)}
-              className="p-2 hover:bg-white/10 rounded-lg"
-            >
-              <SettingsIcon className="w-5 h-5" />
             </button>
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Settings Panel (Collapsible) */}
-        {settingsOpen && (
-          <Card className="mb-8 bg-white/5 border-white/10">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <SettingsIcon className="w-5 h-5" />
-                Settings
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Goal Mode */}
-                <div>
-                  <Label className="text-white/70 mb-2 block">Goal Mode</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(Object.entries(GOAL_MODES) as [GoalMode, typeof GOAL_MODES[GoalMode]][]).map(([mode, config]) => (
-                      <button
-                        key={mode}
-                        onClick={() => setSettings(p => ({ ...p, goalMode: mode }))}
-                        className={`p-3 rounded-lg border text-left transition-all ${
-                          settings.goalMode === mode
-                            ? 'border-blue-500 bg-blue-500/20'
-                            : 'border-white/10 hover:border-white/30'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          {config.icon}
-                          <span className="font-medium">{config.label}</span>
-                        </div>
-                        <span className="text-xs text-white/50">{config.desc}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full max-w-md grid-cols-2 mb-8 bg-white/5">
+            <TabsTrigger value="dashboard" className="data-[state=active]:bg-white/10">
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Dashboard
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="data-[state=active]:bg-white/10">
+              <SettingsIcon className="w-4 h-4 mr-2" />
+              Settings
+            </TabsTrigger>
+          </TabsList>
 
-                {/* Challenge Tier */}
-                <div>
-                  <Label className="text-white/70 mb-2 block">Challenge Tier</Label>
-                  <div className="space-y-2">
-                    {(Object.entries(CHALLENGE_TIERS) as [ChallengeTier, typeof CHALLENGE_TIERS[ChallengeTier]][]).map(([tier, config]) => (
-                      <button
-                        key={tier}
-                        onClick={() => setSettings(p => ({ ...p, challengeTier: tier, dailyGoalMinutes: config.goalMinutes }))}
-                        className={`w-full p-2 rounded-lg border text-left flex items-center justify-between ${
-                          settings.challengeTier === tier
-                            ? 'border-purple-500 bg-purple-500/20'
-                            : 'border-white/10 hover:border-white/30'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <span>{config.icon}</span>
-                          <span>{config.label}</span>
-                        </span>
-                        <span className="text-xs text-white/50">{config.goalMinutes}m • {config.xpMultiplier}x XP</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Friction Effects */}
-                <div>
-                  <Label className="text-white/70 mb-2 block">Friction Effects</Label>
-                  <div className="space-y-3">
-                    {[
-                      { key: 'thumbnails', label: 'Blur Thumbnails', icon: <Eye className="w-4 h-4" /> },
-                      { key: 'sidebar', label: 'Hide Sidebar', icon: <Sidebar className="w-4 h-4" /> },
-                      { key: 'comments', label: 'Reduce Comments', icon: <MessageSquare className="w-4 h-4" /> },
-                      { key: 'autoplay', label: 'Control Autoplay', icon: <Play className="w-4 h-4" /> },
-                    ].map(({ key, label, icon }) => (
-                      <div key={key} className="flex items-center justify-between">
-                        <span className="flex items-center gap-2 text-sm">
-                          {icon}
-                          {label}
-                        </span>
-                        <Switch
-                          checked={(settings.frictionEnabled as any)[key]}
-                          onCheckedChange={(v) => setSettings(p => ({
-                            ...p,
-                            frictionEnabled: { ...p.frictionEnabled, [key]: v }
-                          }))}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={saveSettings}
-                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium"
-                >
-                  Save Settings
-                </button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
+          {/* ===== DASHBOARD TAB ===== */}
+          <TabsContent value="dashboard" className="mt-0">
         {/* Top Stats Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8">
           {/* Today */}
@@ -878,6 +787,131 @@ export default function Settings() {
             </CardContent>
           </Card>
         </div>
+          </TabsContent>
+
+          {/* ===== SETTINGS TAB ===== */}
+          <TabsContent value="settings" className="mt-0 space-y-6">
+            {/* Goal Mode */}
+            <Card className="bg-white/5 border-white/10">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-blue-400" />
+                  Goal Mode
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {(Object.entries(GOAL_MODES) as [GoalMode, typeof GOAL_MODES[GoalMode]][]).map(([mode, config]) => (
+                    <button
+                      key={mode}
+                      onClick={() => setSettings(p => ({ ...p, goalMode: mode }))}
+                      className={`p-4 rounded-xl border text-left transition-all ${
+                        settings.goalMode === mode
+                          ? 'border-blue-500 bg-blue-500/20 ring-1 ring-blue-500/50'
+                          : 'border-white/10 hover:border-white/30 hover:bg-white/5'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        {config.icon}
+                        <span className="font-semibold">{config.label}</span>
+                      </div>
+                      <span className="text-sm text-white/50">{config.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Challenge Tier */}
+            <Card className="bg-white/5 border-white/10">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-purple-400" />
+                  Challenge Tier
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                  {(Object.entries(CHALLENGE_TIERS) as [ChallengeTier, typeof CHALLENGE_TIERS[ChallengeTier]][]).map(([tier, config]) => (
+                    <button
+                      key={tier}
+                      onClick={() => setSettings(p => ({ ...p, challengeTier: tier, dailyGoalMinutes: config.goalMinutes }))}
+                      className={`p-4 rounded-xl border text-center transition-all ${
+                        settings.challengeTier === tier
+                          ? 'border-purple-500 bg-purple-500/20 ring-1 ring-purple-500/50'
+                          : 'border-white/10 hover:border-white/30 hover:bg-white/5'
+                      }`}
+                    >
+                      <span className="text-2xl mb-2 block">{config.icon}</span>
+                      <span className="font-semibold block">{config.label}</span>
+                      <span className="text-xs text-white/50 block mt-1">{config.goalMinutes}m daily</span>
+                      <span className="text-xs text-purple-400 block">{config.xpMultiplier}x XP</span>
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Friction Effects */}
+            <Card className="bg-white/5 border-white/10">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Waves className="w-5 h-5 text-cyan-400" />
+                  Friction Effects
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-white/50 mb-4">
+                  These effects are applied progressively as your Drift level increases.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[
+                    { key: 'thumbnails', label: 'Blur Thumbnails', desc: 'Reduce visual temptation', icon: <Eye className="w-5 h-5" /> },
+                    { key: 'sidebar', label: 'Hide Sidebar', desc: 'Remove recommendations', icon: <Sidebar className="w-5 h-5" /> },
+                    { key: 'comments', label: 'Reduce Comments', desc: 'Less social distraction', icon: <MessageSquare className="w-5 h-5" /> },
+                    { key: 'autoplay', label: 'Control Autoplay', desc: 'Delay or disable autoplay', icon: <Play className="w-5 h-5" /> },
+                  ].map(({ key, label, desc, icon }) => (
+                    <div
+                      key={key}
+                      className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
+                        (settings.frictionEnabled as any)[key]
+                          ? 'border-cyan-500/30 bg-cyan-500/10'
+                          : 'border-white/10 bg-white/5'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${(settings.frictionEnabled as any)[key] ? 'bg-cyan-500/20 text-cyan-400' : 'bg-white/10 text-white/50'}`}>
+                          {icon}
+                        </div>
+                        <div>
+                          <span className="font-medium block">{label}</span>
+                          <span className="text-xs text-white/50">{desc}</span>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={(settings.frictionEnabled as any)[key]}
+                        onCheckedChange={(v) => setSettings(p => ({
+                          ...p,
+                          frictionEnabled: { ...p.frictionEnabled, [key]: v }
+                        }))}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Save Button */}
+            <div className="flex justify-end">
+              <button
+                onClick={saveSettings}
+                className="px-8 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-semibold transition-colors"
+              >
+                Save Settings
+              </button>
+            </div>
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );
