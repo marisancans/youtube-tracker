@@ -138,9 +138,19 @@ export async function calculateDrift(): Promise<{ drift: number; factors: DriftF
   if (goalMode === 'strict') {
     drift *= 1.5; // 50% faster drift in strict mode
   } else if (goalMode === 'music') {
-    // In music mode, would need to check if current content is music
-    // For now, apply a small discount
-    drift *= 0.8;
+    // In music mode, check if current content is music (via storage flag)
+    const musicData = await chrome.storage.local.get('currentContentIsMusic');
+    if (musicData.currentContentIsMusic) {
+      drift *= 0.3; // Heavy discount for music content
+    } else {
+      drift *= 0.9; // Small discount even when not music
+    }
+  } else if (goalMode === 'cold_turkey') {
+    // Cold turkey: hard block threshold at 0.3
+    // Once you hit 0.3, it jumps to 1.0 (max friction)
+    if (drift >= 0.3) {
+      drift = 1.0;
+    }
   }
 
   // Clamp to 0-1
@@ -174,16 +184,57 @@ export function getDriftLevel(drift: number): DriftLevel {
   return 'critical';
 }
 
+// ===== Friction Settings =====
+
+interface FrictionEnabled {
+  thumbnails: boolean;
+  sidebar: boolean;
+  comments: boolean;
+  player: boolean;
+  autoplay: boolean;
+}
+
+const DEFAULT_FRICTION: FrictionEnabled = {
+  thumbnails: true,
+  sidebar: true,
+  comments: true,
+  player: false,
+  autoplay: true,
+};
+
 // ===== Get Drift Effects =====
 
+export async function getDriftEffectsAsync(drift: number): Promise<DriftEffects> {
+  // Get friction settings from storage
+  const data = await chrome.storage.local.get('settings');
+  const frictionEnabled: FrictionEnabled = data.settings?.frictionEnabled || DEFAULT_FRICTION;
+  
+  return calculateDriftEffects(drift, frictionEnabled);
+}
+
 export function getDriftEffects(drift: number): DriftEffects {
+  // Sync version uses defaults - async version should be preferred
+  return calculateDriftEffects(drift, DEFAULT_FRICTION);
+}
+
+function calculateDriftEffects(drift: number, friction: FrictionEnabled): DriftEffects {
   return {
-    thumbnailBlur: drift < 0.5 ? 0 : drift < 0.7 ? 2 : drift < 0.9 ? 4 : 8,
-    thumbnailGrayscale: drift < 0.3 ? 0 : drift < 0.5 ? 20 : drift < 0.7 ? 30 : drift < 0.9 ? 60 : 100,
-    commentsReduction: drift < 0.3 ? 0 : drift < 0.5 ? 10 : drift < 0.7 ? 20 : drift < 0.9 ? 50 : 100,
-    sidebarReduction: drift < 0.3 ? 0 : drift < 0.5 ? 50 : drift < 0.7 ? 75 : 100,
-    autoplayDelay: drift < 0.3 ? 5 : drift < 0.5 ? 15 : drift < 0.7 ? 30 : 999,
-    showTextOnly: drift >= 0.9,
+    thumbnailBlur: friction.thumbnails 
+      ? (drift < 0.5 ? 0 : drift < 0.7 ? 2 : drift < 0.9 ? 4 : 8)
+      : 0,
+    thumbnailGrayscale: friction.thumbnails
+      ? (drift < 0.3 ? 0 : drift < 0.5 ? 20 : drift < 0.7 ? 30 : drift < 0.9 ? 60 : 100)
+      : 0,
+    commentsReduction: friction.comments
+      ? (drift < 0.3 ? 0 : drift < 0.5 ? 10 : drift < 0.7 ? 20 : drift < 0.9 ? 50 : 100)
+      : 0,
+    sidebarReduction: friction.sidebar
+      ? (drift < 0.3 ? 0 : drift < 0.5 ? 50 : drift < 0.7 ? 75 : 100)
+      : 0,
+    autoplayDelay: friction.autoplay
+      ? (drift < 0.3 ? 5 : drift < 0.5 ? 15 : drift < 0.7 ? 30 : 999)
+      : 5,
+    showTextOnly: friction.thumbnails && drift >= 0.9,
   };
 }
 
@@ -218,6 +269,7 @@ export function startDriftCalculation(intervalMs: number = 30000): void {
 
   driftInterval = setInterval(async () => {
     const { drift, factors } = await calculateDrift();
+    const effects = await getDriftEffectsAsync(drift);
     console.log('[YT Detox] Drift calculated:', drift.toFixed(2), 'factors:', factors);
     
     // Broadcast drift update to content scripts
@@ -229,7 +281,7 @@ export function startDriftCalculation(intervalMs: number = 30000): void {
             data: {
               drift,
               level: getDriftLevel(drift),
-              effects: getDriftEffects(drift),
+              effects,
             },
           }).catch(() => {
             // Tab might not have content script loaded

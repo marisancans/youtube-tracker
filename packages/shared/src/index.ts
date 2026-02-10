@@ -459,7 +459,9 @@ export type MessageType =
   | 'SET_CHALLENGE_TIER'
   | 'SET_GOAL_MODE'
   // Tabs
-  | 'GET_TAB_INFO';
+  | 'GET_TAB_INFO'
+  // Music detection
+  | 'MUSIC_DETECTED';
 
 // ===== Batch Sync Types =====
 

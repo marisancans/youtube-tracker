@@ -28,7 +28,7 @@ import {
 import {
   calculateDrift,
   getDriftLevel,
-  getDriftEffects,
+  getDriftEffectsAsync,
   getDriftState,
   initDrift,
   startDriftCalculation,
@@ -284,16 +284,17 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
         case 'GET_DRIFT':
           const { drift, factors } = await calculateDrift();
           const driftState = getDriftState();
+          const driftEffects = await getDriftEffectsAsync(drift);
           response = {
             drift,
             factors,
             level: getDriftLevel(drift),
-            effects: getDriftEffects(drift),
+            effects: driftEffects,
             history: driftState.history,
           };
           break;
         case 'GET_DRIFT_EFFECTS':
-          response = getDriftEffects(getDriftState().current);
+          response = await getDriftEffectsAsync(getDriftState().current);
           break;
 
         // Challenge
@@ -324,6 +325,16 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
         // Tabs
         case 'GET_TAB_INFO':
           response = getTabState();
+          break;
+
+        // Music detection
+        case 'MUSIC_DETECTED':
+          // Store music detection result for drift calculation
+          await chrome.storage.local.set({
+            currentContentIsMusic: (data as any)?.isMusic || false,
+            musicDetectionConfidence: (data as any)?.confidence || 0,
+          });
+          console.log('[YT Detox] Music detected:', (data as any)?.isMusic, 'confidence:', (data as any)?.confidence);
           break;
 
         default:
