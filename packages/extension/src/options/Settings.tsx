@@ -12,7 +12,14 @@ import {
   AlertCircle,
   Loader2,
   LogOut,
-  User
+  User,
+  Waves,
+  Eye,
+  MessageSquare,
+  Sidebar,
+  Play,
+  Plus,
+  X,
 } from 'lucide-react';
 import Dashboard from './Dashboard';
 
@@ -21,6 +28,17 @@ interface GoogleUser {
   email: string;
   name: string;
   picture: string;
+}
+
+type GoalMode = 'music' | 'time_reduction' | 'strict' | 'cold_turkey';
+type ChallengeTier = 'casual' | 'focused' | 'disciplined' | 'monk' | 'ascetic';
+
+interface FrictionEnabled {
+  thumbnails: boolean;
+  sidebar: boolean;
+  comments: boolean;
+  player: boolean;
+  autoplay: boolean;
 }
 
 interface SettingsState {
@@ -34,6 +52,10 @@ interface SettingsState {
     url: string;
     userId: string;
   };
+  goalMode: GoalMode;
+  challengeTier: ChallengeTier;
+  frictionEnabled: FrictionEnabled;
+  whitelistedChannels: string[];
 }
 
 const defaultSettings: SettingsState = {
@@ -47,6 +69,31 @@ const defaultSettings: SettingsState = {
     url: 'http://localhost:8000',
     userId: '',
   },
+  goalMode: 'time_reduction',
+  challengeTier: 'casual',
+  frictionEnabled: {
+    thumbnails: true,
+    sidebar: true,
+    comments: true,
+    player: false,
+    autoplay: true,
+  },
+  whitelistedChannels: [],
+};
+
+const CHALLENGE_TIERS: Record<ChallengeTier, { goalMinutes: number; xpMultiplier: number; icon: string; label: string }> = {
+  casual: { goalMinutes: 60, xpMultiplier: 1.0, icon: '🌱', label: 'Casual' },
+  focused: { goalMinutes: 45, xpMultiplier: 1.5, icon: '🎯', label: 'Focused' },
+  disciplined: { goalMinutes: 30, xpMultiplier: 2.0, icon: '⚡', label: 'Disciplined' },
+  monk: { goalMinutes: 15, xpMultiplier: 3.0, icon: '🔥', label: 'Monk' },
+  ascetic: { goalMinutes: 5, xpMultiplier: 5.0, icon: '💎', label: 'Ascetic' },
+};
+
+const GOAL_MODES: Record<GoalMode, { icon: string; label: string; description: string }> = {
+  music: { icon: '🎵', label: 'Music Mode', description: 'Music content exempt from drift' },
+  time_reduction: { icon: '⏱️', label: 'Time Reduction', description: 'Reduce overall watch time' },
+  strict: { icon: '🔒', label: 'Strict Mode', description: '1.5x faster drift buildup' },
+  cold_turkey: { icon: '🧊', label: 'Cold Turkey', description: 'Hard block after limit' },
 };
 
 export default function Settings() {
@@ -175,10 +222,14 @@ export default function Settings() {
         </div>
 
         <Tabs defaultValue="dashboard" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="dashboard" className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4" />
               Today
+            </TabsTrigger>
+            <TabsTrigger value="drift" className="flex items-center gap-2">
+              <Waves className="w-4 h-4" />
+              Drift
             </TabsTrigger>
             <TabsTrigger value="settings" className="flex items-center gap-2">
               <SettingsIcon className="w-4 h-4" />
@@ -193,6 +244,220 @@ export default function Settings() {
           {/* Dashboard Tab */}
           <TabsContent value="dashboard" className="space-y-4">
             <Dashboard backend={settings.backend} dailyGoalMinutes={settings.dailyGoalMinutes} />
+          </TabsContent>
+
+          {/* Drift Settings Tab */}
+          <TabsContent value="drift" className="space-y-4">
+            {/* Goal Mode */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Waves className="w-5 h-5 text-blue-500" />
+                  Goal Mode
+                </CardTitle>
+                <CardDescription>
+                  Choose how drift affects your experience
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(Object.entries(GOAL_MODES) as [GoalMode, typeof GOAL_MODES[GoalMode]][]).map(([mode, config]) => (
+                  <label
+                    key={mode}
+                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      settings.goalMode === mode
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                        : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="goalMode"
+                      value={mode}
+                      checked={settings.goalMode === mode}
+                      onChange={() => {
+                        updateSetting('goalMode', mode);
+                        chrome.runtime.sendMessage({ type: 'SET_GOAL_MODE', data: { mode } });
+                      }}
+                      className="sr-only"
+                    />
+                    <span className="text-2xl">{config.icon}</span>
+                    <div className="flex-1">
+                      <div className="font-medium">{config.label}</div>
+                      <div className="text-xs text-muted-foreground">{config.description}</div>
+                    </div>
+                    {settings.goalMode === mode && (
+                      <CheckCircle2 className="w-5 h-5 text-blue-500" />
+                    )}
+                  </label>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Challenge Tier */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Challenge Tier</CardTitle>
+                <CardDescription>
+                  Higher tiers = harder goals, more XP
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {(Object.entries(CHALLENGE_TIERS) as [ChallengeTier, typeof CHALLENGE_TIERS[ChallengeTier]][]).map(([tier, config]) => (
+                  <label
+                    key={tier}
+                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      settings.challengeTier === tier
+                        ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                        : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="challengeTier"
+                      value={tier}
+                      checked={settings.challengeTier === tier}
+                      onChange={() => {
+                        updateSetting('challengeTier', tier);
+                        updateSetting('dailyGoalMinutes', config.goalMinutes);
+                        chrome.runtime.sendMessage({ type: 'SET_CHALLENGE_TIER', data: { tier } });
+                      }}
+                      className="sr-only"
+                    />
+                    <span className="text-2xl">{config.icon}</span>
+                    <div className="flex-1">
+                      <div className="font-medium">{config.label}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {config.goalMinutes} min/day • {config.xpMultiplier}x XP
+                      </div>
+                    </div>
+                    {settings.challengeTier === tier && (
+                      <CheckCircle2 className="w-5 h-5 text-purple-500" />
+                    )}
+                  </label>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Friction Effects */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Friction Effects</CardTitle>
+                <CardDescription>
+                  Choose which effects apply when drift is high
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Eye className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <div className="font-medium">Blur Thumbnails</div>
+                      <div className="text-xs text-muted-foreground">Gradually blur video thumbnails</div>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings.frictionEnabled.thumbnails}
+                    onCheckedChange={(v) => updateSetting('frictionEnabled', { ...settings.frictionEnabled, thumbnails: v })}
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Sidebar className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <div className="font-medium">Simplify Sidebar</div>
+                      <div className="text-xs text-muted-foreground">Hide/reduce recommendations</div>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings.frictionEnabled.sidebar}
+                    onCheckedChange={(v) => updateSetting('frictionEnabled', { ...settings.frictionEnabled, sidebar: v })}
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <div className="font-medium">Reduce Comments</div>
+                      <div className="text-xs text-muted-foreground">Smaller/hidden comment section</div>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings.frictionEnabled.comments}
+                    onCheckedChange={(v) => updateSetting('frictionEnabled', { ...settings.frictionEnabled, comments: v })}
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Play className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <div className="font-medium">Control Autoplay</div>
+                      <div className="text-xs text-muted-foreground">Delay or disable autoplay</div>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={settings.frictionEnabled.autoplay}
+                    onCheckedChange={(v) => updateSetting('frictionEnabled', { ...settings.frictionEnabled, autoplay: v })}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Whitelisted Channels */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Whitelisted Channels</CardTitle>
+                <CardDescription>
+                  These channels won't trigger drift effects
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {settings.whitelistedChannels.length > 0 ? (
+                  <div className="space-y-2 mb-3">
+                    {settings.whitelistedChannels.map((channel, i) => (
+                      <div key={i} className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                        <span className="text-sm">{channel}</span>
+                        <button
+                          onClick={() => {
+                            const newChannels = settings.whitelistedChannels.filter((_, idx) => idx !== i);
+                            updateSetting('whitelistedChannels', newChannels);
+                          }}
+                          className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground mb-3">No channels whitelisted yet</p>
+                )}
+                <button
+                  onClick={() => {
+                    const channel = prompt('Enter channel name:');
+                    if (channel && !settings.whitelistedChannels.includes(channel)) {
+                      updateSetting('whitelistedChannels', [...settings.whitelistedChannels, channel]);
+                    }
+                  }}
+                  className="w-full py-2 border border-dashed border-slate-300 dark:border-slate-600 rounded-lg text-sm text-muted-foreground hover:border-slate-400 hover:text-slate-600 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Channel
+                </button>
+              </CardContent>
+            </Card>
+
+            <button
+              onClick={saveSettings}
+              disabled={saveStatus === 'saving'}
+              className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+            >
+              {saveStatus === 'saving' && <Loader2 className="w-4 h-4 animate-spin" />}
+              {saveStatus === 'saved' && <CheckCircle2 className="w-4 h-4" />}
+              {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved!' : 'Save Settings'}
+            </button>
           </TabsContent>
 
           {/* Settings Tab */}

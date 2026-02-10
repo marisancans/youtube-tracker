@@ -17,6 +17,8 @@ import {
   handleVisibilityChange,
   scrapeVideoInfo,
 } from './tracker';
+import { initDriftEffects } from './drift-effects';
+import { initMusicDetection } from './music-detector';
 
 // ===== Constants =====
 
@@ -515,12 +517,18 @@ async function init(): Promise<void> {
   isInitialized = true;
   
   // Global marker for testing
-  (window as any).__YT_DETOX_TRACKER__ = { version: '0.3.0', initialized: true };
+  (window as any).__YT_DETOX_TRACKER__ = { version: '0.4.0', initialized: true };
   
   console.log('[YT Detox] Initializing...');
   
   // Initialize browser session
   await initBrowserSession();
+  
+  // Initialize drift effects (CSS friction)
+  initDriftEffects();
+  
+  // Initialize music detection (for Music Mode)
+  initMusicDetection();
   
   // Set up event listeners
   document.addEventListener('visibilitychange', handleVisibilityChange);

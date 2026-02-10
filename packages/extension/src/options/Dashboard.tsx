@@ -30,6 +30,8 @@ import {
   Rocket,
   Clock,
   BarChart2,
+  Waves,
+  Trophy,
 } from 'lucide-react';
 
 interface PhaseInfo {
@@ -74,6 +76,17 @@ interface WeeklyComparison {
   prevWeekVideos: number;
 }
 
+interface DriftHistory {
+  timestamp: number;
+  value: number;
+}
+
+interface DriftData {
+  current: number;
+  level: 'low' | 'medium' | 'high' | 'critical';
+  history: DriftHistory[];
+}
+
 interface DashboardStats {
   today: DailyData | null;
   last7Days: DailyData[];
@@ -84,6 +97,9 @@ interface DashboardStats {
   xp: number;
   phase: PhaseInfo | null;
   baseline: BaselineStats | null;
+  drift: DriftData | null;
+  challengeTier: string;
+  goalMode: string;
 }
 
 interface BackendSettings {
@@ -128,6 +144,9 @@ export default function Dashboard({
     xp: 0,
     phase: null,
     baseline: null,
+    drift: null,
+    challengeTier: 'casual',
+    goalMode: 'time_reduction',
   });
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -231,12 +250,30 @@ export default function Dashboard({
           .sort((a, b) => b.totalMinutes - a.totalMinutes)
           .slice(0, 5);
 
+        // Fetch drift
+        const driftData = await new Promise<DriftData | null>((resolve) => {
+          chrome.runtime.sendMessage({ type: 'GET_DRIFT' }, (response) => {
+            if (response && typeof response.drift === 'number') {
+              resolve({
+                current: response.drift,
+                level: response.level,
+                history: response.history || [],
+              });
+            } else {
+              resolve(null);
+            }
+          });
+        });
+
+        // Get settings for tier and mode
+        const settings = data.settings || {};
+
         setStats({
           today,
           last7Days,
           weekly: {
             thisWeekMinutes: Math.floor(thisWeekSeconds / 60),
-            prevWeekMinutes: 0, // Would need more historical data
+            prevWeekMinutes: 0,
             changePercent: 0,
             thisWeekVideos,
             prevWeekVideos: 0,
@@ -247,6 +284,9 @@ export default function Dashboard({
           xp: data.xp || 0,
           phase: phaseInfo,
           baseline: baselineStats,
+          drift: driftData,
+          challengeTier: settings.challengeTier || 'casual',
+          goalMode: settings.goalMode || 'time_reduction',
         });
       }
 
@@ -542,6 +582,148 @@ export default function Dashboard({
           <div className="flex justify-between text-xs text-muted-foreground mt-2">
             <span>Total: {formatMinutes(stats.weekly?.thisWeekMinutes || 0)}</span>
             <span>{stats.weekly?.thisWeekVideos || 0} videos</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Drift Card 🌊 */}
+      {stats.drift && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Waves className="w-4 h-4 text-blue-500" />
+                Drift
+              </span>
+              <span className={`text-lg font-bold ${
+                stats.drift.level === 'critical' ? 'text-red-500' :
+                stats.drift.level === 'high' ? 'text-orange-500' :
+                stats.drift.level === 'medium' ? 'text-yellow-500' :
+                'text-green-500'
+              }`}>
+                {Math.round(stats.drift.current * 100)}%
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {/* Drift Progress Bar */}
+            <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-3">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  stats.drift.level === 'critical' ? 'bg-gradient-to-r from-red-500 to-red-600' :
+                  stats.drift.level === 'high' ? 'bg-gradient-to-r from-orange-500 to-orange-600' :
+                  stats.drift.level === 'medium' ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' :
+                  'bg-gradient-to-r from-green-500 to-green-600'
+                }`}
+                style={{ width: `${stats.drift.current * 100}%` }}
+              />
+            </div>
+            
+            {/* Drift Level Labels */}
+            <div className="flex justify-between text-xs text-muted-foreground mb-4">
+              <span>Focused</span>
+              <span>Drifting</span>
+              <span>High</span>
+              <span>Critical</span>
+            </div>
+            
+            {/* Drift History Chart */}
+            {stats.drift.history.length > 1 && (
+              <div className="h-24">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={stats.drift.history.map(h => ({
+                    time: new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    drift: Math.round(h.value * 100),
+                  }))}>
+                    <defs>
+                      <linearGradient id="driftGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="time" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                    <YAxis domain={[0, 100]} hide />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div className="bg-slate-800 text-white px-2 py-1 rounded text-xs">
+                              {payload[0].value}% drift at {payload[0].payload.time}
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="drift"
+                      stroke="#f97316"
+                      strokeWidth={2}
+                      fillOpacity={1}
+                      fill="url(#driftGrad)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            
+            {/* Current Status */}
+            <div className="text-center text-sm mt-2">
+              {stats.drift.level === 'low' && (
+                <span className="text-green-600">🎯 You're staying focused!</span>
+              )}
+              {stats.drift.level === 'medium' && (
+                <span className="text-yellow-600">🌊 Starting to drift...</span>
+              )}
+              {stats.drift.level === 'high' && (
+                <span className="text-orange-600">⚠️ Drifting from your goals</span>
+              )}
+              {stats.drift.level === 'critical' && (
+                <span className="text-red-600">🔴 High drift — friction active</span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Challenge Tier Card */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-yellow-500" />
+            Challenge Tier
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">
+                {stats.challengeTier === 'casual' && '🌱'}
+                {stats.challengeTier === 'focused' && '🎯'}
+                {stats.challengeTier === 'disciplined' && '⚡'}
+                {stats.challengeTier === 'monk' && '🔥'}
+                {stats.challengeTier === 'ascetic' && '💎'}
+              </span>
+              <div>
+                <div className="font-semibold capitalize">{stats.challengeTier}</div>
+                <div className="text-xs text-muted-foreground">
+                  {stats.challengeTier === 'casual' && '60 min • 1.0x XP'}
+                  {stats.challengeTier === 'focused' && '45 min • 1.5x XP'}
+                  {stats.challengeTier === 'disciplined' && '30 min • 2.0x XP'}
+                  {stats.challengeTier === 'monk' && '15 min • 3.0x XP'}
+                  {stats.challengeTier === 'ascetic' && '5 min • 5.0x XP'}
+                </div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm font-medium">
+                {stats.goalMode === 'music' && '🎵 Music Mode'}
+                {stats.goalMode === 'time_reduction' && '⏱️ Time Mode'}
+                {stats.goalMode === 'strict' && '🔒 Strict Mode'}
+                {stats.goalMode === 'cold_turkey' && '🧊 Cold Turkey'}
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
