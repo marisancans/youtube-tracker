@@ -364,9 +364,14 @@ export default function Widget(): JSX.Element {
         setState(p => ({ ...p, dailyGoal: response.dailyGoalMinutes || 60 }));
       }
     });
-    // Load streak/xp and phase from storage
-    chrome.storage.local.get(['streak', 'xp', 'weeklyData', 'settings'], (result) => {
-      if (result.streak) setState(p => ({ ...p, streak: result.streak }));
+    // Load streak from background (calculated properly)
+    chrome.runtime.sendMessage({ type: 'GET_STREAK' }, (response) => {
+      if (response?.streak !== undefined) {
+        setState(p => ({ ...p, streak: response.streak }));
+      }
+    });
+    // Load xp, weeklyData, and phase from storage
+    chrome.storage.local.get(['xp', 'weeklyData', 'settings'], (result) => {
       if (result.xp) setState(p => ({ ...p, xp: result.xp }));
       if (result.weeklyData) setState(p => ({ ...p, weeklyData: result.weeklyData }));
       if (result.settings?.phase) setState(p => ({ ...p, phase: result.settings.phase }));
@@ -386,9 +391,10 @@ export default function Widget(): JSX.Element {
     });
   }, []);
   
-  // Periodically update drift
+  // Periodically update drift and streak
   useEffect(() => {
-    const driftInterval = setInterval(() => {
+    const updateInterval = setInterval(() => {
+      // Update drift
       chrome.runtime.sendMessage({ type: 'GET_DRIFT' }, (response) => {
         if (response && typeof response.drift === 'number') {
           setState(p => ({ 
@@ -401,8 +407,14 @@ export default function Widget(): JSX.Element {
           }));
         }
       });
+      // Update XP (might have changed from achievements)
+      chrome.storage.local.get(['xp'], (result) => {
+        if (result.xp !== undefined) {
+          setState(p => ({ ...p, xp: result.xp }));
+        }
+      });
     }, 10000); // Update every 10 seconds
-    return () => clearInterval(driftInterval);
+    return () => clearInterval(updateInterval);
   }, []);
   
   // Fetch challenge progress periodically
