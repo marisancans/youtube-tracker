@@ -386,6 +386,12 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
 chrome.notifications.onButtonClicked.addListener(handleNotificationClick);
 
+// ===== Extension Icon Click =====
+
+chrome.action.onClicked.addListener(() => {
+  chrome.runtime.openOptionsPage();
+});
+
 // ===== Install/Update =====
 
 chrome.runtime.onInstalled.addListener(async (details) => {

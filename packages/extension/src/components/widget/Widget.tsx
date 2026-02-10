@@ -5,6 +5,8 @@ import {
   getCurrentVideoInfo,
   rateVideo,
 } from '../../content/tracker';
+import { safeSendMessageWithCallback, safeSendMessage } from '../../lib/messaging';
+import { showFrictionOverlay, isFrictionOverlayVisible } from '../../content/friction-overlay';
 
 interface Nudge {
   id: string;
@@ -385,13 +387,13 @@ export default function Widget(): JSX.Element {
   }, []);
   
   useEffect(() => {
-    chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, (response) => {
+    safeSendMessageWithCallback('GET_SETTINGS', undefined, (response: any) => {
       if (response && !response.error) {
         setState(p => ({ ...p, dailyGoal: response.dailyGoalMinutes || 60 }));
       }
     });
     // Load streak from background (calculated properly)
-    chrome.runtime.sendMessage({ type: 'GET_STREAK' }, (response) => {
+    safeSendMessageWithCallback('GET_STREAK', undefined, (response: any) => {
       if (response?.streak !== undefined) {
         setState(p => ({ ...p, streak: response.streak }));
       }
@@ -410,10 +412,10 @@ export default function Widget(): JSX.Element {
       }
     });
     // Load drift
-    chrome.runtime.sendMessage({ type: 'GET_DRIFT' }, (response) => {
+    safeSendMessageWithCallback('GET_DRIFT', undefined, (response: any) => {
       if (response && typeof response.drift === 'number') {
-        setState(p => ({ 
-          ...p, 
+        setState(p => ({
+          ...p,
           drift: {
             drift: response.drift,
             level: response.level,
@@ -428,22 +430,22 @@ export default function Widget(): JSX.Element {
   useEffect(() => {
     const updateInterval = setInterval(() => {
       // Update drift
-      chrome.runtime.sendMessage({ type: 'GET_DRIFT' }, (response) => {
+      safeSendMessageWithCallback('GET_DRIFT', undefined, (response: any) => {
         if (response && typeof response.drift === 'number') {
           setState(p => {
             const newLevel = response.level;
             const wasLow = p.drift.level === 'low';
             const nowDrifting = newLevel !== 'low';
-            
+
             // Suggest a productive URL when transitioning to drifting state
             let suggestedUrl = p.suggestedUrl;
             if (wasLow && nowDrifting && p.productiveUrls.length > 0 && !p.dismissedSuggestion) {
               const randomIdx = Math.floor(Math.random() * p.productiveUrls.length);
               suggestedUrl = p.productiveUrls[randomIdx];
             }
-            
-            return { 
-              ...p, 
+
+            return {
+              ...p,
               drift: {
                 drift: response.drift,
                 level: response.level,
@@ -476,7 +478,7 @@ export default function Widget(): JSX.Element {
   // Fetch challenge progress periodically
   useEffect(() => {
     const fetchChallengeProgress = () => {
-      chrome.runtime.sendMessage({ type: 'GET_CHALLENGE_PROGRESS' }, (response) => {
+      safeSendMessageWithCallback('GET_CHALLENGE_PROGRESS', undefined, (response: any) => {
         if (response && response.currentTier) {
           setState(p => ({
             ...p,
@@ -502,7 +504,7 @@ export default function Widget(): JSX.Element {
   
   // Handle tier upgrade
   const handleUpgradeTier = useCallback(() => {
-    chrome.runtime.sendMessage({ type: 'UPGRADE_TIER' }, (response) => {
+    safeSendMessageWithCallback('UPGRADE_TIER', undefined, (response: any) => {
       if (response?.success) {
         setState(p => ({
           ...p,
@@ -640,12 +642,12 @@ export default function Widget(): JSX.Element {
       if (videoSession) setState(p => ({ ...p, currentVideoSeconds: videoSession.watchedSeconds }));
       if (videoInfo) setState(p => ({ ...p, videoTitle: videoInfo.title || null }));
       
-      chrome.runtime.sendMessage({ type: 'GET_STATS' }, (response) => {
+      safeSendMessageWithCallback('GET_STATS', undefined, (response: any) => {
         if (response?.today) setState(p => ({ ...p, todayMinutes: Math.floor(response.today.totalSeconds / 60) }));
       });
-      
+
       // Get tab count
-      chrome.runtime.sendMessage({ type: 'GET_TAB_INFO' }, (response) => {
+      safeSendMessageWithCallback('GET_TAB_INFO', undefined, (response: any) => {
         if (response?.youtubeTabs !== undefined) {
           setState(p => ({ ...p, youtubeTabs: response.youtubeTabs }));
         }
@@ -653,9 +655,16 @@ export default function Widget(): JSX.Element {
       
       if (videoSession && !videoSession.productivityRating && state.lastRatedVideo !== videoSession.id) {
         const shouldPrompt = (videoSession.watchedSeconds > 30 && Math.random() < 0.3) || videoSession.watchedPercent >= 80;
-        if (shouldPrompt && !state.showPrompt) {
+        if (shouldPrompt && !state.showPrompt && !isFrictionOverlayVisible()) {
           setState(p => ({ ...p, showPrompt: true }));
-          chrome.runtime.sendMessage({ type: 'PROMPT_SHOWN' });
+          safeSendMessage('PROMPT_SHOWN');
+          // Show full-screen friction overlay
+          const title = videoInfo?.title || videoSession.title || 'this video';
+          showFrictionOverlay(title).then((rating) => {
+            rateVideo(rating);
+            const xpGain = rating === 1 ? 15 : rating === 0 ? 5 : 2;
+            setState(p => ({ ...p, showPrompt: false, lastRatedVideo: videoSession.id, xp: p.xp + xpGain }));
+          });
         }
       }
     };
@@ -663,16 +672,6 @@ export default function Widget(): JSX.Element {
     const interval = setInterval(updateStats, 1000);
     return () => clearInterval(interval);
   }, [state.lastRatedVideo, state.showPrompt]);
-  
-  const handleRate = useCallback((rating: -1 | 0 | 1) => {
-    const videoSession = getCurrentVideoSession();
-    if (videoSession) {
-      rateVideo(rating);
-      // Award XP for rating
-      const xpGain = rating === 1 ? 15 : rating === 0 ? 5 : 2;
-      setState(p => ({ ...p, showPrompt: false, lastRatedVideo: videoSession.id, xp: p.xp + xpGain }));
-    }
-  }, []);
   
   const progressPercent = Math.min((state.todayMinutes / state.dailyGoal) * 100, 100);
   const isOverGoal = progressPercent >= 100;
@@ -1100,26 +1099,7 @@ export default function Widget(): JSX.Element {
               </div>
             )}
             
-            {/* Productivity Prompt */}
-            {state.showPrompt && (
-              <div style={s.prompt}>
-                <div style={s.promptText}>
-                  <Icons.Brain />
-                  <span>Worth your time? (+XP for rating!)</span>
-                </div>
-                <div style={s.ratingBtns}>
-                  <button style={{ ...s.ratingBtn, background: 'rgba(34,197,94,0.2)', color: '#4ade80' }} onClick={() => handleRate(1)}>
-                    <Icons.ThumbsUp /> +15 XP
-                  </button>
-                  <button style={{ ...s.ratingBtn, background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }} onClick={() => handleRate(0)}>
-                    <Icons.Minus /> +5 XP
-                  </button>
-                  <button style={{ ...s.ratingBtn, background: 'rgba(239,68,68,0.2)', color: '#f87171' }} onClick={() => handleRate(-1)}>
-                    <Icons.ThumbsDown /> +2 XP
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* Productivity prompt now shows as full-screen friction overlay */}
           </div>
         )}
       </div>

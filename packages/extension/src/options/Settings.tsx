@@ -1,51 +1,25 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Progress } from '@/components/ui/progress';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
-  Line,
-} from 'recharts';
 import {
   Settings as SettingsIcon,
   Loader2,
   LogOut,
   User,
-  Waves,
-  Eye,
-  MessageSquare,
-  Sidebar,
-  Play,
-  Video,
+  Wind,
   Clock,
-  TrendingUp,
-  TrendingDown,
+  Video,
   Flame,
   Trophy,
-  Calendar,
-  Tv,
-  Zap,
   Music,
   Lock,
   Snowflake,
   RefreshCw,
-  BarChart3,
-  Link,
-  Plus,
-  Trash2,
-  ExternalLink,
-  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  Cloud,
+  CloudRain,
+  CloudLightning,
+  Sun,
 } from 'lucide-react';
 
 // ===== Types =====
@@ -60,22 +34,6 @@ interface GoogleUser {
 type GoalMode = 'music' | 'time_reduction' | 'strict' | 'cold_turkey';
 type ChallengeTier = 'casual' | 'focused' | 'disciplined' | 'monk' | 'ascetic';
 
-interface Achievement {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  xpReward: number;
-  rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
-}
-
-interface ProductiveUrl {
-  id: string;
-  url: string;
-  title: string;
-  addedAt: number;
-}
-
 interface DailyStats {
   date: string;
   totalSeconds: number;
@@ -83,14 +41,6 @@ interface DailyStats {
   productiveVideos: number;
   unproductiveVideos: number;
   neutralVideos: number;
-  sessionCount: number;
-  hourlySeconds: Record<string, number>;
-}
-
-interface ChannelStat {
-  channel: string;
-  minutes: number;
-  videoCount: number;
 }
 
 interface DriftData {
@@ -132,21 +82,11 @@ const CHALLENGE_TIERS: Record<ChallengeTier, { goalMinutes: number; xpMultiplier
 };
 
 const GOAL_MODES: Record<GoalMode, { icon: JSX.Element; label: string; desc: string }> = {
-  music: { icon: <Music className="w-4 h-4" />, label: 'Music', desc: 'Music exempt' },
-  time_reduction: { icon: <Clock className="w-4 h-4" />, label: 'Time', desc: 'Reduce time' },
-  strict: { icon: <Lock className="w-4 h-4" />, label: 'Strict', desc: '1.5x drift' },
-  cold_turkey: { icon: <Snowflake className="w-4 h-4" />, label: 'Block', desc: 'Hard limit' },
+  music: { icon: <Music className="w-5 h-5" />, label: 'Music Mode', desc: 'Music videos are exempt from tracking' },
+  time_reduction: { icon: <Clock className="w-5 h-5" />, label: 'Time Reduction', desc: 'Focus on reducing daily watch time' },
+  strict: { icon: <Lock className="w-5 h-5" />, label: 'Strict Mode', desc: 'Faster drift buildup (1.5x)' },
+  cold_turkey: { icon: <Snowflake className="w-5 h-5" />, label: 'Cold Turkey', desc: 'Hard block when over limit' },
 };
-
-const COLORS = {
-  productive: '#22c55e',
-  neutral: '#fbbf24',
-  unproductive: '#ef4444',
-  primary: '#3b82f6',
-  purple: '#a855f7',
-};
-
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const defaultSettings: SettingsState = {
   trackingEnabled: true,
@@ -172,10 +112,103 @@ function formatMinutes(mins: number): string {
   return `${mins}m`;
 }
 
-function formatHour(hour: number): string {
-  if (hour === 0) return '12am';
-  if (hour === 12) return '12pm';
-  return hour < 12 ? `${hour}am` : `${hour - 12}pm`;
+// ===== Drift Weather Component =====
+
+function DriftWeather({ drift, level }: { drift: number; level: string }) {
+  const percentage = Math.round(drift * 100);
+
+  // Weather based on drift level
+  const getWeatherConfig = () => {
+    if (level === 'critical') {
+      return {
+        icon: <CloudLightning className="w-16 h-16" />,
+        label: 'Storm',
+        desc: 'Heavy friction active',
+        gradient: 'from-slate-800 via-slate-700 to-slate-600',
+        textColor: 'text-slate-200',
+        accentColor: 'text-amber-400',
+      };
+    }
+    if (level === 'high') {
+      return {
+        icon: <CloudRain className="w-16 h-16" />,
+        label: 'Rainy',
+        desc: 'Drifting from focus',
+        gradient: 'from-slate-600 via-slate-500 to-slate-400',
+        textColor: 'text-slate-100',
+        accentColor: 'text-slate-300',
+      };
+    }
+    if (level === 'medium') {
+      return {
+        icon: <Cloud className="w-16 h-16" />,
+        label: 'Cloudy',
+        desc: 'Some distraction',
+        gradient: 'from-slate-400 via-slate-300 to-blue-200',
+        textColor: 'text-slate-700',
+        accentColor: 'text-slate-500',
+      };
+    }
+    return {
+      icon: <Sun className="w-16 h-16" />,
+      label: 'Clear',
+      desc: 'Focused and calm',
+      gradient: 'from-sky-400 via-blue-300 to-cyan-200',
+      textColor: 'text-sky-900',
+      accentColor: 'text-sky-700',
+    };
+  };
+
+  const weather = getWeatherConfig();
+
+  return (
+    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${weather.gradient} p-8`}>
+      {/* Animated clouds/wind effect */}
+      <div className="absolute inset-0 opacity-20">
+        <div className="absolute top-4 left-10 w-32 h-16 bg-white/30 rounded-full blur-xl animate-pulse" />
+        <div className="absolute top-12 right-20 w-24 h-12 bg-white/20 rounded-full blur-lg animate-pulse" style={{ animationDelay: '1s' }} />
+        <div className="absolute bottom-8 left-1/3 w-40 h-20 bg-white/25 rounded-full blur-xl animate-pulse" style={{ animationDelay: '0.5s' }} />
+      </div>
+
+      <div className="relative flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <Wind className={`w-5 h-5 ${weather.accentColor}`} />
+            <span className={`text-sm font-medium uppercase tracking-wide ${weather.accentColor}`}>
+              Drift Level
+            </span>
+          </div>
+          <div className={`text-6xl font-bold ${weather.textColor} mb-1`}>
+            {percentage}%
+          </div>
+          <div className={`text-xl font-medium ${weather.textColor}`}>
+            {weather.label}
+          </div>
+          <div className={`text-sm ${weather.accentColor} mt-1`}>
+            {weather.desc}
+          </div>
+        </div>
+
+        <div className={weather.textColor}>
+          {weather.icon}
+        </div>
+      </div>
+
+      {/* Drift bar */}
+      <div className="relative mt-6">
+        <div className="h-2 bg-black/20 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-white/80 rounded-full transition-all duration-700"
+            style={{ width: `${percentage}%` }}
+          />
+        </div>
+        <div className="flex justify-between mt-2 text-xs font-medium">
+          <span className={weather.accentColor}>Focused</span>
+          <span className={weather.accentColor}>Drifting</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ===== Main Component =====
@@ -186,25 +219,19 @@ export default function Settings() {
   const [drift, setDrift] = useState<DriftData | null>(null);
   const [streak, setStreak] = useState(0);
   const [xp, setXp] = useState(0);
-  const [achievements, setAchievements] = useState<Achievement[]>([]);
-  const [channels, setChannels] = useState<ChannelStat[]>([]);
   const [authUser, setAuthUser] = useState<GoogleUser | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [productiveUrls, setProductiveUrls] = useState<ProductiveUrl[]>([]);
-  const [newUrl, setNewUrl] = useState('');
-  const [newTitle, setNewTitle] = useState('');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'settings'>('dashboard');
+  const [showWeekly, setShowWeekly] = useState(false);
 
   // ===== Fetch Data =====
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // Get all data from storage
       const data = await chrome.storage.local.get(null);
-      
+
       if (data.settings) {
         setSettings({ ...defaultSettings, ...data.settings });
       }
@@ -213,12 +240,10 @@ export default function Settings() {
       }
       if (data.xp) setXp(data.xp);
 
-      // Get streak
       chrome.runtime.sendMessage({ type: 'GET_STREAK' }, (response) => {
         if (response?.streak !== undefined) setStreak(response.streak);
       });
 
-      // Get drift
       chrome.runtime.sendMessage({ type: 'GET_DRIFT' }, (response) => {
         if (response && typeof response.drift === 'number') {
           setDrift({
@@ -229,44 +254,9 @@ export default function Settings() {
         }
       });
 
-      // Get achievements
-      chrome.runtime.sendMessage({ type: 'GET_ACHIEVEMENTS' }, (response) => {
-        if (response?.unlocked) setAchievements(response.unlocked);
-      });
-
-      // Get auth state
       chrome.runtime.sendMessage({ type: 'AUTH_GET_STATE' }, (response) => {
         if (response?.user) setAuthUser(response.user);
       });
-
-      // Get productive URLs
-      if (data.productiveUrls) {
-        setProductiveUrls(data.productiveUrls);
-      }
-
-      // Build channel stats from video sessions
-      const videoSessions = data.videoSessions || [];
-      const channelMap = new Map<string, { videos: number; seconds: number }>();
-      videoSessions.forEach((v: any) => {
-        if (v.channel) {
-          const existing = channelMap.get(v.channel) || { videos: 0, seconds: 0 };
-          channelMap.set(v.channel, {
-            videos: existing.videos + 1,
-            seconds: existing.seconds + (v.watchedSeconds || 0),
-          });
-        }
-      });
-      const channelList = Array.from(channelMap.entries())
-        .map(([channel, data]) => ({
-          channel,
-          videoCount: data.videos,
-          minutes: Math.round(data.seconds / 60),
-        }))
-        .sort((a, b) => b.minutes - a.minutes)
-        .slice(0, 10);
-      setChannels(channelList);
-
-      setLastUpdated(new Date());
     } catch (err) {
       console.error('Failed to fetch data:', err);
     } finally {
@@ -280,7 +270,6 @@ export default function Settings() {
 
   // ===== Computed Data =====
 
-  // Last 7 days data
   const last7Days = (() => {
     const days: DailyStats[] = [];
     for (let i = 6; i >= 0; i--) {
@@ -295,24 +284,6 @@ export default function Settings() {
         productiveVideos: dayData?.productiveVideos || 0,
         unproductiveVideos: dayData?.unproductiveVideos || 0,
         neutralVideos: dayData?.neutralVideos || 0,
-        sessionCount: dayData?.sessionCount || 0,
-        hourlySeconds: dayData?.hourlySeconds || {},
-      });
-    }
-    return days;
-  })();
-
-  // Last 30 days data
-  const last30Days = (() => {
-    const days: { date: string; minutes: number }[] = [];
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const key = d.toISOString().split('T')[0];
-      const dayData = dailyStats[key];
-      days.push({
-        date: key,
-        minutes: Math.round((dayData?.totalSeconds || 0) / 60),
       });
     }
     return days;
@@ -321,66 +292,12 @@ export default function Settings() {
   const todayKey = new Date().toISOString().split('T')[0];
   const todayStats = dailyStats[todayKey];
   const todayMinutes = Math.round((todayStats?.totalSeconds || 0) / 60);
-  const goalProgress = Math.min(100, (todayMinutes / settings.dailyGoalMinutes) * 100);
   const isOverGoal = todayMinutes > settings.dailyGoalMinutes;
+  const remaining = settings.dailyGoalMinutes - todayMinutes;
 
-  // Weekly totals
   const weeklyMinutes = last7Days.reduce((sum, d) => sum + Math.round(d.totalSeconds / 60), 0);
   const weeklyVideos = last7Days.reduce((sum, d) => sum + d.videoCount, 0);
-  const weeklyProductive = last7Days.reduce((sum, d) => sum + d.productiveVideos, 0);
-  const weeklyUnproductive = last7Days.reduce((sum, d) => sum + d.unproductiveVideos, 0);
 
-  // Previous week for comparison
-  const prevWeekMinutes = (() => {
-    let total = 0;
-    for (let i = 13; i >= 7; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const key = d.toISOString().split('T')[0];
-      total += Math.round((dailyStats[key]?.totalSeconds || 0) / 60);
-    }
-    return total;
-  })();
-  const weeklyChange = prevWeekMinutes > 0 
-    ? Math.round(((weeklyMinutes - prevWeekMinutes) / prevWeekMinutes) * 100) 
-    : 0;
-
-  // Hourly heatmap data
-  const hourlyData = (() => {
-    const hours: number[] = Array(24).fill(0);
-    last7Days.forEach(day => {
-      if (day.hourlySeconds) {
-        Object.entries(day.hourlySeconds).forEach(([hour, secs]) => {
-          hours[parseInt(hour)] += secs;
-        });
-      }
-    });
-    return hours.map((secs, hour) => ({
-      hour,
-      minutes: Math.round(secs / 60),
-    }));
-  })();
-
-  // Productivity pie data
-  const productivityData = [
-    { name: 'Productive', value: weeklyProductive, color: COLORS.productive },
-    { name: 'Neutral', value: last7Days.reduce((sum, d) => sum + d.neutralVideos, 0), color: COLORS.neutral },
-    { name: 'Unproductive', value: weeklyUnproductive, color: COLORS.unproductive },
-  ].filter(d => d.value > 0);
-
-  // Chart data
-  const weeklyChartData = last7Days.map((d) => ({
-    name: DAY_NAMES[new Date(d.date).getDay()],
-    minutes: Math.round(d.totalSeconds / 60),
-    goal: settings.dailyGoalMinutes,
-  }));
-
-  const monthlyChartData = last30Days.map((d, i) => ({
-    day: i + 1,
-    minutes: d.minutes,
-  }));
-
-  // Level calculation
   const level = Math.floor(xp / 100) + 1;
 
   // ===== Actions =====
@@ -419,69 +336,41 @@ export default function Settings() {
     });
   };
 
-  const addProductiveUrl = async () => {
-    if (!newUrl.trim()) return;
-    
-    // Basic URL validation
-    let url = newUrl.trim();
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = 'https://' + url;
-    }
-    
-    const newEntry: ProductiveUrl = {
-      id: crypto.randomUUID(),
-      url,
-      title: newTitle.trim() || new URL(url).hostname,
-      addedAt: Date.now(),
-    };
-    
-    const updated = [...productiveUrls, newEntry];
-    setProductiveUrls(updated);
-    await chrome.storage.local.set({ productiveUrls: updated });
-    setNewUrl('');
-    setNewTitle('');
-  };
-
-  const removeProductiveUrl = async (id: string) => {
-    const updated = productiveUrls.filter(u => u.id !== id);
-    setProductiveUrls(updated);
-    await chrome.storage.local.set({ productiveUrls: updated });
-  };
-
   // ===== Render =====
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-white/50" />
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
+    <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="border-b border-white/10 bg-black/20 backdrop-blur sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div className="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-2xl">🧘</span>
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-blue-500 flex items-center justify-center">
+              <Wind className="w-5 h-5 text-white" />
+            </div>
             <div>
-              <h1 className="text-xl font-bold">YouTube Detox</h1>
-              <p className="text-xs text-white/50">
-                {lastUpdated && `Updated ${lastUpdated.toLocaleTimeString()}`}
-              </p>
+              <h1 className="text-lg font-semibold text-slate-900">YouTube Detox</h1>
+              <p className="text-xs text-slate-500">Stay focused, stay calm</p>
             </div>
           </div>
-          
-          <div className="flex items-center gap-4">
-            {/* User / Auth */}
+
+          <div className="flex items-center gap-2">
             {authUser ? (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-full">
+              <div className="flex items-center gap-2">
                 {authUser.picture && (
-                  <img src={authUser.picture} alt="" className="w-6 h-6 rounded-full" />
+                  <img src={authUser.picture} alt="" className="w-8 h-8 rounded-full" />
                 )}
-                <span className="text-sm">{authUser.name}</span>
-                <button onClick={handleSignOut} className="ml-2 text-white/50 hover:text-white">
+                <button
+                  onClick={handleSignOut}
+                  className="p-2 hover:bg-slate-100 rounded-lg text-slate-500"
+                >
                   <LogOut className="w-4 h-4" />
                 </button>
               </div>
@@ -489,560 +378,299 @@ export default function Settings() {
               <button
                 onClick={handleSignIn}
                 disabled={authLoading}
-                className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm flex items-center gap-2"
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm text-slate-700 flex items-center gap-2"
               >
                 {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <User className="w-4 h-4" />}
                 Sign In
               </button>
             )}
-            
-            {/* Refresh */}
             <button
               onClick={fetchData}
-              className="p-2 hover:bg-white/10 rounded-lg"
-              title="Refresh data"
+              className="p-2 hover:bg-slate-100 rounded-lg text-slate-500"
             >
-              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="max-w-2xl mx-auto px-6">
+          <div className="flex gap-1">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === 'dashboard'
+                  ? 'bg-slate-50 text-slate-900 border-t border-x border-slate-200'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Dashboard
+            </button>
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === 'settings'
+                  ? 'bg-slate-50 text-slate-900 border-t border-x border-slate-200'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <SettingsIcon className="w-4 h-4 inline mr-1" />
+              Settings
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-2 mb-8 bg-white/5">
-            <TabsTrigger value="dashboard" className="data-[state=active]:bg-white/10">
-              <BarChart3 className="w-4 h-4 mr-2" />
-              Dashboard
-            </TabsTrigger>
-            <TabsTrigger value="settings" className="data-[state=active]:bg-white/10">
-              <SettingsIcon className="w-4 h-4 mr-2" />
-              Settings
-            </TabsTrigger>
-          </TabsList>
+      <main className="max-w-2xl mx-auto px-6 py-8">
+        {activeTab === 'dashboard' ? (
+          <div className="space-y-6">
+            {/* Drift Weather Card - Main Focus */}
+            {drift && (
+              <DriftWeather drift={drift.current} level={drift.level} />
+            )}
 
-          {/* ===== DASHBOARD TAB ===== */}
-          <TabsContent value="dashboard" className="mt-0">
-        {/* Top Stats Row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8">
-          {/* Today */}
-          <Card className="bg-white/5 border-white/10 col-span-2">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-white/50 text-sm flex items-center gap-1">
-                  <Clock className="w-4 h-4" />
-                  Today
-                </span>
-                <span className={`text-sm ${isOverGoal ? 'text-red-400' : 'text-green-400'}`}>
-                  {isOverGoal ? `+${formatMinutes(todayMinutes - settings.dailyGoalMinutes)} over` : `${formatMinutes(settings.dailyGoalMinutes - todayMinutes)} left`}
-                </span>
-              </div>
-              <div className="text-3xl font-bold mb-2">{formatMinutes(todayMinutes)}</div>
-              <Progress 
-                value={goalProgress} 
-                className={`h-2 ${isOverGoal ? '[&>div]:bg-red-500' : '[&>div]:bg-blue-500'}`}
-              />
-            </CardContent>
-          </Card>
+            {/* Today's Stats */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">
+                Today
+              </h2>
 
-          {/* Streak */}
-          <Card className="bg-gradient-to-br from-orange-500/20 to-red-500/20 border-orange-500/30">
-            <CardContent className="p-4 text-center">
-              <Flame className="w-6 h-6 mx-auto mb-1 text-orange-400" />
-              <div className="text-2xl font-bold">{streak}</div>
-              <div className="text-xs text-white/50">Day Streak</div>
-            </CardContent>
-          </Card>
-
-          {/* Level */}
-          <Card className="bg-gradient-to-br from-purple-500/20 to-blue-500/20 border-purple-500/30">
-            <CardContent className="p-4 text-center">
-              <Trophy className="w-6 h-6 mx-auto mb-1 text-purple-400" />
-              <div className="text-2xl font-bold">{level}</div>
-              <div className="text-xs text-white/50">{xp} XP</div>
-            </CardContent>
-          </Card>
-
-          {/* Drift */}
-          <Card className={`border ${
-            drift?.level === 'critical' ? 'bg-red-500/20 border-red-500/30' :
-            drift?.level === 'high' ? 'bg-orange-500/20 border-orange-500/30' :
-            drift?.level === 'medium' ? 'bg-yellow-500/20 border-yellow-500/30' :
-            'bg-green-500/20 border-green-500/30'
-          }`}>
-            <CardContent className="p-4 text-center">
-              <Waves className="w-6 h-6 mx-auto mb-1" />
-              <div className="text-2xl font-bold">{Math.round((drift?.current || 0) * 100)}%</div>
-              <div className="text-xs text-white/50">Drift</div>
-            </CardContent>
-          </Card>
-
-          {/* Videos Today */}
-          <Card className="bg-white/5 border-white/10">
-            <CardContent className="p-4 text-center">
-              <Video className="w-6 h-6 mx-auto mb-1 text-blue-400" />
-              <div className="text-2xl font-bold">{todayStats?.videoCount || 0}</div>
-              <div className="text-xs text-white/50">Videos</div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Main Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* Weekly Chart */}
-          <Card className="bg-white/5 border-white/10 lg:col-span-2">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-blue-400" />
-                  This Week
-                </span>
-                <span className={`text-sm flex items-center gap-1 ${weeklyChange <= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {weeklyChange <= 0 ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
-                  {Math.abs(weeklyChange)}% vs last week
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={weeklyChartData}>
-                    <defs>
-                      <linearGradient id="colorMin" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="name" tick={{ fill: '#888', fontSize: 12 }} tickLine={false} axisLine={false} />
-                    <YAxis hide />
-                    <Tooltip
-                      contentStyle={{ background: '#1e293b', border: 'none', borderRadius: 8 }}
-                      formatter={(value) => [formatMinutes(value as number), 'Time']}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="minutes"
-                      stroke="#3b82f6"
-                      strokeWidth={2}
-                      fillOpacity={1}
-                      fill="url(#colorMin)"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="goal"
-                      stroke="#ef4444"
-                      strokeWidth={1}
-                      strokeDasharray="5 5"
-                      dot={false}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="flex justify-between text-sm text-white/50 mt-2">
-                <span>Total: {formatMinutes(weeklyMinutes)}</span>
-                <span>{weeklyVideos} videos</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Productivity Breakdown */}
-          <Card className="bg-white/5 border-white/10">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Zap className="w-4 h-4 text-yellow-400" />
-                Video Quality
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {productivityData.length > 0 ? (
-                <>
-                  <div className="h-32 flex items-center justify-center">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={productivityData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={35}
-                          outerRadius={55}
-                          paddingAngle={3}
-                          dataKey="value"
-                        >
-                          {productivityData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
+              <div className="flex items-end justify-between mb-6">
+                <div>
+                  <div className="text-4xl font-bold text-slate-900">
+                    {formatMinutes(todayMinutes)}
                   </div>
-                  <div className="space-y-2 mt-2">
-                    {productivityData.map((item) => (
-                      <div key={item.name} className="flex items-center justify-between text-sm">
-                        <span className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-                          {item.name}
-                        </span>
-                        <span>{item.value}</span>
-                      </div>
-                    ))}
+                  <div className={`text-sm mt-1 ${isOverGoal ? 'text-red-500' : 'text-emerald-600'}`}>
+                    {isOverGoal
+                      ? `${formatMinutes(Math.abs(remaining))} over goal`
+                      : `${formatMinutes(remaining)} remaining`
+                    }
                   </div>
-                </>
-              ) : (
-                <div className="h-40 flex items-center justify-center text-white/30">
-                  No ratings yet
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
 
-        {/* Second Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* Monthly Trend */}
-          <Card className="bg-white/5 border-white/10 lg:col-span-2">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-green-400" />
-                Last 30 Days
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-32">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={monthlyChartData}>
-                    <XAxis dataKey="day" tick={false} axisLine={false} />
-                    <YAxis hide />
-                    <Tooltip
-                      contentStyle={{ background: '#1e293b', border: 'none', borderRadius: 8 }}
-                      formatter={(value) => [formatMinutes(value as number), 'Time']}
-                      labelFormatter={(day) => `Day ${day}`}
-                    />
-                    <Bar dataKey="minutes" fill="#3b82f6" radius={[2, 2, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div className="text-right">
+                  <div className="text-2xl font-semibold text-slate-700">
+                    {todayStats?.videoCount || 0}
+                  </div>
+                  <div className="text-sm text-slate-500">videos</div>
+                </div>
               </div>
-            </CardContent>
-          </Card>
 
-          {/* Peak Hours */}
-          <Card className="bg-white/5 border-white/10">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Clock className="w-4 h-4 text-cyan-400" />
-                Peak Hours
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-6 gap-1">
-                {hourlyData.map((h) => {
-                  const maxMins = Math.max(...hourlyData.map(x => x.minutes), 1);
-                  const intensity = h.minutes / maxMins;
-                  return (
-                    <div
-                      key={h.hour}
-                      className="aspect-square rounded flex items-center justify-center text-[10px]"
-                      style={{
-                        backgroundColor: `rgba(59, 130, 246, ${intensity * 0.8})`,
-                      }}
-                      title={`${formatHour(h.hour)}: ${h.minutes}m`}
-                    >
-                      {h.hour % 6 === 0 ? formatHour(h.hour).replace('am', '').replace('pm', '') : ''}
-                    </div>
-                  );
-                })}
+              {/* Progress bar */}
+              <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    isOverGoal ? 'bg-red-400' : 'bg-emerald-400'
+                  }`}
+                  style={{ width: `${Math.min(100, (todayMinutes / settings.dailyGoalMinutes) * 100)}%` }}
+                />
               </div>
-              <div className="flex justify-between text-xs text-white/30 mt-2">
-                <span>12am</span>
-                <span>12pm</span>
-                <span>11pm</span>
+              <div className="flex justify-between mt-2 text-xs text-slate-400">
+                <span>0</span>
+                <span>{formatMinutes(settings.dailyGoalMinutes)} goal</span>
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
 
-        {/* Bottom Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Top Channels */}
-          <Card className="bg-white/5 border-white/10">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Tv className="w-4 h-4 text-purple-400" />
-                Top Channels
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {channels.length > 0 ? (
-                <div className="space-y-3">
-                  {channels.slice(0, 6).map((channel, i) => {
-                    const maxMinutes = channels[0]?.minutes || 1;
-                    const percent = (channel.minutes / maxMinutes) * 100;
-                    return (
-                      <div key={channel.channel}>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="truncate max-w-[200px]">{channel.channel}</span>
-                          <span className="text-white/50">{formatMinutes(channel.minutes)}</span>
+            {/* Quick Stats Row */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 text-center">
+                <Flame className="w-6 h-6 mx-auto mb-2 text-orange-400" />
+                <div className="text-2xl font-bold text-slate-900">{streak}</div>
+                <div className="text-xs text-slate-500">Day Streak</div>
+              </div>
+
+              <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 text-center">
+                <Trophy className="w-6 h-6 mx-auto mb-2 text-amber-400" />
+                <div className="text-2xl font-bold text-slate-900">{level}</div>
+                <div className="text-xs text-slate-500">Level</div>
+              </div>
+
+              <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 text-center">
+                <Video className="w-6 h-6 mx-auto mb-2 text-blue-400" />
+                <div className="text-2xl font-bold text-slate-900">{weeklyVideos}</div>
+                <div className="text-xs text-slate-500">This Week</div>
+              </div>
+            </div>
+
+            {/* Weekly Summary (Collapsible) */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              <button
+                onClick={() => setShowWeekly(!showWeekly)}
+                className="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
+              >
+                <span className="text-sm font-medium text-slate-700">Weekly Summary</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-slate-500">{formatMinutes(weeklyMinutes)} total</span>
+                  {showWeekly ? (
+                    <ChevronUp className="w-4 h-4 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  )}
+                </div>
+              </button>
+
+              {showWeekly && (
+                <div className="px-6 pb-4 border-t border-slate-100">
+                  <div className="flex items-end justify-between h-32 pt-4 gap-2">
+                    {last7Days.map((day) => {
+                      const mins = Math.round(day.totalSeconds / 60);
+                      const maxMins = Math.max(...last7Days.map(d => Math.round(d.totalSeconds / 60)), 1);
+                      const height = (mins / maxMins) * 100;
+                      const dayName = ['S', 'M', 'T', 'W', 'T', 'F', 'S'][new Date(day.date).getDay()];
+                      const isToday = day.date === todayKey;
+
+                      return (
+                        <div key={day.date} className="flex-1 flex flex-col items-center gap-2">
+                          <div className="w-full flex items-end justify-center h-20">
+                            <div
+                              className={`w-full max-w-[32px] rounded-t transition-all ${
+                                isToday ? 'bg-blue-400' : 'bg-slate-200'
+                              }`}
+                              style={{ height: `${Math.max(height, 4)}%` }}
+                              title={`${formatMinutes(mins)}`}
+                            />
+                          </div>
+                          <span className={`text-xs ${isToday ? 'text-blue-500 font-medium' : 'text-slate-400'}`}>
+                            {dayName}
+                          </span>
                         </div>
-                        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-purple-500"
-                            style={{ width: `${percent}%`, opacity: 1 - i * 0.12 }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="h-32 flex items-center justify-center text-white/30">
-                  No channel data yet
+                      );
+                    })}
+                  </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Achievements */}
-          <Card className="bg-white/5 border-white/10">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Trophy className="w-4 h-4 text-yellow-400" />
-                Achievements ({achievements.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {achievements.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {achievements.map((a) => (
-                    <div
-                      key={a.id}
-                      className={`px-3 py-2 rounded-lg border text-sm flex items-center gap-2 ${
-                        a.rarity === 'legendary' ? 'bg-yellow-500/10 border-yellow-500/30' :
-                        a.rarity === 'epic' ? 'bg-purple-500/10 border-purple-500/30' :
-                        a.rarity === 'rare' ? 'bg-blue-500/10 border-blue-500/30' :
-                        a.rarity === 'uncommon' ? 'bg-green-500/10 border-green-500/30' :
-                        'bg-white/5 border-white/10'
-                      }`}
-                      title={a.description}
-                    >
-                      <span>{a.icon}</span>
-                      <span>{a.name}</span>
+            {/* Current Tier */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <span className="text-3xl">{CHALLENGE_TIERS[settings.challengeTier].icon}</span>
+                  <div>
+                    <div className="font-semibold text-slate-900">
+                      {CHALLENGE_TIERS[settings.challengeTier].label} Mode
                     </div>
-                  ))}
+                    <div className="text-sm text-slate-500">
+                      {formatMinutes(CHALLENGE_TIERS[settings.challengeTier].goalMinutes)} daily limit
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <div className="h-32 flex items-center justify-center text-white/30">
-                  Keep using to unlock achievements!
+                <div className="text-right">
+                  <div className="text-lg font-semibold text-amber-500">
+                    {CHALLENGE_TIERS[settings.challengeTier].xpMultiplier}x XP
+                  </div>
+                  <div className="text-xs text-slate-500">{xp} total</div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-          </TabsContent>
-
-          {/* ===== SETTINGS TAB ===== */}
-          <TabsContent value="settings" className="mt-0 space-y-6">
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Settings Tab */
+          <div className="space-y-6">
             {/* Goal Mode */}
-            <Card className="bg-white/5 border-white/10">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-blue-400" />
-                  Goal Mode
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {(Object.entries(GOAL_MODES) as [GoalMode, typeof GOAL_MODES[GoalMode]][]).map(([mode, config]) => (
-                    <button
-                      key={mode}
-                      onClick={() => setSettings(p => ({ ...p, goalMode: mode }))}
-                      className={`p-4 rounded-xl border text-left transition-all ${
-                        settings.goalMode === mode
-                          ? 'border-blue-500 bg-blue-500/20 ring-1 ring-blue-500/50'
-                          : 'border-white/10 hover:border-white/30 hover:bg-white/5'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        {config.icon}
-                        <span className="font-semibold">{config.label}</span>
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">
+                Goal Mode
+              </h2>
+              <div className="grid grid-cols-1 gap-3">
+                {(Object.entries(GOAL_MODES) as [GoalMode, typeof GOAL_MODES[GoalMode]][]).map(([mode, config]) => (
+                  <button
+                    key={mode}
+                    onClick={() => setSettings(p => ({ ...p, goalMode: mode }))}
+                    className={`p-4 rounded-xl border text-left transition-all flex items-center gap-4 ${
+                      settings.goalMode === mode
+                        ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-200'
+                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className={`p-2 rounded-lg ${
+                      settings.goalMode === mode ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      {config.icon}
+                    </div>
+                    <div>
+                      <div className={`font-medium ${settings.goalMode === mode ? 'text-blue-900' : 'text-slate-700'}`}>
+                        {config.label}
                       </div>
-                      <span className="text-sm text-white/50">{config.desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                      <div className="text-sm text-slate-500">{config.desc}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {/* Challenge Tier */}
-            <Card className="bg-white/5 border-white/10">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Trophy className="w-5 h-5 text-purple-400" />
-                  Challenge Tier
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                  {(Object.entries(CHALLENGE_TIERS) as [ChallengeTier, typeof CHALLENGE_TIERS[ChallengeTier]][]).map(([tier, config]) => (
-                    <button
-                      key={tier}
-                      onClick={() => setSettings(p => ({ ...p, challengeTier: tier, dailyGoalMinutes: config.goalMinutes }))}
-                      className={`p-4 rounded-xl border text-center transition-all ${
-                        settings.challengeTier === tier
-                          ? 'border-purple-500 bg-purple-500/20 ring-1 ring-purple-500/50'
-                          : 'border-white/10 hover:border-white/30 hover:bg-white/5'
-                      }`}
-                    >
-                      <span className="text-2xl mb-2 block">{config.icon}</span>
-                      <span className="font-semibold block">{config.label}</span>
-                      <span className="text-xs text-white/50 block mt-1">{config.goalMinutes}m daily</span>
-                      <span className="text-xs text-purple-400 block">{config.xpMultiplier}x XP</span>
-                    </button>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">
+                Challenge Tier
+              </h2>
+              <div className="grid grid-cols-5 gap-2">
+                {(Object.entries(CHALLENGE_TIERS) as [ChallengeTier, typeof CHALLENGE_TIERS[ChallengeTier]][]).map(([tier, config]) => (
+                  <button
+                    key={tier}
+                    onClick={() => setSettings(p => ({ ...p, challengeTier: tier, dailyGoalMinutes: config.goalMinutes }))}
+                    className={`p-3 rounded-xl border text-center transition-all ${
+                      settings.challengeTier === tier
+                        ? 'border-amber-400 bg-amber-50 ring-1 ring-amber-200'
+                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="text-2xl block mb-1">{config.icon}</span>
+                    <span className={`text-xs font-medium block ${
+                      settings.challengeTier === tier ? 'text-amber-700' : 'text-slate-600'
+                    }`}>
+                      {config.label}
+                    </span>
+                    <span className="text-xs text-slate-400 block">{config.goalMinutes}m</span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {/* Friction Effects */}
-            <Card className="bg-white/5 border-white/10">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Waves className="w-5 h-5 text-cyan-400" />
-                  Friction Effects
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-white/50 mb-4">
-                  These effects are applied progressively as your Drift level increases.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {[
-                    { key: 'thumbnails', label: 'Blur Thumbnails', desc: 'Reduce visual temptation', icon: <Eye className="w-5 h-5" /> },
-                    { key: 'sidebar', label: 'Hide Sidebar', desc: 'Remove recommendations', icon: <Sidebar className="w-5 h-5" /> },
-                    { key: 'comments', label: 'Reduce Comments', desc: 'Less social distraction', icon: <MessageSquare className="w-5 h-5" /> },
-                    { key: 'autoplay', label: 'Control Autoplay', desc: 'Delay or disable autoplay', icon: <Play className="w-5 h-5" /> },
-                  ].map(({ key, label, desc, icon }) => (
-                    <div
-                      key={key}
-                      className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
-                        (settings.frictionEnabled as any)[key]
-                          ? 'border-cyan-500/30 bg-cyan-500/10'
-                          : 'border-white/10 bg-white/5'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-lg ${(settings.frictionEnabled as any)[key] ? 'bg-cyan-500/20 text-cyan-400' : 'bg-white/10 text-white/50'}`}>
-                          {icon}
-                        </div>
-                        <div>
-                          <span className="font-medium block">{label}</span>
-                          <span className="text-xs text-white/50">{desc}</span>
-                        </div>
-                      </div>
-                      <Switch
-                        checked={(settings.frictionEnabled as any)[key]}
-                        onCheckedChange={(v) => setSettings(p => ({
-                          ...p,
-                          frictionEnabled: { ...p.frictionEnabled, [key]: v }
-                        }))}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Productive Alternatives */}
-            <Card className="bg-white/5 border-white/10">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-green-400" />
-                  Productive Alternatives
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-white/50 mb-4">
-                  Save links you actually want to spend time on. We'll suggest them when you're drifting.
-                </p>
-                
-                {/* Add new URL */}
-                <div className="flex gap-2 mb-4">
-                  <input
-                    type="text"
-                    value={newTitle}
-                    onChange={(e) => setNewTitle(e.target.value)}
-                    placeholder="Title (optional)"
-                    className="flex-[2] px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm focus:outline-none focus:border-green-500/50"
-                  />
-                  <input
-                    type="url"
-                    value={newUrl}
-                    onChange={(e) => setNewUrl(e.target.value)}
-                    placeholder="https://..."
-                    className="flex-[3] px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm focus:outline-none focus:border-green-500/50"
-                    onKeyDown={(e) => e.key === 'Enter' && addProductiveUrl()}
-                  />
-                  <button
-                    onClick={addProductiveUrl}
-                    disabled={!newUrl.trim()}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-white/10 disabled:text-white/30 rounded-lg font-medium transition-colors flex items-center gap-2"
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-1">
+                Friction Effects
+              </h2>
+              <p className="text-sm text-slate-400 mb-4">
+                These activate as drift increases
+              </p>
+              <div className="space-y-3">
+                {[
+                  { key: 'thumbnails', label: 'Blur thumbnails', desc: 'Reduce visual temptation' },
+                  { key: 'sidebar', label: 'Hide sidebar', desc: 'Remove recommendations' },
+                  { key: 'comments', label: 'Reduce comments', desc: 'Less social distraction' },
+                  { key: 'autoplay', label: 'Control autoplay', desc: 'Delay auto-play' },
+                ].map(({ key, label, desc }) => (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between py-2"
                   >
-                    <Plus className="w-4 h-4" />
-                    Add
-                  </button>
-                </div>
-
-                {/* URL list */}
-                {productiveUrls.length > 0 ? (
-                  <div className="space-y-2">
-                    {productiveUrls.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10 group hover:border-green-500/30 transition-colors"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <Link className="w-4 h-4 text-green-400 flex-shrink-0" />
-                          <div className="min-w-0">
-                            <div className="font-medium truncate">{item.title}</div>
-                            <a
-                              href={item.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-white/40 hover:text-green-400 truncate flex items-center gap-1"
-                            >
-                              {item.url}
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => removeProductiveUrl(item.id)}
-                          className="p-2 text-white/30 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
+                    <div>
+                      <div className="font-medium text-slate-700">{label}</div>
+                      <div className="text-sm text-slate-400">{desc}</div>
+                    </div>
+                    <Switch
+                      checked={(settings.frictionEnabled as any)[key]}
+                      onCheckedChange={(v) => setSettings(p => ({
+                        ...p,
+                        frictionEnabled: { ...p.frictionEnabled, [key]: v }
+                      }))}
+                    />
                   </div>
-                ) : (
-                  <div className="text-center py-8 text-white/30">
-                    <Link className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p>No productive alternatives saved yet</p>
-                    <p className="text-xs mt-1">Add courses, tutorials, or projects you want to work on</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                ))}
+              </div>
+            </div>
 
             {/* Save Button */}
-            <div className="flex justify-end">
-              <button
-                onClick={saveSettings}
-                className="px-8 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-semibold transition-colors"
-              >
-                Save Settings
-              </button>
-            </div>
-          </TabsContent>
-        </Tabs>
+            <button
+              onClick={saveSettings}
+              className="w-full py-3 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-xl transition-colors"
+            >
+              Save Settings
+            </button>
+          </div>
+        )}
       </main>
     </div>
   );

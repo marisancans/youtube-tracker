@@ -13,6 +13,7 @@ import type {
   MoodReport,
   ExitType,
 } from '@yt-detox/shared';
+import { safeSendMessage } from '../lib/messaging';
 
 // ===== State Management =====
 
@@ -414,16 +415,13 @@ export async function initBrowserSession(): Promise<void> {
   });
   
   // Send to background
-  chrome.runtime.sendMessage({
-    type: 'PAGE_LOAD',
-    data: {
-      sessionId: state.currentBrowserSession.id,
-      pageType,
-      url: window.location.href,
-      timestamp: Date.now(),
-      firstCheckTime: state.temporal.firstCheckTime,
-      preSleepActive: state.temporal.preSleepActive,
-    },
+  safeSendMessage('PAGE_LOAD', {
+    sessionId: state.currentBrowserSession.id,
+    pageType,
+    url: window.location.href,
+    timestamp: Date.now(),
+    firstCheckTime: state.temporal.firstCheckTime,
+    preSleepActive: state.temporal.preSleepActive,
   });
   
   // Setup observers
@@ -487,18 +485,15 @@ export function endBrowserSession(exitType?: ExitType): void {
     endVideoSession('navigated');
   }
   
-  chrome.runtime.sendMessage({
-    type: 'PAGE_UNLOAD',
-    data: {
-      session: state.currentBrowserSession,
-      events: getAllPendingEvents(),
-      temporal: {
-        firstCheckTime: state.temporal.firstCheckTime,
-        hourlySeconds: state.temporal.hourlySeconds,
-        bingeModeActive: state.temporal.bingeModeActive,
-        preSleepActive: state.temporal.preSleepActive,
-        sessionDurationMs: Date.now() - state.temporal.sessionStartTime,
-      },
+  safeSendMessage('PAGE_UNLOAD', {
+    session: state.currentBrowserSession,
+    events: getAllPendingEvents(),
+    temporal: {
+      firstCheckTime: state.temporal.firstCheckTime,
+      hourlySeconds: state.temporal.hourlySeconds,
+      bingeModeActive: state.temporal.bingeModeActive,
+      preSleepActive: state.temporal.preSleepActive,
+      sessionDurationMs: Date.now() - state.temporal.sessionStartTime,
     },
   });
   
@@ -640,10 +635,7 @@ export function endVideoSession(reason: 'ended' | 'abandoned' | 'navigated' = 'n
   });
   
   // Send to background
-  chrome.runtime.sendMessage({
-    type: 'VIDEO_WATCHED',
-    data: state.currentVideoSession,
-  });
+  safeSendMessage('VIDEO_WATCHED', state.currentVideoSession);
   
   state.currentVideoSession = null;
   state.currentVideoInfo = null;
@@ -1263,12 +1255,9 @@ export function rateVideo(rating: -1 | 0 | 1): void {
     else state.currentBrowserSession.neutralVideos++;
   }
   
-  chrome.runtime.sendMessage({
-    type: 'RATE_VIDEO',
-    data: {
-      sessionId: state.currentVideoSession.id,
-      rating,
-    },
+  safeSendMessage('RATE_VIDEO', {
+    sessionId: state.currentVideoSession.id,
+    rating,
   });
 }
 

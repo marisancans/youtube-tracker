@@ -1,6 +1,8 @@
+import { safeSendMessageWithCallback } from '../lib/messaging';
+
 /**
  * Drift Effects - Apply visual friction based on drift level
- * 
+ *
  * This module injects CSS into YouTube pages to create progressive friction
  * based on the user's current drift level.
  */
@@ -309,7 +311,7 @@ export function removeDriftEffects(): void {
  */
 export function initDriftEffects(): void {
   // Initial fetch
-  chrome.runtime.sendMessage({ type: 'GET_DRIFT_EFFECTS' }, (effects) => {
+  safeSendMessageWithCallback('GET_DRIFT_EFFECTS', undefined, (effects: any) => {
     if (effects) {
       applyDriftEffects(effects);
     }
@@ -324,7 +326,7 @@ export function initDriftEffects(): void {
 
   // Periodic refresh (every 30 seconds)
   setInterval(() => {
-    chrome.runtime.sendMessage({ type: 'GET_DRIFT_EFFECTS' }, (effects) => {
+    safeSendMessageWithCallback('GET_DRIFT_EFFECTS', undefined, (effects: any) => {
       if (effects) {
         applyDriftEffects(effects);
       }

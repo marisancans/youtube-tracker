@@ -1,6 +1,8 @@
+import { safeSendMessage } from '../lib/messaging';
+
 /**
  * Music Detection
- * 
+ *
  * Determines if the current video/channel is music content
  * to exempt it from drift in Music Mode.
  */
@@ -217,12 +219,9 @@ export function initMusicDetection(): void {
   // Run detection when video changes
   const observer = new MutationObserver(() => {
     const result = detectMusic();
-    chrome.runtime.sendMessage({
-      type: 'MUSIC_DETECTED',
-      data: result,
-    });
+    safeSendMessage('MUSIC_DETECTED', result);
   });
-  
+
   // Observe video player changes
   const playerContainer = document.querySelector('#movie_player, #player');
   if (playerContainer) {
@@ -233,14 +232,11 @@ export function initMusicDetection(): void {
       attributeFilter: ['src'],
     });
   }
-  
+
   // Initial detection
   setTimeout(() => {
     const result = detectMusic();
-    chrome.runtime.sendMessage({
-      type: 'MUSIC_DETECTED',
-      data: result,
-    });
+    safeSendMessage('MUSIC_DETECTED', result);
     console.log('[YT Detox] Music detection:', result);
   }, 2000);
 }

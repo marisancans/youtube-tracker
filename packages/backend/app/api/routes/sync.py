@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -270,8 +270,8 @@ class SyncResponse(BaseModel):
 @router.post("", response_model=SyncResponse)
 @limiter.limit(settings.rate_limit_sync)
 async def sync_all(
-    http_request: Request,
-    request: SyncRequest,
+    request: Request,
+    body: SyncRequest,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -286,7 +286,7 @@ async def sync_all(
     """
     
     # Validate payload sizes
-    validate_sync_payload(request.data.model_dump())
+    validate_sync_payload(body.data.model_dump())
     
     counts = {
         "videoSessions": 0,
@@ -302,7 +302,7 @@ async def sync_all(
         "productiveUrls": 0,
     }
     errors: List[str] = []
-    data = request.data
+    data = body.data
     
     try:
         # === Video Sessions ===
@@ -658,11 +658,11 @@ async def sync_all(
 @router.get("/videos")
 @limiter.limit(settings.rate_limit)
 async def get_synced_videos(
-    http_request: Request,
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    limit: int = Field(100, le=500),  # Max 500 per request
-    offset: int = Field(0, ge=0)
+    limit: int = Query(100, le=500),  # Max 500 per request
+    offset: int = Query(0, ge=0)
 ):
     """Get synced video sessions for a user."""
     result = await db.execute(
@@ -706,7 +706,7 @@ async def get_synced_videos(
 @router.get("/stats/{date_str}")
 @limiter.limit(settings.rate_limit)
 async def get_daily_stats(
-    http_request: Request,
+    request: Request,
     date_str: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
