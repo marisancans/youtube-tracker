@@ -86,7 +86,6 @@ const Icons = {
 // Mini sparkline component - full width
 function Sparkline({ data, color }: { data: number[]; color: string }) {
   const max = Math.max(...data, 1);
-  const width = 100; // percentage based, will scale to container
   const points = data.map((v, i) => {
     const x = (i / (data.length - 1)) * 100;
     const y = 24 - (v / max) * 20;
