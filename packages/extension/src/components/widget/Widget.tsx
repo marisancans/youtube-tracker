@@ -6,6 +6,16 @@ import {
   rateVideo,
 } from '../../content/tracker';
 
+interface Nudge {
+  id: string;
+  type: 'time_warning' | 'break_reminder' | 'goal_reached' | 'bedtime' | 'tip';
+  message: string;
+  icon: string;
+  color: string;
+  dismissible: boolean;
+  action?: { label: string; callback: () => void };
+}
+
 interface WidgetState {
   collapsed: boolean;
   minimized: boolean;
@@ -25,6 +35,11 @@ interface WidgetState {
   xp: number;
   achievements: string[];
   youtubeTabs: number;
+  // Nudges
+  activeNudge: Nudge | null;
+  lastBreakReminder: number;
+  dismissedNudges: Set<string>;
+  phase: 'observation' | 'awareness' | 'intervention' | 'reduction';
 }
 
 function formatTime(seconds: number): string {
@@ -83,6 +98,11 @@ const Icons = {
   Award: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>,
   Brain: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3 4 4.5 4.5 0 0 1-3-4"/><path d="M12 9v4"/><path d="M12 6v.01"/></svg>,
   Layers: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/></svg>,
+  AlertCircle: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
+  Coffee: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>,
+  Moon: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>,
+  X: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+  Lightbulb: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>,
 };
 
 // Mini sparkline component - full width with proper circles
@@ -184,6 +204,10 @@ function FocusRing({ score }: { score: number }) {
 const s = {
   container: { fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', fontSize: '14px', color: '#fff' },
   pill: { display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(8px)', borderRadius: '9999px', fontSize: '13px', fontWeight: '500', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)', cursor: 'pointer' },
+  nudge: { display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '10px', marginBottom: '12px', position: 'relative' as const },
+  nudgeIcon: { flexShrink: 0 },
+  nudgeText: { flex: 1, fontSize: '12px', lineHeight: '1.3' },
+  nudgeClose: { position: 'absolute' as const, top: '4px', right: '4px', background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '2px' },
   card: { background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.97) 0%, rgba(30, 41, 59, 0.97) 100%)', backdropFilter: 'blur(16px)', borderRadius: '16px', boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)', border: '1px solid rgba(255, 255, 255, 0.1)', overflow: 'hidden', width: '300px' },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' },
   headerLeft: { display: 'flex', alignItems: 'center', gap: '8px' },
@@ -244,6 +268,10 @@ export default function Widget(): JSX.Element {
     streak: 5, weeklyData: [45, 32, 60, 28, 55, 40, 35], level: 1, xp: 0,
     achievements: ['🔥 5-day streak', '🎯 Under goal'],
     youtubeTabs: 1,
+    activeNudge: null,
+    lastBreakReminder: 0,
+    dismissedNudges: new Set(),
+    phase: 'observation',
   });
   
   useEffect(() => {
@@ -252,12 +280,92 @@ export default function Widget(): JSX.Element {
         setState(p => ({ ...p, dailyGoal: response.dailyGoalMinutes || 60 }));
       }
     });
-    // Load streak/xp from storage
-    chrome.storage.local.get(['streak', 'xp', 'weeklyData'], (result) => {
+    // Load streak/xp and phase from storage
+    chrome.storage.local.get(['streak', 'xp', 'weeklyData', 'settings'], (result) => {
       if (result.streak) setState(p => ({ ...p, streak: result.streak }));
       if (result.xp) setState(p => ({ ...p, xp: result.xp }));
       if (result.weeklyData) setState(p => ({ ...p, weeklyData: result.weeklyData }));
+      if (result.settings?.phase) setState(p => ({ ...p, phase: result.settings.phase }));
     });
+  }, []);
+  
+  // Nudge logic - check for nudges every update
+  const checkNudges = useCallback(() => {
+    // Don't show nudges during observation phase
+    if (state.phase === 'observation') return;
+    
+    const now = Date.now();
+    
+    // Time warning: over daily goal
+    if (state.todayMinutes > state.dailyGoal && !state.dismissedNudges.has('time_warning_today')) {
+      const overBy = state.todayMinutes - state.dailyGoal;
+      setState(p => ({
+        ...p,
+        activeNudge: {
+          id: 'time_warning_today',
+          type: 'time_warning',
+          message: `You're ${formatMinutes(overBy)} over your daily goal`,
+          icon: 'AlertCircle',
+          color: '#f87171',
+          dismissible: true,
+        },
+      }));
+      return;
+    }
+    
+    // Break reminder: every 30 minutes of continuous session
+    const breakInterval = 30 * 60; // 30 minutes in seconds
+    if (
+      state.sessionDuration > 0 && 
+      state.sessionDuration % breakInterval < 60 && // Within first minute of the interval
+      now - state.lastBreakReminder > breakInterval * 1000 &&
+      !state.dismissedNudges.has(`break_${Math.floor(state.sessionDuration / breakInterval)}`)
+    ) {
+      setState(p => ({
+        ...p,
+        lastBreakReminder: now,
+        activeNudge: {
+          id: `break_${Math.floor(state.sessionDuration / breakInterval)}`,
+          type: 'break_reminder',
+          message: `${formatMinutes(Math.floor(state.sessionDuration / 60))} session — time for a quick break?`,
+          icon: 'Coffee',
+          color: '#60a5fa',
+          dismissible: true,
+        },
+      }));
+      return;
+    }
+    
+    // Bedtime warning (check if after 23:00)
+    const hour = new Date().getHours();
+    if (hour >= 23 && !state.dismissedNudges.has('bedtime_warning')) {
+      setState(p => ({
+        ...p,
+        activeNudge: {
+          id: 'bedtime_warning',
+          type: 'bedtime',
+          message: 'Getting late — screens before bed affect sleep quality',
+          icon: 'Moon',
+          color: '#a78bfa',
+          dismissible: true,
+        },
+      }));
+      return;
+    }
+  }, [state.todayMinutes, state.dailyGoal, state.sessionDuration, state.dismissedNudges, state.phase, state.lastBreakReminder]);
+  
+  // Run nudge check periodically
+  useEffect(() => {
+    const nudgeInterval = setInterval(checkNudges, 10000); // Check every 10 seconds
+    return () => clearInterval(nudgeInterval);
+  }, [checkNudges]);
+  
+  const dismissNudge = useCallback((nudgeId: string) => {
+    setState(p => ({
+      ...p,
+      activeNudge: null,
+      dismissedNudges: new Set([...p.dismissedNudges, nudgeId]),
+    }));
   }, []);
   
   useEffect(() => {
@@ -373,6 +481,31 @@ export default function Widget(): JSX.Element {
                 </div>
               )}
             </div>
+            
+            {/* Active Nudge */}
+            {state.activeNudge && (
+              <div style={{
+                ...s.nudge,
+                background: `linear-gradient(135deg, ${state.activeNudge.color}20 0%, ${state.activeNudge.color}10 100%)`,
+                border: `1px solid ${state.activeNudge.color}40`,
+              }}>
+                <div style={{ ...s.nudgeIcon, color: state.activeNudge.color }}>
+                  {state.activeNudge.icon === 'AlertCircle' && <Icons.AlertCircle />}
+                  {state.activeNudge.icon === 'Coffee' && <Icons.Coffee />}
+                  {state.activeNudge.icon === 'Moon' && <Icons.Moon />}
+                  {state.activeNudge.icon === 'Lightbulb' && <Icons.Lightbulb />}
+                </div>
+                <div style={s.nudgeText}>{state.activeNudge.message}</div>
+                {state.activeNudge.dismissible && (
+                  <button 
+                    style={s.nudgeClose} 
+                    onClick={() => dismissNudge(state.activeNudge!.id)}
+                  >
+                    <Icons.X />
+                  </button>
+                )}
+              </div>
+            )}
             
             {/* Level Progress */}
             <div style={s.levelBar}>
