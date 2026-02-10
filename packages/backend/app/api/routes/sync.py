@@ -10,7 +10,7 @@ from app.db.session import get_db
 from app.models.domain import (
     User, VideoSession, BrowserSession, DailyStats,
     ScrollEvent, ThumbnailEvent, PageEvent, VideoWatchEvent,
-    RecommendationEvent, InterventionEvent, MoodReport
+    RecommendationEvent, InterventionEvent, MoodReport, ProductiveUrl
 )
 from app.api.deps import get_or_create_user
 from pydantic import BaseModel, Field
@@ -219,6 +219,13 @@ class MoodReportCreate(BaseModel):
     satisfaction: Optional[int] = None
 
 
+class ProductiveUrlCreate(BaseModel):
+    id: str
+    url: str
+    title: str
+    addedAt: int
+
+
 class SyncData(BaseModel):
     videoSessions: List[VideoSessionCreate] = []
     browserSessions: List[BrowserSessionCreate] = []
@@ -230,6 +237,7 @@ class SyncData(BaseModel):
     recommendationEvents: List[RecommendationEventCreate] = []
     interventionEvents: List[InterventionEventCreate] = []
     moodReports: List[MoodReportCreate] = []
+    productiveUrls: List[ProductiveUrlCreate] = []
 
 
 class SyncRequest(BaseModel):
@@ -269,6 +277,7 @@ async def sync_all(
         "recommendationEvents": 0,
         "interventionEvents": 0,
         "moodReports": 0,
+        "productiveUrls": 0,
     }
     errors: List[str] = []
     data = request.data
@@ -579,6 +588,33 @@ async def sync_all(
             )
             db.add(mood)
             counts["moodReports"] += 1
+        
+        # === Productive URLs (Upsert with soft delete handling) ===
+        for url_data in data.productiveUrls:
+            # Check if exists (including soft deleted)
+            existing = await db.execute(
+                select(ProductiveUrl).where(
+                    ProductiveUrl.user_id == user.id,
+                    ProductiveUrl.ext_id == url_data.id
+                )
+            )
+            existing_url = existing.scalar_one_or_none()
+            
+            if existing_url:
+                # Restore if soft deleted, update fields
+                existing_url.url = url_data.url
+                existing_url.title = url_data.title
+                existing_url.deleted_at = None
+            else:
+                productive_url = ProductiveUrl(
+                    user_id=user.id,
+                    ext_id=url_data.id,
+                    url=url_data.url,
+                    title=url_data.title,
+                    added_at=datetime.fromtimestamp(url_data.addedAt / 1000),
+                )
+                db.add(productive_url)
+            counts["productiveUrls"] += 1
         
         # Commit all changes atomically
         await db.commit()

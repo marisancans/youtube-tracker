@@ -18,6 +18,10 @@ export async function syncToBackend(): Promise<boolean> {
     return false;
   }
 
+  // Get productive URLs from storage
+  const allData = await chrome.storage.local.get(['productiveUrls']);
+  const productiveUrls = allData.productiveUrls || [];
+
   // Check if there's anything to sync
   const hasData =
     storage.videoSessions.length > 0 ||
@@ -29,7 +33,8 @@ export async function syncToBackend(): Promise<boolean> {
     storage.pendingEvents.video_watch.length > 0 ||
     storage.pendingEvents.recommendation.length > 0 ||
     storage.pendingEvents.intervention.length > 0 ||
-    storage.pendingEvents.mood.length > 0;
+    storage.pendingEvents.mood.length > 0 ||
+    productiveUrls.length > 0;
 
   if (!hasData) {
     return true;
@@ -62,6 +67,7 @@ export async function syncToBackend(): Promise<boolean> {
         recommendationEvents: storage.pendingEvents.recommendation,
         interventionEvents: storage.pendingEvents.intervention,
         moodReports: storage.pendingEvents.mood,
+        productiveUrls: productiveUrls,
       },
     };
 

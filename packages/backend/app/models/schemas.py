@@ -141,3 +141,27 @@ class WeeklyComparison(BaseModel):
     change_percent: float
     this_week_videos: int
     prev_week_videos: int
+
+
+# ===== Productive URLs =====
+
+class ProductiveUrlCreate(BaseModel):
+    id: str
+    url: str
+    title: str
+    added_at: int = Field(..., alias="addedAt")
+    
+    class Config:
+        populate_by_name = True
+
+
+class ProductiveUrlResponse(BaseModel):
+    id: str
+    url: str
+    title: str
+    added_at: datetime
+    times_suggested: int = 0
+    times_clicked: int = 0
+    
+    class Config:
+        from_attributes = True

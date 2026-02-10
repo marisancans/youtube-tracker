@@ -27,6 +27,7 @@ class User(Base):
     recommendation_events: Mapped[list["RecommendationEvent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     intervention_events: Mapped[list["InterventionEvent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     mood_reports: Mapped[list["MoodReport"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    productive_urls: Mapped[list["ProductiveUrl"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class VideoSession(Base):
@@ -414,4 +415,33 @@ class MoodReport(Base):
     
     __table_args__ = (
         Index("idx_mood_user_time", "user_id", "timestamp"),
+    )
+
+
+class ProductiveUrl(Base):
+    """User-saved productive alternative URLs."""
+    __tablename__ = "productive_urls"
+    
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    
+    ext_id: Mapped[str] = mapped_column(String(64), index=True)  # ID from extension
+    url: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(String(255))
+    added_at: Mapped[datetime] = mapped_column(DateTime)
+    
+    # Tracking
+    times_suggested: Mapped[int] = mapped_column(Integer, default=0)
+    times_clicked: Mapped[int] = mapped_column(Integer, default=0)
+    last_suggested_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_clicked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime)  # Soft delete
+    
+    user: Mapped["User"] = relationship(back_populates="productive_urls")
+    
+    __table_args__ = (
+        Index("idx_productive_url_user", "user_id", "deleted_at"),
     )
