@@ -87,6 +87,16 @@ interface DriftData {
   history: DriftHistory[];
 }
 
+interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  xpReward: number;
+  rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+  unlockedAt?: number;
+}
+
 interface DashboardStats {
   today: DailyData | null;
   last7Days: DailyData[];
@@ -100,6 +110,7 @@ interface DashboardStats {
   drift: DriftData | null;
   challengeTier: string;
   goalMode: string;
+  achievements: Achievement[];
 }
 
 interface BackendSettings {
@@ -147,6 +158,7 @@ export default function Dashboard({
     drift: null,
     challengeTier: 'casual',
     goalMode: 'time_reduction',
+    achievements: [],
   });
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -268,6 +280,13 @@ export default function Dashboard({
         // Get settings for tier and mode
         const settings = data.settings || {};
 
+        // Fetch achievements
+        const achievementsData = await new Promise<Achievement[]>((resolve) => {
+          chrome.runtime.sendMessage({ type: 'GET_ACHIEVEMENTS' }, (response) => {
+            resolve(response?.unlocked || []);
+          });
+        });
+
         setStats({
           today,
           last7Days,
@@ -287,6 +306,7 @@ export default function Dashboard({
           drift: driftData,
           challengeTier: settings.challengeTier || 'casual',
           goalMode: settings.goalMode || 'time_reduction',
+          achievements: achievementsData,
         });
       }
 
@@ -815,6 +835,43 @@ export default function Dashboard({
                 );
               })}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Achievements */}
+      {stats.achievements.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-yellow-500" />
+              Achievements ({stats.achievements.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {stats.achievements.slice(0, 8).map((achievement) => (
+                <div
+                  key={achievement.id}
+                  className={`px-3 py-2 rounded-lg border text-sm flex items-center gap-2 ${
+                    achievement.rarity === 'legendary' ? 'bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border-yellow-500/30' :
+                    achievement.rarity === 'epic' ? 'bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-purple-500/30' :
+                    achievement.rarity === 'rare' ? 'bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-blue-500/30' :
+                    achievement.rarity === 'uncommon' ? 'bg-gradient-to-r from-green-500/10 to-emerald-500/10 border-green-500/30' :
+                    'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                  }`}
+                  title={achievement.description}
+                >
+                  <span className="text-lg">{achievement.icon}</span>
+                  <span className="font-medium">{achievement.name}</span>
+                </div>
+              ))}
+            </div>
+            {stats.achievements.length > 8 && (
+              <p className="text-xs text-muted-foreground mt-2 text-center">
+                +{stats.achievements.length - 8} more achievements
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

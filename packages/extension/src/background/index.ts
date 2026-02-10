@@ -51,6 +51,15 @@ import { syncToBackend, queueEvents, getSyncStatus, startPeriodicSync, handleSyn
 
 import { getTabState, initTabs, registerTabListeners } from './tabs';
 
+import {
+  checkAchievements,
+  getUnlockedAchievements,
+  getAllAchievements,
+  calculateStreak,
+  initAchievements,
+  startAchievementChecks,
+} from './achievements';
+
 // ===== Page Event Handlers =====
 
 async function handlePageLoad(data: any): Promise<void> {
@@ -337,6 +346,20 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
           console.log('[YT Detox] Music detected:', (data as any)?.isMusic, 'confidence:', (data as any)?.confidence);
           break;
 
+        // Achievements
+        case 'GET_ACHIEVEMENTS':
+          response = {
+            unlocked: await getUnlockedAchievements(),
+            all: getAllAchievements(),
+          };
+          break;
+        case 'CHECK_ACHIEVEMENTS':
+          response = { newAchievements: await checkAchievements() };
+          break;
+        case 'GET_STREAK':
+          response = { streak: await calculateStreak() };
+          break;
+
         default:
           console.log('[YT Detox] Unknown message type:', type);
       }
@@ -404,12 +427,16 @@ async function initialize(): Promise<void> {
   // Register tab listeners
   registerTabListeners();
 
+  // Initialize achievements
+  await initAchievements();
+
   // Start periodic tasks
   startDriftCalculation(30000); // Calculate drift every 30 seconds
   startChallengeChecks(60 * 60 * 1000); // Check challenges every hour
   startPeriodicSync(5 * 60 * 1000); // Sync every 5 minutes
+  startAchievementChecks(60 * 60 * 1000); // Check achievements every hour
 
-  console.log('[YT Detox] Background service worker initialized (v0.5.0 - modular refactor)');
+  console.log('[YT Detox] Background service worker initialized (v0.6.0 - achievements)');
 }
 
 // Run initialization

@@ -461,7 +461,11 @@ export type MessageType =
   // Tabs
   | 'GET_TAB_INFO'
   // Music detection
-  | 'MUSIC_DETECTED';
+  | 'MUSIC_DETECTED'
+  // Achievements
+  | 'GET_ACHIEVEMENTS'
+  | 'CHECK_ACHIEVEMENTS'
+  | 'GET_STREAK';
 
 // ===== Batch Sync Types =====
 
