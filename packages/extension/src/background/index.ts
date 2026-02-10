@@ -964,4 +964,185 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 });
 
-console.log('[YT Detox] Background service worker initialized (v0.3.0 - unified sync + tab tracking)');
+// ===== Phase Management =====
+
+const OBSERVATION_DAYS = 7;
+const AWARENESS_DAYS = 14;
+const INTERVENTION_DAYS = 30;
+
+type Phase = 'observation' | 'awareness' | 'intervention' | 'reduction';
+
+interface BaselineStats {
+  avgDailyMinutes: number;
+  avgDailyVideos: number;
+  avgSessionMinutes: number;
+  totalDays: number;
+  peakHours: number[];
+  topChannels: Array<{ channel: string; minutes: number }>;
+  productivityRatio: number;
+  recommendationRatio: number;
+  completionRate: number;
+  shortsRatio: number;
+}
+
+function getDaysSinceInstall(installDate: number): number {
+  return Math.floor((Date.now() - installDate) / (1000 * 60 * 60 * 24));
+}
+
+function calculateRecommendedPhase(installDate: number): Phase {
+  const days = getDaysSinceInstall(installDate);
+  
+  if (days < OBSERVATION_DAYS) return 'observation';
+  if (days < OBSERVATION_DAYS + AWARENESS_DAYS) return 'awareness';
+  if (days < OBSERVATION_DAYS + AWARENESS_DAYS + INTERVENTION_DAYS) return 'intervention';
+  return 'reduction';
+}
+
+async function checkAndUpdatePhase(): Promise<{ phase: Phase; daysRemaining: number; shouldNotify: boolean }> {
+  const storage = await getStorage();
+  const settings = storage.settings;
+  
+  const installDate = settings.installDate || Date.now();
+  const days = getDaysSinceInstall(installDate);
+  const recommendedPhase = calculateRecommendedPhase(installDate);
+  const currentPhase = settings.phase;
+  
+  let daysRemaining = 0;
+  let shouldNotify = false;
+  
+  if (recommendedPhase === 'observation') {
+    daysRemaining = OBSERVATION_DAYS - days;
+  } else if (recommendedPhase === 'awareness') {
+    daysRemaining = OBSERVATION_DAYS + AWARENESS_DAYS - days;
+  } else if (recommendedPhase === 'intervention') {
+    daysRemaining = OBSERVATION_DAYS + AWARENESS_DAYS + INTERVENTION_DAYS - days;
+  }
+  
+  // Auto-advance phase if time has come
+  if (currentPhase !== recommendedPhase) {
+    settings.phase = recommendedPhase;
+    await saveStorage({ settings });
+    shouldNotify = true;
+    console.log(`[YT Detox] Phase advanced: ${currentPhase} → ${recommendedPhase}`);
+  }
+  
+  return { phase: recommendedPhase, daysRemaining, shouldNotify };
+}
+
+async function calculateBaselineStats(): Promise<BaselineStats> {
+  const storage = await getStorage();
+  const dailyStats = storage.dailyStats || {};
+  const videoSessions = storage.videoSessions || [];
+  
+  const stats = Object.values(dailyStats);
+  const daysWithData = stats.length;
+  
+  if (daysWithData === 0) {
+    return {
+      avgDailyMinutes: 0,
+      avgDailyVideos: 0,
+      avgSessionMinutes: 0,
+      totalDays: 0,
+      peakHours: [],
+      topChannels: [],
+      productivityRatio: 0,
+      recommendationRatio: 0,
+      completionRate: 0,
+      shortsRatio: 0,
+    };
+  }
+  
+  // Calculate averages
+  const totalSeconds = stats.reduce((sum, d) => sum + (d.totalSeconds || 0), 0);
+  const totalVideos = stats.reduce((sum, d) => sum + (d.videoCount || 0), 0);
+  const totalSessions = stats.reduce((sum, d) => sum + (d.sessionCount || 0), 0);
+  const totalProductive = stats.reduce((sum, d) => sum + (d.productiveVideos || 0), 0);
+  const totalUnproductive = stats.reduce((sum, d) => sum + (d.unproductiveVideos || 0), 0);
+  const totalNeutral = stats.reduce((sum, d) => sum + (d.neutralVideos || 0), 0);
+  const totalRated = totalProductive + totalUnproductive + totalNeutral;
+  const totalCompleted = stats.reduce((sum, d) => sum + (d.videosCompleted || 0), 0);
+  const totalAbandoned = stats.reduce((sum, d) => sum + (d.videosAbandoned || 0), 0);
+  const totalShorts = stats.reduce((sum, d) => sum + (d.shortsCount || 0), 0);
+  const totalRecommendationClicks = stats.reduce((sum, d) => sum + (d.recommendationClicks || 0), 0);
+  
+  // Peak hours (aggregate hourly data)
+  const hourlyTotals: Record<string, number> = {};
+  for (let i = 0; i < 24; i++) hourlyTotals[i.toString()] = 0;
+  
+  stats.forEach(d => {
+    if (d.hourlySeconds) {
+      Object.entries(d.hourlySeconds).forEach(([hour, secs]) => {
+        hourlyTotals[hour] = (hourlyTotals[hour] || 0) + secs;
+      });
+    }
+  });
+  
+  // Top 3 peak hours
+  const peakHours = Object.entries(hourlyTotals)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([hour]) => parseInt(hour));
+  
+  // Top channels from video sessions
+  const channelMap = new Map<string, number>();
+  videoSessions.forEach(v => {
+    if (v.channel) {
+      channelMap.set(v.channel, (channelMap.get(v.channel) || 0) + (v.watchedSeconds || 0));
+    }
+  });
+  
+  const topChannels = Array.from(channelMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([channel, seconds]) => ({ channel, minutes: Math.round(seconds / 60) }));
+  
+  const avgSessionSeconds = totalSessions > 0 ? totalSeconds / totalSessions : 0;
+  
+  return {
+    avgDailyMinutes: Math.round(totalSeconds / 60 / daysWithData),
+    avgDailyVideos: Math.round(totalVideos / daysWithData),
+    avgSessionMinutes: Math.round(avgSessionSeconds / 60),
+    totalDays: daysWithData,
+    peakHours,
+    topChannels,
+    productivityRatio: totalRated > 0 ? Math.round((totalProductive / totalRated) * 100) : 0,
+    recommendationRatio: totalVideos > 0 ? Math.round((totalRecommendationClicks / totalVideos) * 100) : 0,
+    completionRate: (totalCompleted + totalAbandoned) > 0 
+      ? Math.round((totalCompleted / (totalCompleted + totalAbandoned)) * 100) 
+      : 0,
+    shortsRatio: totalVideos > 0 ? Math.round((totalShorts / totalVideos) * 100) : 0,
+  };
+}
+
+// Phase-related message handlers
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === 'GET_PHASE_INFO') {
+    checkAndUpdatePhase().then(sendResponse);
+    return true;
+  }
+  
+  if (message.type === 'GET_BASELINE_STATS') {
+    calculateBaselineStats().then(sendResponse);
+    return true;
+  }
+  
+  if (message.type === 'SET_PHASE') {
+    (async () => {
+      const storage = await getStorage();
+      storage.settings.phase = message.data.phase;
+      await saveStorage({ settings: storage.settings });
+      sendResponse({ success: true, phase: message.data.phase });
+    })();
+    return true;
+  }
+});
+
+// Check phase on startup
+checkAndUpdatePhase().then(({ phase, daysRemaining, shouldNotify }) => {
+  console.log(`[YT Detox] Current phase: ${phase}, days remaining: ${daysRemaining}`);
+  if (shouldNotify) {
+    // Could show a notification here about phase change
+  }
+});
+
+console.log('[YT Detox] Background service worker initialized (v0.4.0 - unified sync + tab tracking + phase management)');

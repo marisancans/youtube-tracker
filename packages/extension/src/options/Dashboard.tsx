@@ -24,7 +24,32 @@ import {
   Tv,
   Calendar,
   Zap,
+  Eye,
+  Brain,
+  Shield,
+  Rocket,
+  Clock,
+  BarChart2,
 } from 'lucide-react';
+
+interface PhaseInfo {
+  phase: 'observation' | 'awareness' | 'intervention' | 'reduction';
+  daysRemaining: number;
+  shouldNotify: boolean;
+}
+
+interface BaselineStats {
+  avgDailyMinutes: number;
+  avgDailyVideos: number;
+  avgSessionMinutes: number;
+  totalDays: number;
+  peakHours: number[];
+  topChannels: Array<{ channel: string; minutes: number }>;
+  productivityRatio: number;
+  recommendationRatio: number;
+  completionRate: number;
+  shortsRatio: number;
+}
 
 interface DailyData {
   date: string;
@@ -57,6 +82,8 @@ interface DashboardStats {
   streak: number;
   level: number;
   xp: number;
+  phase: PhaseInfo | null;
+  baseline: BaselineStats | null;
 }
 
 interface BackendSettings {
@@ -99,6 +126,8 @@ export default function Dashboard({
     streak: 0,
     level: 1,
     xp: 0,
+    phase: null,
+    baseline: null,
   });
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -145,6 +174,15 @@ export default function Dashboard({
       } else {
         // Fetch from local storage
         const data = await chrome.storage.local.get(['dailyStats', 'videoSessions', 'streak', 'xp']);
+        
+        // Fetch phase and baseline info
+        const phaseInfo = await new Promise<PhaseInfo>((resolve) => {
+          chrome.runtime.sendMessage({ type: 'GET_PHASE_INFO' }, resolve);
+        });
+        
+        const baselineStats = await new Promise<BaselineStats>((resolve) => {
+          chrome.runtime.sendMessage({ type: 'GET_BASELINE_STATS' }, resolve);
+        });
         const dailyStats = data.dailyStats || {};
 
         // Build last 7 days
@@ -207,6 +245,8 @@ export default function Dashboard({
           streak: data.streak || 0,
           level: Math.floor((data.xp || 0) / 100) + 1,
           xp: data.xp || 0,
+          phase: phaseInfo,
+          baseline: baselineStats,
         });
       }
 
@@ -247,6 +287,48 @@ export default function Dashboard({
   const goalProgress = Math.min(100, (todayMinutes / dailyGoalMinutes) * 100);
   const isOverGoal = todayMinutes > dailyGoalMinutes;
 
+  const phaseConfig = {
+    observation: {
+      icon: Eye,
+      color: 'blue',
+      title: 'Observation Week',
+      description: 'Learning your patterns',
+      bgGradient: 'from-blue-500/10 to-cyan-500/10',
+      borderColor: 'border-blue-500/30',
+      textColor: 'text-blue-600',
+    },
+    awareness: {
+      icon: Brain,
+      color: 'purple',
+      title: 'Awareness Phase',
+      description: 'Building mindfulness',
+      bgGradient: 'from-purple-500/10 to-pink-500/10',
+      borderColor: 'border-purple-500/30',
+      textColor: 'text-purple-600',
+    },
+    intervention: {
+      icon: Shield,
+      color: 'orange',
+      title: 'Intervention Phase',
+      description: 'Active habit change',
+      bgGradient: 'from-orange-500/10 to-yellow-500/10',
+      borderColor: 'border-orange-500/30',
+      textColor: 'text-orange-600',
+    },
+    reduction: {
+      icon: Rocket,
+      color: 'green',
+      title: 'Reduction Phase',
+      description: 'Sustaining progress',
+      bgGradient: 'from-green-500/10 to-emerald-500/10',
+      borderColor: 'border-green-500/30',
+      textColor: 'text-green-600',
+    },
+  };
+
+  const currentPhaseConfig = stats.phase ? phaseConfig[stats.phase.phase] : null;
+  const PhaseIcon = currentPhaseConfig?.icon || Eye;
+
   return (
     <div className="space-y-4">
       {/* Header with refresh */}
@@ -267,6 +349,78 @@ export default function Dashboard({
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
+
+      {/* Phase Banner */}
+      {stats.phase && currentPhaseConfig && (
+        <Card className={`bg-gradient-to-r ${currentPhaseConfig.bgGradient} ${currentPhaseConfig.borderColor} border`}>
+          <CardContent className="py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg bg-white/50 ${currentPhaseConfig.textColor}`}>
+                  <PhaseIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className={`font-semibold ${currentPhaseConfig.textColor}`}>
+                    {currentPhaseConfig.title}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {currentPhaseConfig.description}
+                  </div>
+                </div>
+              </div>
+              {stats.phase.daysRemaining > 0 && (
+                <div className="text-right">
+                  <div className={`text-lg font-bold ${currentPhaseConfig.textColor}`}>
+                    {stats.phase.daysRemaining}
+                  </div>
+                  <div className="text-xs text-muted-foreground">days left</div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Baseline Stats (shown during observation) */}
+      {stats.phase?.phase === 'observation' && stats.baseline && stats.baseline.totalDays > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <BarChart2 className="w-4 h-4 text-blue-500" />
+              Your Baseline ({stats.baseline.totalDays} days)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                <div className="text-muted-foreground text-xs">Daily Average</div>
+                <div className="font-bold">{formatMinutes(stats.baseline.avgDailyMinutes)}</div>
+              </div>
+              <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                <div className="text-muted-foreground text-xs">Videos/Day</div>
+                <div className="font-bold">{stats.baseline.avgDailyVideos}</div>
+              </div>
+              <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                <div className="text-muted-foreground text-xs">Productive</div>
+                <div className="font-bold text-green-600">{stats.baseline.productivityRatio}%</div>
+              </div>
+              <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                <div className="text-muted-foreground text-xs">From Recs</div>
+                <div className="font-bold text-orange-600">{stats.baseline.recommendationRatio}%</div>
+              </div>
+              {stats.baseline.peakHours.length > 0 && (
+                <div className="col-span-2 p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                  <div className="text-muted-foreground text-xs">Peak Hours</div>
+                  <div className="font-bold flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {stats.baseline.peakHours.map(h => `${h}:00`).join(', ')}
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Today's Progress */}
       <Card>
