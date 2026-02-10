@@ -17,7 +17,7 @@
   ],
   
   "oauth2": {
-    "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
+    "client_id": "1007098689527-o37u9pf5794h8fadhd7v5v5fdd72hk3s.apps.googleusercontent.com",
     "scopes": [
       "openid",
       "email",
@@ -25,7 +25,7 @@
     ]
   },
   
-  "key": "YOUR_EXTENSION_KEY",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqGyx4SJmigo1hlHfNZVbF1MHO2aUBhq00W3Jz+xs2d4fojGFGRF7EpZ4cowHVK+Hj3itWIxdW+w1Q0rpJxNRVMCDm6weBEn3sqS0Awh35JBS0h9qClk+qFc95VPF/fTdTJN+eDIvCqmhtNql9Hkmf9V/6vb2NK2A4HrEPhJCjaEDpiHGNjSzvPHhyw1u521Il1jnHCV4QMFwJkAyTIpiUJkp18cBf51uRXetkSSAULivebzRs4hsUNnFjJ9s24IH6s/aH6bE+ErM02x3Pun8RoYRgMwWg9EphjU7BD6JJcPJyTLjByJ9Ay1LTNcjvXIc0goEgIqcm0GG/wECY3fHLwIDAQAB",
   
   "background": {
     "service_worker": "src/background/index.ts",
