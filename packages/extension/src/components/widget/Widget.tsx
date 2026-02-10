@@ -83,17 +83,29 @@ const Icons = {
   Brain: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3 4 4.5 4.5 0 0 1-3-4"/><path d="M12 9v4"/><path d="M12 6v.01"/></svg>,
 };
 
-// Mini sparkline component
+// Mini sparkline component - full width
 function Sparkline({ data, color }: { data: number[]; color: string }) {
   const max = Math.max(...data, 1);
+  const width = 100; // percentage based, will scale to container
   const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * 60;
-    const y = 20 - (v / max) * 18;
+    const x = (i / (data.length - 1)) * 100;
+    const y = 24 - (v / max) * 20;
     return `${x},${y}`;
   }).join(' ');
   
   return (
-    <svg width="60" height="24" style={{ overflow: 'visible' }}>
+    <svg width="100%" height="28" viewBox="0 0 100 28" preserveAspectRatio="none" style={{ overflow: 'visible' }}>
+      {/* Gradient fill under line */}
+      <defs>
+        <linearGradient id="sparklineGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.3"/>
+          <stop offset="100%" stopColor={color} stopOpacity="0"/>
+        </linearGradient>
+      </defs>
+      <polygon
+        points={`0,28 ${points} 100,28`}
+        fill="url(#sparklineGradient)"
+      />
       <polyline
         points={points}
         fill="none"
@@ -101,11 +113,12 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
       />
       {data.map((v, i) => {
-        const x = (i / (data.length - 1)) * 60;
-        const y = 20 - (v / max) * 18;
-        return <circle key={i} cx={x} cy={y} r="2" fill={color} />;
+        const x = (i / (data.length - 1)) * 100;
+        const y = 24 - (v / max) * 20;
+        return <circle key={i} cx={x} cy={y} r="3" fill={color} style={{ filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.3))' }} />;
       })}
     </svg>
   );

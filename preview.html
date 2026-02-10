@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Widget Preview</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  </style>
+</head>
+<body>
+  <div style="color: #fff; width: 300px;">
+    <!-- Widget Card -->
+    <div style="background: linear-gradient(135deg, rgba(15, 23, 42, 0.97) 0%, rgba(30, 41, 59, 0.97) 100%); backdrop-filter: blur(16px); border-radius: 16px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); overflow: hidden;">
+      
+      <!-- Header -->
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: pulse 2s infinite;"></div>
+          <span style="font-size: 13px; font-weight: 600; color: rgba(255, 255, 255, 0.9);">YouTube Detox</span>
+        </div>
+        <div style="display: flex; gap: 4px;">
+          <button style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: transparent; border: none; border-radius: 8px; color: rgba(255, 255, 255, 0.6); cursor: pointer;">−</button>
+          <button style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: transparent; border: none; border-radius: 8px; color: rgba(255, 255, 255, 0.6); cursor: pointer;">▲</button>
+        </div>
+      </div>
+      
+      <!-- Body -->
+      <div style="padding: 16px;">
+        
+        <!-- Hero Row -->
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+          <!-- Timer -->
+          <div>
+            <div style="font-size: 32px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; letter-spacing: -1px;">1:23:45</div>
+            <div style="font-size: 10px; color: rgba(255, 255, 255, 0.5); text-transform: uppercase; letter-spacing: 1px;">Session Time</div>
+          </div>
+          
+          <!-- Focus Score Ring -->
+          <div style="position: relative; width: 72px; height: 72px;">
+            <svg width="72" height="72" style="transform: rotate(-90deg);">
+              <circle cx="36" cy="36" r="28" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="6"/>
+              <circle cx="36" cy="36" r="28" fill="none" stroke="#4ade80" stroke-width="6" stroke-dasharray="175.9" stroke-dashoffset="26.4" stroke-linecap="round"/>
+            </svg>
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+              <div style="font-size: 18px; font-weight: 700; color: #4ade80;">85</div>
+              <div style="font-size: 8px; color: rgba(255,255,255,0.5); text-transform: uppercase;">Focus</div>
+            </div>
+          </div>
+          
+          <!-- Streak -->
+          <div style="display: flex; flex-direction: column; align-items: center; padding: 8px 12px; background: linear-gradient(135deg, rgba(251, 191, 36, 0.2) 0%, rgba(245, 158, 11, 0.2) 100%); border-radius: 12px; border: 1px solid rgba(251, 191, 36, 0.3);">
+            <div style="font-size: 20px; font-weight: 700; color: #fbbf24;">🔥 7</div>
+            <div style="font-size: 9px; color: rgba(251, 191, 36, 0.8); text-transform: uppercase; letter-spacing: 0.5px;">Day Streak</div>
+          </div>
+        </div>
+        
+        <!-- Level Bar -->
+        <div style="margin-bottom: 16px; padding: 12px; background: linear-gradient(135deg, rgba(147, 51, 234, 0.15) 0%, rgba(79, 70, 229, 0.15) 100%); border-radius: 12px; border: 1px solid rgba(147, 51, 234, 0.2);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%); border-radius: 8px; font-size: 14px; font-weight: 700; color: white;">5</div>
+              <div>
+                <div style="font-size: 12px; color: rgba(255,255,255,0.9); font-weight: 600;">Level 5</div>
+                <div style="font-size: 10px; color: rgba(255,255,255,0.5);">680 / 1000 XP</div>
+              </div>
+            </div>
+            <span style="color: #a855f7;">🏆</span>
+          </div>
+          <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+            <div style="height: 100%; width: 68%; background: linear-gradient(90deg, #a855f7 0%, #6366f1 100%); border-radius: 3px;"></div>
+          </div>
+        </div>
+        
+        <!-- Stats Grid -->
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px;">
+          <div style="padding: 10px 6px; background: rgba(255, 255, 255, 0.05); border-radius: 10px; text-align: center;">
+            <div style="color: #60a5fa; margin-bottom: 4px;">📹</div>
+            <div style="font-size: 18px; font-weight: 700; color: #fff;">12</div>
+            <div style="font-size: 8px; color: rgba(255, 255, 255, 0.5); text-transform: uppercase;">Videos</div>
+          </div>
+          <div style="padding: 10px 6px; background: rgba(255, 255, 255, 0.05); border-radius: 10px; text-align: center;">
+            <div style="color: #4ade80; margin-bottom: 4px;">👍</div>
+            <div style="font-size: 18px; font-weight: 700; color: #fff;">8</div>
+            <div style="font-size: 8px; color: rgba(255, 255, 255, 0.5); text-transform: uppercase;">Good</div>
+          </div>
+          <div style="padding: 10px 6px; background: rgba(255, 255, 255, 0.05); border-radius: 10px; text-align: center;">
+            <div style="color: #f87171; margin-bottom: 4px;">👎</div>
+            <div style="font-size: 18px; font-weight: 700; color: #fff;">2</div>
+            <div style="font-size: 8px; color: rgba(255, 255, 255, 0.5); text-transform: uppercase;">Wasted</div>
+          </div>
+        </div>
+        
+        <!-- Weekly Trend - Full Width -->
+        <div style="margin-bottom: 16px; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="font-size: 11px; color: rgba(255,255,255,0.7); display: flex; align-items: center; gap: 6px;">
+              📈 This Week
+            </div>
+            <div style="font-size: 10px; color: #4ade80; display: flex; align-items: center; gap: 4px;">
+              ↗ 18% better
+            </div>
+          </div>
+          <svg width="100%" height="32" viewBox="0 0 100 32" preserveAspectRatio="none" style="overflow: visible;">
+            <defs>
+              <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#4ade80" stop-opacity="0.3"/>
+                <stop offset="100%" stop-color="#4ade80" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <polygon points="0,32 0,22 16.6,18 33.3,26 50,10 66.6,14 83.3,6 100,12 100,32" fill="url(#sparkGrad)"/>
+            <polyline points="0,22 16.6,18 33.3,26 50,10 66.6,14 83.3,6 100,12" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+            <circle cx="0" cy="22" r="4" fill="#4ade80"/><circle cx="16.6" cy="18" r="4" fill="#4ade80"/><circle cx="33.3" cy="26" r="4" fill="#4ade80"/><circle cx="50" cy="10" r="4" fill="#4ade80"/><circle cx="66.6" cy="14" r="4" fill="#4ade80"/><circle cx="83.3" cy="6" r="4" fill="#4ade80"/><circle cx="100" cy="12" r="4" fill="#4ade80"/>
+          </svg>
+        </div>
+        
+        <!-- Daily Progress -->
+        <div style="margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: rgba(255, 255, 255, 0.7);">
+              🎯 Daily Goal
+            </div>
+            <span style="font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.7);">45m / 60m</span>
+          </div>
+          <div style="height: 8px; background: rgba(255, 255, 255, 0.1); border-radius: 4px; overflow: hidden;">
+            <div style="height: 100%; width: 75%; background: linear-gradient(90deg, #3b82f6 0%, #06b6d4 100%); border-radius: 4px;"></div>
+          </div>
+        </div>
+        
+        <!-- Achievements -->
+        <div style="display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 10px; color: rgba(255,255,255,0.7);">🔥 7-day streak</div>
+          <div style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 10px; color: rgba(255,255,255,0.7);">🎯 Under goal</div>
+          <div style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 10px; color: rgba(255,255,255,0.7);">⭐ First week</div>
+        </div>
+        
+        <!-- Now Watching -->
+        <div style="margin-bottom: 12px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 10px;">
+          <div style="display: flex; align-items: flex-start; gap: 8px;">
+            <div style="color: #facc15; flex-shrink: 0;">⚡</div>
+            <div style="min-width: 0; flex: 1;">
+              <div style="font-size: 9px; color: rgba(255, 255, 255, 0.5);">Now watching</div>
+              <div style="font-size: 12px; color: rgba(255, 255, 255, 0.9); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">How to Build Better Habits</div>
+              <div style="font-size: 10px; color: rgba(255, 255, 255, 0.4); margin-top: 2px;">8:32 watched</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Productivity Prompt -->
+        <div style="padding: 12px; background: linear-gradient(135deg, rgba(147, 51, 234, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%); border-radius: 12px; border: 1px solid rgba(147, 51, 234, 0.3);">
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: rgba(255, 255, 255, 0.9); margin-bottom: 10px;">
+            🧠 Worth your time? (+XP for rating!)
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 4px; border: none; border-radius: 8px; font-size: 11px; font-weight: 500; cursor: pointer; background: rgba(34,197,94,0.2); color: #4ade80;">👍 +15 XP</button>
+            <button style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 4px; border: none; border-radius: 8px; font-size: 11px; font-weight: 500; cursor: pointer; background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7);">😐 +5 XP</button>
+            <button style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 4px; border: none; border-radius: 8px; font-size: 11px; font-weight: 500; cursor: pointer; background: rgba(239,68,68,0.2); color: #f87171;">👎 +2 XP</button>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+    
+    <!-- Minimized Pill Preview -->
+    <div style="margin-top: 30px; display: flex; justify-content: center;">
+      <div style="display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px); border-radius: 9999px; font-size: 13px; font-weight: 500; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);">
+        🕐 1:23:45
+        <span style="width: 1px; height: 12px; background: rgba(255,255,255,0.3);"></span>
+        <span style="color: #fbbf24;">🔥7</span>
+        <span style="color: rgba(255,255,255,0.7);">45m</span>
+      </div>
+    </div>
+    <div style="text-align: center; margin-top: 10px; font-size: 11px; color: rgba(255,255,255,0.4);">↑ Minimized view</div>
+  </div>
+</body>
+</html>
