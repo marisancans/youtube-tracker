@@ -16,6 +16,19 @@ interface Nudge {
   action?: { label: string; callback: () => void };
 }
 
+interface DriftData {
+  drift: number;
+  level: 'low' | 'medium' | 'high' | 'critical';
+  effects: {
+    thumbnailBlur: number;
+    thumbnailGrayscale: number;
+    commentsReduction: number;
+    sidebarReduction: number;
+    autoplayDelay: number;
+    showTextOnly: boolean;
+  };
+}
+
 interface WidgetState {
   collapsed: boolean;
   minimized: boolean;
@@ -40,6 +53,8 @@ interface WidgetState {
   lastBreakReminder: number;
   dismissedNudges: Set<string>;
   phase: 'observation' | 'awareness' | 'intervention' | 'reduction';
+  // Drift
+  drift: DriftData;
 }
 
 function formatTime(seconds: number): string {
@@ -98,6 +113,7 @@ const Icons = {
   Award: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>,
   Brain: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3 4 4.5 4.5 0 0 1-3-4"/><path d="M12 9v4"/><path d="M12 6v.01"/></svg>,
   Layers: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/></svg>,
+  Waves: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>,
   AlertCircle: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
   Coffee: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>,
   Moon: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>,
@@ -272,6 +288,18 @@ export default function Widget(): JSX.Element {
     lastBreakReminder: 0,
     dismissedNudges: new Set(),
     phase: 'observation',
+    drift: {
+      drift: 0,
+      level: 'low',
+      effects: {
+        thumbnailBlur: 0,
+        thumbnailGrayscale: 0,
+        commentsReduction: 0,
+        sidebarReduction: 0,
+        autoplayDelay: 5,
+        showTextOnly: false,
+      },
+    },
   });
   
   useEffect(() => {
@@ -287,6 +315,38 @@ export default function Widget(): JSX.Element {
       if (result.weeklyData) setState(p => ({ ...p, weeklyData: result.weeklyData }));
       if (result.settings?.phase) setState(p => ({ ...p, phase: result.settings.phase }));
     });
+    // Load drift
+    chrome.runtime.sendMessage({ type: 'GET_DRIFT' }, (response) => {
+      if (response && typeof response.drift === 'number') {
+        setState(p => ({ 
+          ...p, 
+          drift: {
+            drift: response.drift,
+            level: response.level,
+            effects: response.effects,
+          }
+        }));
+      }
+    });
+  }, []);
+  
+  // Periodically update drift
+  useEffect(() => {
+    const driftInterval = setInterval(() => {
+      chrome.runtime.sendMessage({ type: 'GET_DRIFT' }, (response) => {
+        if (response && typeof response.drift === 'number') {
+          setState(p => ({ 
+            ...p, 
+            drift: {
+              drift: response.drift,
+              level: response.level,
+              effects: response.effects,
+            }
+          }));
+        }
+      });
+    }, 10000); // Update every 10 seconds
+    return () => clearInterval(driftInterval);
   }, []);
   
   // Nudge logic - check for nudges every update
@@ -545,6 +605,74 @@ export default function Widget(): JSX.Element {
                 <div style={{ ...s.statIcon, color: '#f87171' }}><Icons.ThumbsDown /></div>
                 <div style={s.statValue}>{state.unproductiveCount}</div>
                 <div style={s.statLabel}>Wasted</div>
+              </div>
+            </div>
+            
+            {/* Drift Meter 🌊 */}
+            <div style={{
+              padding: '12px',
+              background: state.drift.level === 'critical' 
+                ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.15) 100%)'
+                : state.drift.level === 'high'
+                ? 'linear-gradient(135deg, rgba(251, 146, 60, 0.15) 0%, rgba(234, 88, 12, 0.15) 100%)'
+                : state.drift.level === 'medium'
+                ? 'linear-gradient(135deg, rgba(250, 204, 21, 0.15) 0%, rgba(202, 138, 4, 0.15) 100%)'
+                : 'linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(22, 163, 74, 0.15) 100%)',
+              borderRadius: '12px',
+              marginBottom: '16px',
+              border: `1px solid ${
+                state.drift.level === 'critical' ? 'rgba(239, 68, 68, 0.3)' :
+                state.drift.level === 'high' ? 'rgba(251, 146, 60, 0.3)' :
+                state.drift.level === 'medium' ? 'rgba(250, 204, 21, 0.3)' :
+                'rgba(34, 197, 94, 0.3)'
+              }`,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'rgba(255,255,255,0.9)' }}>
+                  <Icons.Waves />
+                  <span style={{ fontWeight: '600' }}>Drift</span>
+                </div>
+                <span style={{
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  color: state.drift.level === 'critical' ? '#f87171' :
+                         state.drift.level === 'high' ? '#fb923c' :
+                         state.drift.level === 'medium' ? '#fbbf24' :
+                         '#4ade80',
+                }}>
+                  {Math.round(state.drift.drift * 100)}%
+                </span>
+              </div>
+              <div style={{
+                height: '6px',
+                background: 'rgba(255,255,255,0.1)',
+                borderRadius: '3px',
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  height: '100%',
+                  width: `${state.drift.drift * 100}%`,
+                  background: state.drift.level === 'critical' 
+                    ? 'linear-gradient(90deg, #f87171 0%, #ef4444 100%)'
+                    : state.drift.level === 'high'
+                    ? 'linear-gradient(90deg, #fb923c 0%, #f97316 100%)'
+                    : state.drift.level === 'medium'
+                    ? 'linear-gradient(90deg, #fbbf24 0%, #f59e0b 100%)'
+                    : 'linear-gradient(90deg, #4ade80 0%, #22c55e 100%)',
+                  borderRadius: '3px',
+                  transition: 'width 0.5s ease, background 0.3s ease',
+                }} />
+              </div>
+              <div style={{ 
+                fontSize: '10px', 
+                color: 'rgba(255,255,255,0.5)', 
+                marginTop: '6px',
+                textAlign: 'center',
+              }}>
+                {state.drift.level === 'low' && "You're staying focused 🎯"}
+                {state.drift.level === 'medium' && "Starting to drift... 🌊"}
+                {state.drift.level === 'high' && "Drifting away from your goals ⚠️"}
+                {state.drift.level === 'critical' && "High drift — friction active 🔴"}
               </div>
             </div>
             

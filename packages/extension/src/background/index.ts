@@ -167,6 +167,199 @@ getAuthState().then((state) => {
   }
 });
 
+// ===== Drift System 🌊 =====
+
+type GoalMode = 'music' | 'time_reduction' | 'strict' | 'cold_turkey';
+type ChallengeTier = 'casual' | 'focused' | 'disciplined' | 'monk' | 'ascetic';
+
+interface DriftState {
+  current: number; // 0.0 - 1.0
+  history: Array<{ timestamp: number; value: number }>; // Hourly snapshots
+  lastCalculated: number;
+}
+
+interface DriftFactors {
+  timeRatio: number;
+  unproductiveRatio: number;
+  recommendationRatio: number;
+  bingeBonus: number;
+  lateNightBonus: number;
+  productiveDiscount: number;
+  breakDiscount: number;
+}
+
+const CHALLENGE_TIERS: Record<ChallengeTier, { goalMinutes: number; xpMultiplier: number }> = {
+  casual: { goalMinutes: 60, xpMultiplier: 1.0 },
+  focused: { goalMinutes: 45, xpMultiplier: 1.5 },
+  disciplined: { goalMinutes: 30, xpMultiplier: 2.0 },
+  monk: { goalMinutes: 15, xpMultiplier: 3.0 },
+  ascetic: { goalMinutes: 5, xpMultiplier: 5.0 },
+};
+
+let driftState: DriftState = {
+  current: 0,
+  history: [],
+  lastCalculated: 0,
+};
+
+async function calculateDrift(): Promise<{ drift: number; factors: DriftFactors }> {
+  const storage = await getStorage();
+  const settings = storage.settings;
+  const todayKey = getTodayKey();
+  const todayStats = storage.dailyStats[todayKey];
+  
+  // Get goal based on challenge tier (stored in settings or default to casual)
+  const challengeTier = (settings as any).challengeTier as ChallengeTier || 'casual';
+  const goalMinutes = CHALLENGE_TIERS[challengeTier]?.goalMinutes || 60;
+  
+  // If no data yet, drift is 0
+  if (!todayStats) {
+    return {
+      drift: 0,
+      factors: {
+        timeRatio: 0,
+        unproductiveRatio: 0,
+        recommendationRatio: 0,
+        bingeBonus: 0,
+        lateNightBonus: 0,
+        productiveDiscount: 0,
+        breakDiscount: 0,
+      },
+    };
+  }
+  
+  const todayMinutes = Math.floor((todayStats.totalSeconds || 0) / 60);
+  const totalRated = (todayStats.productiveVideos || 0) + 
+                     (todayStats.unproductiveVideos || 0) + 
+                     (todayStats.neutralVideos || 0);
+  const totalVideos = todayStats.videoCount || 0;
+  
+  // Calculate factors
+  const factors: DriftFactors = {
+    // Base: time spent relative to goal
+    timeRatio: Math.min(todayMinutes / goalMinutes, 1.5), // Cap at 1.5
+    
+    // Unproductive video ratio (0-0.3 contribution)
+    unproductiveRatio: totalRated > 0 
+      ? ((todayStats.unproductiveVideos || 0) / totalRated) * 0.3 
+      : 0,
+    
+    // Recommendation clicks vs total (0-0.2 contribution)
+    recommendationRatio: totalVideos > 0 
+      ? ((todayStats.recommendationClicks || 0) / totalVideos) * 0.2 
+      : 0,
+    
+    // Binge bonus: current session over 60 minutes
+    bingeBonus: 0, // Will be set from current session
+    
+    // Late night (23:00 - 06:00)
+    lateNightBonus: (() => {
+      const hour = new Date().getHours();
+      return (hour >= 23 || hour < 6) ? 0.15 : 0;
+    })(),
+    
+    // Productive video discount (negative, reduces drift)
+    productiveDiscount: totalRated > 0 
+      ? -((todayStats.productiveVideos || 0) / totalRated) * 0.2 
+      : 0,
+    
+    // Break discount (if took breaks recently)
+    breakDiscount: 0, // TODO: track breaks taken
+  };
+  
+  // Check for binge session (current session > 60 min)
+  const browserSessions = storage.browserSessions || [];
+  const activeSessions = browserSessions.filter(s => !s.endedAt);
+  if (activeSessions.length > 0) {
+    const currentSession = activeSessions[activeSessions.length - 1];
+    const sessionMinutes = (currentSession.totalDurationSeconds || 0) / 60;
+    if (sessionMinutes > 60) {
+      factors.bingeBonus = 0.2;
+    } else if (sessionMinutes > 30) {
+      factors.bingeBonus = 0.1;
+    }
+  }
+  
+  // Calculate final drift
+  let drift = factors.timeRatio * 0.6 + // Time is 60% of drift
+              factors.unproductiveRatio +
+              factors.recommendationRatio +
+              factors.bingeBonus +
+              factors.lateNightBonus +
+              factors.productiveDiscount +
+              factors.breakDiscount;
+  
+  // Apply mode modifiers
+  const goalMode = (settings as any).goalMode as GoalMode || 'time_reduction';
+  if (goalMode === 'strict') {
+    drift *= 1.5; // 50% faster drift in strict mode
+  } else if (goalMode === 'music') {
+    // In music mode, would need to check if current content is music
+    // For now, apply a small discount
+    drift *= 0.8;
+  }
+  
+  // Clamp to 0-1
+  drift = Math.max(0, Math.min(1, drift));
+  
+  // Update state
+  driftState.current = drift;
+  driftState.lastCalculated = Date.now();
+  
+  // Add to history (keep hourly snapshots)
+  const lastSnapshot = driftState.history[driftState.history.length - 1];
+  const hourAgo = Date.now() - 60 * 60 * 1000;
+  if (!lastSnapshot || lastSnapshot.timestamp < hourAgo) {
+    driftState.history.push({ timestamp: Date.now(), value: drift });
+    // Keep only last 24 hours
+    driftState.history = driftState.history.filter(h => h.timestamp > Date.now() - 24 * 60 * 60 * 1000);
+  }
+  
+  // Persist drift state
+  await chrome.storage.local.set({ driftState });
+  
+  return { drift, factors };
+}
+
+function getDriftLevel(drift: number): 'low' | 'medium' | 'high' | 'critical' {
+  if (drift < 0.3) return 'low';
+  if (drift < 0.5) return 'medium';
+  if (drift < 0.7) return 'high';
+  return 'critical';
+}
+
+function getDriftEffects(drift: number): {
+  thumbnailBlur: number;
+  thumbnailGrayscale: number;
+  commentsReduction: number;
+  sidebarReduction: number;
+  autoplayDelay: number;
+  showTextOnly: boolean;
+} {
+  return {
+    thumbnailBlur: drift < 0.5 ? 0 : drift < 0.7 ? 2 : drift < 0.9 ? 4 : 8,
+    thumbnailGrayscale: drift < 0.3 ? 0 : drift < 0.5 ? 20 : drift < 0.7 ? 30 : drift < 0.9 ? 60 : 100,
+    commentsReduction: drift < 0.3 ? 0 : drift < 0.5 ? 10 : drift < 0.7 ? 20 : drift < 0.9 ? 50 : 100,
+    sidebarReduction: drift < 0.3 ? 0 : drift < 0.5 ? 50 : drift < 0.7 ? 75 : 100,
+    autoplayDelay: drift < 0.3 ? 5 : drift < 0.5 ? 15 : drift < 0.7 ? 30 : 999,
+    showTextOnly: drift >= 0.9,
+  };
+}
+
+// Load drift state on startup
+chrome.storage.local.get('driftState').then((data) => {
+  if (data.driftState) {
+    driftState = data.driftState;
+    console.log('[YT Detox] Restored drift state:', driftState.current);
+  }
+});
+
+// Calculate drift periodically
+setInterval(async () => {
+  const { drift, factors } = await calculateDrift();
+  console.log('[YT Detox] Drift calculated:', drift.toFixed(2), 'factors:', factors);
+}, 30000); // Every 30 seconds
+
 // ===== State =====
 
 interface EventQueues {
@@ -1304,6 +1497,49 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   
   if (message.type === 'AUTH_GET_STATE') {
     getAuthState().then(sendResponse);
+    return true;
+  }
+});
+
+// Drift-related message handlers
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === 'GET_DRIFT') {
+    calculateDrift().then(({ drift, factors }) => {
+      sendResponse({
+        drift,
+        factors,
+        level: getDriftLevel(drift),
+        effects: getDriftEffects(drift),
+        history: driftState.history,
+      });
+    });
+    return true;
+  }
+  
+  if (message.type === 'GET_DRIFT_EFFECTS') {
+    sendResponse(getDriftEffects(driftState.current));
+    return true;
+  }
+  
+  if (message.type === 'SET_CHALLENGE_TIER') {
+    (async () => {
+      const storage = await getStorage();
+      (storage.settings as any).challengeTier = message.data.tier;
+      await saveStorage({ settings: storage.settings });
+      const { drift } = await calculateDrift();
+      sendResponse({ success: true, tier: message.data.tier, newDrift: drift });
+    })();
+    return true;
+  }
+  
+  if (message.type === 'SET_GOAL_MODE') {
+    (async () => {
+      const storage = await getStorage();
+      (storage.settings as any).goalMode = message.data.mode;
+      await saveStorage({ settings: storage.settings });
+      const { drift } = await calculateDrift();
+      sendResponse({ success: true, mode: message.data.mode, newDrift: drift });
+    })();
     return true;
   }
 });
