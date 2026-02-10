@@ -60,6 +60,24 @@ export default defineConfig({
         },
       },
     },
+    // Sync flow E2E tests - full pipeline
+    {
+      name: 'sync-flow',
+      testDir: './tests/e2e',
+      testMatch: /sync-flow\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        headless: false,
+        launchOptions: {
+          args: [
+            `--disable-extensions-except=${extensionPath}`,
+            `--load-extension=${extensionPath}`,
+            '--no-sandbox',
+            '--disable-blink-features=AutomationControlled',
+          ],
+        },
+      },
+    },
   ],
 
   // Ensure backend is running (skip in Docker - handled by docker-compose)

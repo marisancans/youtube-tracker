@@ -4,19 +4,15 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Progress } from '@/components/ui/progress';
 import { 
-  Activity, 
   Cloud, 
   Settings as SettingsIcon, 
   BarChart3,
-  Clock,
-  Video,
-  TrendingDown,
   CheckCircle2,
   AlertCircle,
   Loader2
 } from 'lucide-react';
+import Dashboard from './Dashboard';
 
 interface SettingsState {
   trackingEnabled: boolean;
@@ -29,12 +25,6 @@ interface SettingsState {
     url: string;
     userId: string;
   };
-}
-
-interface TodayStats {
-  totalSeconds: number;
-  videoCount: number;
-  sessionCount: number;
 }
 
 const defaultSettings: SettingsState = {
@@ -52,19 +42,15 @@ const defaultSettings: SettingsState = {
 
 export default function Settings() {
   const [settings, setSettings] = useState<SettingsState>(defaultSettings);
-  const [todayStats, setTodayStats] = useState<TodayStats | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
   const [syncMessage, setSyncMessage] = useState('');
 
   useEffect(() => {
     // Load settings from storage
-    chrome.storage.local.get(['settings', 'todayStats'], (result) => {
+    chrome.storage.local.get(['settings'], (result) => {
       if (result.settings) {
         setSettings({ ...defaultSettings, ...result.settings });
-      }
-      if (result.todayStats) {
-        setTodayStats(result.todayStats);
       }
     });
   }, []);
@@ -116,17 +102,6 @@ export default function Settings() {
     }));
   };
 
-  const formatTime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    if (hours > 0) return `${hours}h ${mins}m`;
-    return `${mins}m`;
-  };
-
-  const goalProgress = todayStats 
-    ? Math.min(100, (todayStats.totalSeconds / 60 / settings.dailyGoalMinutes) * 100)
-    : 0;
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6">
       <div className="max-w-2xl mx-auto space-y-6">
@@ -158,46 +133,7 @@ export default function Settings() {
 
           {/* Dashboard Tab */}
           <TabsContent value="dashboard" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-blue-500" />
-                  Today's Progress
-                </CardTitle>
-                <CardDescription>
-                  {todayStats ? `${formatTime(todayStats.totalSeconds)} of ${settings.dailyGoalMinutes}m goal` : 'No data yet'}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Daily Goal</span>
-                    <span className={goalProgress >= 100 ? 'text-red-500 font-medium' : 'text-green-500'}>
-                      {goalProgress.toFixed(0)}%
-                    </span>
-                  </div>
-                  <Progress value={goalProgress} className={goalProgress >= 100 ? '[&>div]:bg-red-500' : ''} />
-                </div>
-
-                <div className="grid grid-cols-3 gap-4 pt-4">
-                  <div className="text-center p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                    <Clock className="w-5 h-5 mx-auto mb-1 text-blue-500" />
-                    <div className="text-2xl font-bold">{todayStats ? formatTime(todayStats.totalSeconds) : '0m'}</div>
-                    <div className="text-xs text-muted-foreground">Watch Time</div>
-                  </div>
-                  <div className="text-center p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                    <Video className="w-5 h-5 mx-auto mb-1 text-purple-500" />
-                    <div className="text-2xl font-bold">{todayStats?.videoCount ?? 0}</div>
-                    <div className="text-xs text-muted-foreground">Videos</div>
-                  </div>
-                  <div className="text-center p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                    <TrendingDown className="w-5 h-5 mx-auto mb-1 text-green-500" />
-                    <div className="text-2xl font-bold">{todayStats?.sessionCount ?? 0}</div>
-                    <div className="text-xs text-muted-foreground">Sessions</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <Dashboard backend={settings.backend} dailyGoalMinutes={settings.dailyGoalMinutes} />
           </TabsContent>
 
           {/* Settings Tab */}
