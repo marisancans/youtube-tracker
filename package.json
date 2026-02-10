@@ -10,9 +10,16 @@
     "build": "pnpm -r run build",
     "build:ext": "pnpm --filter @yt-detox/extension build",
     "lint": "pnpm -r run lint",
-    "typecheck": "pnpm -r run typecheck"
+    "typecheck": "pnpm -r run typecheck",
+    "test": "playwright test",
+    "test:api": "playwright test --project=api",
+    "test:extension": "playwright test --project=extension",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "playwright": "^1.58.2",
     "typescript": "^5.7.3"
   },
   "engines": {

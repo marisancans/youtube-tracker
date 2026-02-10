@@ -34,3 +34,7 @@ yarn.lock
 
 # Database data
 data/
+
+# Test artifacts
+playwright-report/
+test-results/

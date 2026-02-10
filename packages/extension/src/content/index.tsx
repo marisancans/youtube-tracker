@@ -502,6 +502,9 @@ async function init(): Promise<void> {
   if (isInitialized) return;
   isInitialized = true;
   
+  // Global marker for testing
+  (window as any).__YT_DETOX_TRACKER__ = { version: '0.3.0', initialized: true };
+  
   console.log('[YT Detox] Initializing...');
   
   // Initialize browser session
