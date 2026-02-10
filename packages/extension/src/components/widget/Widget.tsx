@@ -29,6 +29,24 @@ interface DriftData {
   };
 }
 
+type ChallengeTier = 'casual' | 'focused' | 'disciplined' | 'monk' | 'ascetic';
+
+interface ChallengeProgress {
+  currentTier: ChallengeTier;
+  daysUnderGoal: number;
+  eligibleForUpgrade: boolean;
+}
+
+const TIER_CONFIG: Record<ChallengeTier, { icon: string; label: string; nextLabel?: string }> = {
+  casual: { icon: '🌱', label: 'Casual', nextLabel: 'Focused' },
+  focused: { icon: '🎯', label: 'Focused', nextLabel: 'Disciplined' },
+  disciplined: { icon: '⚡', label: 'Disciplined', nextLabel: 'Monk' },
+  monk: { icon: '🔥', label: 'Monk', nextLabel: 'Ascetic' },
+  ascetic: { icon: '💎', label: 'Ascetic' },
+};
+
+const TIER_ORDER: ChallengeTier[] = ['casual', 'focused', 'disciplined', 'monk', 'ascetic'];
+
 interface WidgetState {
   collapsed: boolean;
   minimized: boolean;
@@ -55,6 +73,9 @@ interface WidgetState {
   phase: 'observation' | 'awareness' | 'intervention' | 'reduction';
   // Drift
   drift: DriftData;
+  // Challenge
+  challengeProgress: ChallengeProgress | null;
+  showUpgradePrompt: boolean;
 }
 
 function formatTime(seconds: number): string {
@@ -322,6 +343,8 @@ export default function Widget(): JSX.Element {
         showTextOnly: false,
       },
     },
+    challengeProgress: null,
+    showUpgradePrompt: false,
   });
   
   // Inject animation styles once
@@ -380,6 +403,60 @@ export default function Widget(): JSX.Element {
       });
     }, 10000); // Update every 10 seconds
     return () => clearInterval(driftInterval);
+  }, []);
+  
+  // Fetch challenge progress periodically
+  useEffect(() => {
+    const fetchChallengeProgress = () => {
+      chrome.runtime.sendMessage({ type: 'GET_CHALLENGE_PROGRESS' }, (response) => {
+        if (response && response.currentTier) {
+          setState(p => ({
+            ...p,
+            challengeProgress: {
+              currentTier: response.currentTier,
+              daysUnderGoal: response.daysUnderGoal,
+              eligibleForUpgrade: response.eligibleForUpgrade,
+            },
+            // Show upgrade prompt if eligible and not dismissed
+            showUpgradePrompt: response.eligibleForUpgrade && !p.dismissedNudges.has('upgrade_prompt'),
+          }));
+        }
+      });
+    };
+    
+    // Initial fetch
+    fetchChallengeProgress();
+    
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchChallengeProgress, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+  
+  // Handle tier upgrade
+  const handleUpgradeTier = useCallback(() => {
+    chrome.runtime.sendMessage({ type: 'UPGRADE_TIER' }, (response) => {
+      if (response?.success) {
+        setState(p => ({
+          ...p,
+          showUpgradePrompt: false,
+          challengeProgress: p.challengeProgress ? {
+            ...p.challengeProgress,
+            currentTier: response.newTier,
+            eligibleForUpgrade: false,
+            daysUnderGoal: 0,
+          } : null,
+          xp: p.xp + (response.xpBonus || 0),
+        }));
+      }
+    });
+  }, []);
+  
+  const dismissUpgradePrompt = useCallback(() => {
+    setState(p => ({
+      ...p,
+      showUpgradePrompt: false,
+      dismissedNudges: new Set([...p.dismissedNudges, 'upgrade_prompt']),
+    }));
   }, []);
   
   // Nudge logic - check for nudges every update
@@ -597,6 +674,87 @@ export default function Widget(): JSX.Element {
                     <Icons.X />
                   </button>
                 )}
+              </div>
+            )}
+            
+            {/* Tier Upgrade Prompt */}
+            {state.showUpgradePrompt && state.challengeProgress && (
+              <div style={{
+                padding: '12px',
+                background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(79, 70, 229, 0.15) 100%)',
+                borderRadius: '12px',
+                marginBottom: '12px',
+                border: '1px solid rgba(168, 85, 247, 0.3)',
+                animation: 'yt-detox-pulse 2s ease-in-out infinite',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '24px' }}>🏆</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '13px', fontWeight: '600', color: '#a78bfa' }}>
+                      Challenge Unlocked!
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)' }}>
+                      {state.challengeProgress.daysUnderGoal} days under goal — ready for the next level?
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '10px' }}>
+                  <div style={{ 
+                    padding: '6px 12px', 
+                    background: 'rgba(255,255,255,0.1)', 
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                  }}>
+                    {TIER_CONFIG[state.challengeProgress.currentTier]?.icon} {TIER_CONFIG[state.challengeProgress.currentTier]?.label}
+                  </div>
+                  <span style={{ color: 'rgba(255,255,255,0.5)' }}>→</span>
+                  <div style={{ 
+                    padding: '6px 12px', 
+                    background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.3) 0%, rgba(79, 70, 229, 0.3) 100%)', 
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    border: '1px solid rgba(168, 85, 247, 0.5)',
+                  }}>
+                    {(() => {
+                      const nextIndex = TIER_ORDER.indexOf(state.challengeProgress.currentTier) + 1;
+                      const nextTier = TIER_ORDER[nextIndex];
+                      return nextTier ? `${TIER_CONFIG[nextTier]?.icon} ${TIER_CONFIG[nextTier]?.label}` : '💎 Max';
+                    })()}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={handleUpgradeTier}
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      background: 'linear-gradient(135deg, #a855f7 0%, #6366f1 100%)',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: 'white',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Accept Challenge +100 XP
+                  </button>
+                  <button
+                    onClick={dismissUpgradePrompt}
+                    style={{
+                      padding: '8px 12px',
+                      background: 'rgba(255,255,255,0.1)',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: 'rgba(255,255,255,0.6)',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Later
+                  </button>
+                </div>
               </div>
             )}
             
