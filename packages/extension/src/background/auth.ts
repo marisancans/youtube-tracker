@@ -72,9 +72,10 @@ export async function signIn(): Promise<{ success: boolean; user: GoogleUser | n
     // Save to storage
     await chrome.storage.local.set({ authState });
 
-    // Update settings with user ID
+    // Update settings with user ID and enable sync
     const storage = await getStorage();
     storage.settings.backend.userId = user.id;
+    storage.settings.backend.enabled = true;
     await saveStorage({ settings: storage.settings });
 
     console.log('[YT Detox] Signed in as:', user.email);

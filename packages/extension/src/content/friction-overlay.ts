@@ -16,17 +16,54 @@ const OVERLAY_ID = 'yt-detox-friction-overlay';
 let resolveRating: ((rating: number) => void) | null = null;
 
 const DRIFT_LEVELS = [
-  { value: 1, icon: '\u2693', label: 'Anchored',    desc: 'Focused & productive',       color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
-  { value: 2, icon: '\u26f5', label: 'Steady',       desc: 'Mostly on course',            color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
-  { value: 3, icon: '\u{1F32A}\uFE0F', label: 'Drifting',     desc: 'Losing focus a bit',          color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
-  { value: 4, icon: '\u{1F30A}', label: 'Adrift',       desc: 'Pretty far off course',       color: '#f97316', bg: 'rgba(249,115,22,0.15)' },
-  { value: 5, icon: '\u{1F480}', label: 'Lost at Sea',  desc: 'Total time sink',             color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
+  {
+    value: 1,
+    icon: '\u2693',
+    label: 'Anchored',
+    desc: 'Focused & productive',
+    color: '#22c55e',
+    bg: 'rgba(34,197,94,0.15)',
+  },
+  {
+    value: 2,
+    icon: '\u26f5',
+    label: 'Steady',
+    desc: 'Mostly on course',
+    color: '#3b82f6',
+    bg: 'rgba(59,130,246,0.15)',
+  },
+  {
+    value: 3,
+    icon: '\u{1F32A}\uFE0F',
+    label: 'Drifting',
+    desc: 'Losing focus a bit',
+    color: '#f59e0b',
+    bg: 'rgba(245,158,11,0.15)',
+  },
+  {
+    value: 4,
+    icon: '\u{1F30A}',
+    label: 'Adrift',
+    desc: 'Pretty far off course',
+    color: '#f97316',
+    bg: 'rgba(249,115,22,0.15)',
+  },
+  {
+    value: 5,
+    icon: '\u{1F480}',
+    label: 'Lost at Sea',
+    desc: 'Total time sink',
+    color: '#ef4444',
+    bg: 'rgba(239,68,68,0.15)',
+  },
 ];
 
 function getPlayerElement(): HTMLElement | null {
-  return document.querySelector('#movie_player') ||
-         document.querySelector('#player-container-inner') ||
-         document.querySelector('ytd-player');
+  return (
+    document.querySelector('#movie_player') ||
+    document.querySelector('#player-container-inner') ||
+    document.querySelector('ytd-player')
+  );
 }
 
 function pauseVideo(): void {
@@ -113,7 +150,8 @@ export function showFrictionOverlay(videoTitle: string): Promise<number> {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     `;
 
-    const buttonsHtml = DRIFT_LEVELS.map((lvl) => `
+    const buttonsHtml = DRIFT_LEVELS.map(
+      (lvl) => `
       <button data-rating="${lvl.value}" style="
         width: 100%;
         padding: 12px 16px;
@@ -136,7 +174,8 @@ export function showFrictionOverlay(videoTitle: string): Promise<number> {
           <div style="font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 1px;">${lvl.desc}</div>
         </div>
       </button>
-    `).join('');
+    `,
+    ).join('');
 
     overlay.innerHTML = `
       <div id="yt-detox-friction-card" style="
@@ -190,7 +229,7 @@ export function showFrictionOverlay(videoTitle: string): Promise<number> {
     // Button interactions
     overlay.querySelectorAll('button[data-rating]').forEach((btn) => {
       const button = btn as HTMLButtonElement;
-      const level = DRIFT_LEVELS.find(l => l.value === parseInt(button.dataset.rating!, 10));
+      const level = DRIFT_LEVELS.find((l) => l.value === parseInt(button.dataset.rating!, 10));
 
       button.addEventListener('mouseenter', () => {
         button.style.transform = 'scale(1.02) translateX(4px)';
@@ -218,7 +257,7 @@ export function showFrictionOverlay(videoTitle: string): Promise<number> {
         const card = document.getElementById('yt-detox-friction-card');
         if (card) {
           card.style.animation = 'none';
-          card.offsetHeight;
+          void card.offsetHeight;
           card.style.animation = 'yt-detox-shake 0.4s ease';
         }
       }

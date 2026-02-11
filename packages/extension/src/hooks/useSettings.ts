@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
-import type { Settings } from '@yt-detox/shared'
-import { getSettings, updateSettings as updateSettingsApi } from '@/lib/messaging'
+import { useState, useEffect, useCallback } from 'react';
+import type { Settings } from '@yt-detox/shared';
+import { getSettings, updateSettings as updateSettingsApi } from '@/lib/messaging';
 
 const DEFAULT_SETTINGS: Settings = {
   trackingEnabled: true,
@@ -33,40 +33,41 @@ const DEFAULT_SETTINGS: Settings = {
     frictionOverlay: false,
     musicDetection: false,
     nudges: false,
+    syncDebug: false,
   },
-}
+};
 
 export function useSettings() {
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
   const fetchSettings = useCallback(async () => {
     try {
-      const data = await getSettings()
-      setSettings({ ...DEFAULT_SETTINGS, ...data })
-      setError(null)
+      const data = await getSettings();
+      setSettings({ ...DEFAULT_SETTINGS, ...data });
+      setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e : new Error('Failed to fetch settings'))
+      setError(e instanceof Error ? e : new Error('Failed to fetch settings'));
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
   const updateSettings = useCallback(async (updates: Partial<Settings>) => {
     try {
-      await updateSettingsApi(updates)
-      setSettings(prev => ({ ...prev, ...updates }))
-      return true
+      await updateSettingsApi(updates);
+      setSettings((prev) => ({ ...prev, ...updates }));
+      return true;
     } catch (e) {
-      setError(e instanceof Error ? e : new Error('Failed to update settings'))
-      return false
+      setError(e instanceof Error ? e : new Error('Failed to update settings'));
+      return false;
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    fetchSettings()
-  }, [fetchSettings])
+    fetchSettings();
+  }, [fetchSettings]);
 
   return {
     settings,
@@ -74,5 +75,5 @@ export function useSettings() {
     error,
     updateSettings,
     refetch: fetchSettings,
-  }
+  };
 }

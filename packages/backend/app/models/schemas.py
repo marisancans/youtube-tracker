@@ -1,26 +1,26 @@
-from pydantic import BaseModel, Field
-from datetime import datetime, date
-from typing import Optional
+from datetime import date, datetime
 from uuid import UUID
 
+from pydantic import BaseModel, Field
 
 # ===== Video Session =====
+
 
 class VideoSessionCreate(BaseModel):
     id: str
     video_id: str = Field(..., alias="videoId")
-    title: Optional[str] = None
-    channel: Optional[str] = None
+    title: str | None = None
+    channel: str | None = None
     duration_seconds: int = Field(0, alias="durationSeconds")
     watched_seconds: int = Field(0, alias="watchedSeconds")
     watched_percent: int = Field(0, alias="watchedPercent")
-    source: Optional[str] = None
+    source: str | None = None
     is_short: bool = Field(False, alias="isShort")
     playback_speed: float = Field(1.0, alias="playbackSpeed")
-    productivity_rating: Optional[int] = Field(None, alias="productivityRating")
+    productivity_rating: int | None = Field(None, alias="productivityRating")
     timestamp: int
-    rated_at: Optional[int] = Field(None, alias="ratedAt")
-    
+    rated_at: int | None = Field(None, alias="ratedAt")
+
     class Config:
         populate_by_name = True
 
@@ -28,27 +28,28 @@ class VideoSessionCreate(BaseModel):
 class VideoSessionResponse(BaseModel):
     id: UUID
     video_id: str
-    title: Optional[str]
-    channel: Optional[str]
+    title: str | None
+    channel: str | None
     duration_seconds: int
     watched_seconds: int
     watched_percent: int
-    source: Optional[str]
+    source: str | None
     is_short: bool
     playback_speed: float
-    productivity_rating: Optional[int]
+    productivity_rating: int | None
     timestamp: datetime
-    
+
     class Config:
         from_attributes = True
 
 
 # ===== Browser Session =====
 
+
 class BrowserSessionCreate(BaseModel):
     id: str
     started_at: int = Field(..., alias="startedAt")
-    ended_at: Optional[int] = Field(None, alias="endedAt")
+    ended_at: int | None = Field(None, alias="endedAt")
     active_seconds: int = Field(0, alias="activeSeconds")
     background_seconds: int = Field(0, alias="backgroundSeconds")
     duration_seconds: int = Field(0, alias="durationSeconds")
@@ -57,12 +58,13 @@ class BrowserSessionCreate(BaseModel):
     autoplay_count: int = Field(0, alias="autoplayCount")
     recommendation_clicks: int = Field(0, alias="recommendationClicks")
     search_count: int = Field(0, alias="searchCount")
-    
+
     class Config:
         populate_by_name = True
 
 
 # ===== Daily Stats =====
+
 
 class DailyStatsCreate(BaseModel):
     date: str
@@ -80,7 +82,7 @@ class DailyStatsCreate(BaseModel):
     neutral_videos: int = Field(0, alias="neutralVideos")
     prompts_shown: int = Field(0, alias="promptsShown")
     prompts_answered: int = Field(0, alias="promptsAnswered")
-    
+
     class Config:
         populate_by_name = True
 
@@ -101,18 +103,19 @@ class DailyStatsResponse(BaseModel):
     neutral_videos: int
     prompts_shown: int
     prompts_answered: int
-    
+
     class Config:
         from_attributes = True
 
 
 # ===== Sync Request/Response =====
 
+
 class SyncRequest(BaseModel):
     sessions: list[VideoSessionCreate] = []
     browser_sessions: list[BrowserSessionCreate] = Field([], alias="browserSessions")
     daily_stats: dict[str, DailyStatsCreate] = Field({}, alias="dailyStats")
-    
+
     class Config:
         populate_by_name = True
 
@@ -127,8 +130,9 @@ class SyncResponse(BaseModel):
 
 # ===== Stats Response =====
 
+
 class StatsOverview(BaseModel):
-    today: Optional[DailyStatsResponse] = None
+    today: DailyStatsResponse | None = None
     last7days: list[DailyStatsResponse] = []
     total_videos: int = 0
     total_hours: float = 0
@@ -145,12 +149,13 @@ class WeeklyComparison(BaseModel):
 
 # ===== Productive URLs =====
 
+
 class ProductiveUrlCreate(BaseModel):
     id: str
     url: str
     title: str
     added_at: int = Field(..., alias="addedAt")
-    
+
     class Config:
         populate_by_name = True
 
@@ -162,6 +167,6 @@ class ProductiveUrlResponse(BaseModel):
     added_at: datetime
     times_suggested: int = 0
     times_clicked: int = 0
-    
+
     class Config:
         from_attributes = True

@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
-import type { StatsResponse, DailyStats } from '@yt-detox/shared'
-import { getStats } from '@/lib/messaging'
+import { useState, useEffect, useCallback } from 'react';
+import type { StatsResponse, DailyStats } from '@yt-detox/shared';
+import { getStats } from '@/lib/messaging';
 
 const EMPTY_DAILY: DailyStats = {
   date: new Date().toISOString().split('T')[0],
@@ -37,30 +37,30 @@ const EMPTY_DAILY: DailyStats = {
   topChannels: [],
   preSleepMinutes: 0,
   bingeSessions: 0,
-}
+};
 
 export function useStats(pollInterval = 1000) {
-  const [stats, setStats] = useState<StatsResponse | null>(null)
-  const [error, setError] = useState<Error | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<StatsResponse | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const fetchStats = useCallback(async () => {
     try {
-      const data = await getStats()
-      setStats(data)
-      setError(null)
+      const data = await getStats();
+      setStats(data);
+      setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e : new Error('Failed to fetch stats'))
+      setError(e instanceof Error ? e : new Error('Failed to fetch stats'));
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    fetchStats()
-    const interval = setInterval(fetchStats, pollInterval)
-    return () => clearInterval(interval)
-  }, [fetchStats, pollInterval])
+    fetchStats();
+    const interval = setInterval(fetchStats, pollInterval);
+    return () => clearInterval(interval);
+  }, [fetchStats, pollInterval]);
 
   return {
     today: (stats?.today as DailyStats) || EMPTY_DAILY,
@@ -70,5 +70,5 @@ export function useStats(pollInterval = 1000) {
     loading,
     error,
     refetch: fetchStats,
-  }
+  };
 }

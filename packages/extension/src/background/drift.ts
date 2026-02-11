@@ -3,13 +3,7 @@
  * Progressive friction coefficient calculation
  */
 
-import {
-  getStorage,
-  getTodayKey,
-  type DriftState,
-  type GoalMode,
-  type ChallengeTier,
-} from './storage';
+import { getStorage, getTodayKey, type DriftState, type GoalMode, type ChallengeTier } from './storage';
 import { CHALLENGE_TIERS } from './challenge';
 
 // ===== Drift State =====
@@ -75,9 +69,7 @@ export async function calculateDrift(): Promise<{ drift: number; factors: DriftF
 
   const todayMinutes = Math.floor((todayStats.totalSeconds || 0) / 60);
   const totalRated =
-    (todayStats.productiveVideos || 0) +
-    (todayStats.unproductiveVideos || 0) +
-    (todayStats.neutralVideos || 0);
+    (todayStats.productiveVideos || 0) + (todayStats.unproductiveVideos || 0) + (todayStats.neutralVideos || 0);
   const totalVideos = todayStats.videoCount || 0;
 
   // Calculate factors
@@ -86,12 +78,10 @@ export async function calculateDrift(): Promise<{ drift: number; factors: DriftF
     timeRatio: Math.min(todayMinutes / goalMinutes, 1.5), // Cap at 1.5
 
     // Unproductive video ratio (0-0.3 contribution)
-    unproductiveRatio:
-      totalRated > 0 ? ((todayStats.unproductiveVideos || 0) / totalRated) * 0.3 : 0,
+    unproductiveRatio: totalRated > 0 ? ((todayStats.unproductiveVideos || 0) / totalRated) * 0.3 : 0,
 
     // Recommendation clicks vs total (0-0.2 contribution)
-    recommendationRatio:
-      totalVideos > 0 ? ((todayStats.recommendationClicks || 0) / totalVideos) * 0.2 : 0,
+    recommendationRatio: totalVideos > 0 ? ((todayStats.recommendationClicks || 0) / totalVideos) * 0.2 : 0,
 
     // Binge bonus: current session over 60 minutes
     bingeBonus: 0, // Will be set from current session
@@ -103,8 +93,7 @@ export async function calculateDrift(): Promise<{ drift: number; factors: DriftF
     })(),
 
     // Productive video discount (negative, reduces drift)
-    productiveDiscount:
-      totalRated > 0 ? -((todayStats.productiveVideos || 0) / totalRated) * 0.2 : 0,
+    productiveDiscount: totalRated > 0 ? -((todayStats.productiveVideos || 0) / totalRated) * 0.2 : 0,
 
     // Break discount (if took breaks recently)
     breakDiscount: 0, // TODO: track breaks taken
@@ -208,7 +197,7 @@ export async function getDriftEffectsAsync(drift: number): Promise<DriftEffects>
   // Get friction settings from storage
   const data = await chrome.storage.local.get('settings');
   const frictionEnabled: FrictionEnabled = data.settings?.frictionEnabled || DEFAULT_FRICTION;
-  
+
   return calculateDriftEffects(drift, frictionEnabled);
 }
 
@@ -219,21 +208,31 @@ export function getDriftEffects(drift: number): DriftEffects {
 
 function calculateDriftEffects(drift: number, friction: FrictionEnabled): DriftEffects {
   return {
-    thumbnailBlur: friction.thumbnails 
-      ? (drift < 0.5 ? 0 : drift < 0.7 ? 2 : drift < 0.9 ? 4 : 8)
-      : 0,
+    thumbnailBlur: friction.thumbnails ? (drift < 0.5 ? 0 : drift < 0.7 ? 2 : drift < 0.9 ? 4 : 8) : 0,
     thumbnailGrayscale: friction.thumbnails
-      ? (drift < 0.3 ? 0 : drift < 0.5 ? 20 : drift < 0.7 ? 30 : drift < 0.9 ? 60 : 100)
+      ? drift < 0.3
+        ? 0
+        : drift < 0.5
+          ? 20
+          : drift < 0.7
+            ? 30
+            : drift < 0.9
+              ? 60
+              : 100
       : 0,
     commentsReduction: friction.comments
-      ? (drift < 0.3 ? 0 : drift < 0.5 ? 10 : drift < 0.7 ? 20 : drift < 0.9 ? 50 : 100)
+      ? drift < 0.3
+        ? 0
+        : drift < 0.5
+          ? 10
+          : drift < 0.7
+            ? 20
+            : drift < 0.9
+              ? 50
+              : 100
       : 0,
-    sidebarReduction: friction.sidebar
-      ? (drift < 0.3 ? 0 : drift < 0.5 ? 50 : drift < 0.7 ? 75 : 100)
-      : 0,
-    autoplayDelay: friction.autoplay
-      ? (drift < 0.3 ? 5 : drift < 0.5 ? 15 : drift < 0.7 ? 30 : 999)
-      : 5,
+    sidebarReduction: friction.sidebar ? (drift < 0.3 ? 0 : drift < 0.5 ? 50 : drift < 0.7 ? 75 : 100) : 0,
+    autoplayDelay: friction.autoplay ? (drift < 0.3 ? 5 : drift < 0.5 ? 15 : drift < 0.7 ? 30 : 999) : 5,
     showTextOnly: friction.thumbnails && drift >= 0.9,
   };
 }
@@ -271,21 +270,23 @@ export function startDriftCalculation(intervalMs: number = 30000): void {
     const { drift, factors } = await calculateDrift();
     const effects = await getDriftEffectsAsync(drift);
     console.log('[YT Detox] Drift calculated:', drift.toFixed(2), 'factors:', factors);
-    
+
     // Broadcast drift update to content scripts
     chrome.tabs.query({ url: ['*://*.youtube.com/*', '*://youtu.be/*'] }, (tabs) => {
       for (const tab of tabs) {
         if (tab.id) {
-          chrome.tabs.sendMessage(tab.id, {
-            type: 'DRIFT_UPDATED',
-            data: {
-              drift,
-              level: getDriftLevel(drift),
-              effects,
-            },
-          }).catch(() => {
-            // Tab might not have content script loaded
-          });
+          chrome.tabs
+            .sendMessage(tab.id, {
+              type: 'DRIFT_UPDATED',
+              data: {
+                drift,
+                level: getDriftLevel(drift),
+                effects,
+              },
+            })
+            .catch(() => {
+              // Tab might not have content script loaded
+            });
         }
       }
     });

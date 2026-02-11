@@ -26,15 +26,15 @@ function App() {
       phase: 'observation',
       installDate: Date.now(),
     };
-    
+
     await chrome.storage.local.set({
       settings: newSettings,
       onboardingCompleted: true,
     });
-    
+
     // Notify background
     chrome.runtime.sendMessage({ type: 'SET_GOAL_MODE', data: { mode: settings.goalMode } });
-    
+
     setShowOnboarding(false);
   };
 
@@ -59,6 +59,6 @@ if (container) {
   root.render(
     <React.StrictMode>
       <App />
-    </React.StrictMode>
+    </React.StrictMode>,
   );
 }

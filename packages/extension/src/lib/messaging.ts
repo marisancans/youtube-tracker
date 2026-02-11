@@ -1,4 +1,4 @@
-import type { MessageType, Message, StatsResponse, Settings, WeeklySummary } from '@yt-detox/shared'
+import type { MessageType, Message, StatsResponse, Settings, WeeklySummary } from '@yt-detox/shared';
 
 /**
  * Check if the extension context is still valid.
@@ -21,15 +21,15 @@ export function sendMessage<T = unknown>(type: MessageType, data?: unknown): Pro
     try {
       chrome.runtime.sendMessage({ type, data } as Message, (response) => {
         if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError)
+          reject(chrome.runtime.lastError);
         } else {
-          resolve(response as T)
+          resolve(response as T);
         }
-      })
+      });
     } catch {
       reject(new Error('Extension context invalidated'));
     }
-  })
+  });
 }
 
 /**
@@ -69,21 +69,21 @@ export function safeSendMessageWithCallback<T = unknown>(
 }
 
 export async function getStats(): Promise<StatsResponse> {
-  return sendMessage<StatsResponse>('GET_STATS')
+  return sendMessage<StatsResponse>('GET_STATS');
 }
 
 export async function getSettings(): Promise<Settings> {
-  return sendMessage<Settings>('GET_SETTINGS')
+  return sendMessage<Settings>('GET_SETTINGS');
 }
 
 export async function updateSettings(settings: Partial<Settings>): Promise<{ success: boolean }> {
-  return sendMessage<{ success: boolean }>('UPDATE_SETTINGS', settings)
+  return sendMessage<{ success: boolean }>('UPDATE_SETTINGS', settings);
 }
 
 export async function rateVideo(videoId: string, rating: number): Promise<{ success: boolean }> {
-  return sendMessage<{ success: boolean }>('RATE_VIDEO', { videoId, rating })
+  return sendMessage<{ success: boolean }>('RATE_VIDEO', { videoId, rating });
 }
 
 export async function getWeeklySummary(): Promise<WeeklySummary> {
-  return sendMessage<WeeklySummary>('GET_WEEKLY_SUMMARY')
+  return sendMessage<WeeklySummary>('GET_WEEKLY_SUMMARY');
 }

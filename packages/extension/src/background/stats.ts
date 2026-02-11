@@ -63,7 +63,7 @@ interface TemporalData {
 export async function updateDailyStats(
   browserSession: BrowserSession,
   videoSessions: VideoSession[],
-  temporal?: TemporalData
+  temporal?: TemporalData,
 ): Promise<void> {
   const storage = await getStorage();
   const today = getTodayKey();
@@ -278,9 +278,7 @@ export async function calculateBaselineStats(): Promise<BaselineStats> {
     productivityRatio: totalRated > 0 ? Math.round((totalProductive / totalRated) * 100) : 0,
     recommendationRatio: totalVideos > 0 ? Math.round((totalRecommendationClicks / totalVideos) * 100) : 0,
     completionRate:
-      totalCompleted + totalAbandoned > 0
-        ? Math.round((totalCompleted / (totalCompleted + totalAbandoned)) * 100)
-        : 0,
+      totalCompleted + totalAbandoned > 0 ? Math.round((totalCompleted / (totalCompleted + totalAbandoned)) * 100) : 0,
     shortsRatio: totalVideos > 0 ? Math.round((totalShorts / totalVideos) * 100) : 0,
   };
 }
@@ -323,7 +321,7 @@ export async function getWeeklySummary(): Promise<any> {
       sessions: 0,
       avgSessionMinutes: 0,
       recommendationRatio: 0,
-    }
+    },
   );
 
   if (thisWeek.sessions > 0) {

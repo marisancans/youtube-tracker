@@ -1,9 +1,9 @@
 /**
  * YouTube DOM Utilities
- * 
+ *
  * Patterns extracted from SponsorBlock's maze-utils (MIT License)
  * https://github.com/ajayyy/maze-utils
- * 
+ *
  * Battle-tested with 10M+ users.
  */
 
@@ -63,24 +63,16 @@ export const THUMBNAIL_SELECTORS = {
 
 /** Thumbnail element selectors */
 export const THUMBNAIL_ELEMENTS = {
-  desktop: [
-    'ytd-thumbnail',
-    'ytd-playlist-thumbnail',
-    'yt-thumbnail-view-model',
-  ],
-  mobile: [
-    '.media-item-thumbnail-container',
-    '.video-thumbnail-container-compact',
-    'ytm-thumbnail-cover',
-  ],
+  desktop: ['ytd-thumbnail', 'ytd-playlist-thumbnail', 'yt-thumbnail-view-model'],
+  mobile: ['.media-item-thumbnail-container', '.video-thumbnail-container-compact', 'ytm-thumbnail-cover'],
 };
 
 /** Player controls selectors */
 export const CONTROLS_SELECTORS = [
-  '.ytp-right-controls',           // YouTube desktop
-  '.player-controls-top',          // Mobile YouTube
-  '.vjs-control-bar',              // Invidious/videojs
-  '.ypcs-control-buttons-right',   // tv.youtube.com
+  '.ytp-right-controls', // YouTube desktop
+  '.player-controls-top', // Mobile YouTube
+  '.vjs-control-bar', // Invidious/videojs
+  '.ypcs-control-buttons-right', // tv.youtube.com
 ];
 
 /** Video title selectors */
@@ -92,17 +84,13 @@ export const TITLE_SELECTORS = [
 ];
 
 /** Channel name selectors */
-export const CHANNEL_SELECTORS = [
-  '#channel-name a',
-  'ytd-channel-name a',
-  '.ytd-video-owner-renderer #text a',
-];
+export const CHANNEL_SELECTORS = ['#channel-name a', 'ytd-channel-name a', '.ytd-video-owner-renderer #text a'];
 
 /** Sidebar recommendation selectors */
 export const RECOMMENDATION_SELECTORS = [
-  'ytd-compact-video-renderer',      // Sidebar
-  'ytd-rich-item-renderer',          // Homepage grid
-  'ytd-video-renderer',              // Search results
+  'ytd-compact-video-renderer', // Sidebar
+  'ytd-rich-item-renderer', // Homepage grid
+  'ytd-video-renderer', // Search results
 ];
 
 // ===== UTILITIES =====
@@ -134,7 +122,7 @@ export function isVideoPage(): boolean {
 export function getPageType(): PageType {
   const path = window.location.pathname;
   const url = window.location.href;
-  
+
   if (path === '/' || path === '') return PageType.Home;
   if (path === '/watch') return PageType.Watch;
   if (path.startsWith('/shorts/')) return PageType.Shorts;
@@ -143,7 +131,7 @@ export function getPageType(): PageType {
   if (path.startsWith('/feed/history')) return PageType.History;
   if (path.startsWith('/@') || path.startsWith('/channel/') || path.startsWith('/c/')) return PageType.Channel;
   if (url.includes('/embed/')) return PageType.Embed;
-  
+
   return PageType.Unknown;
 }
 
@@ -152,30 +140,29 @@ export function getPageType(): PageType {
  */
 export function getVideoID(url?: string): VideoID | null {
   url = url || window.location.href;
-  
+
   try {
     const urlObj = new URL(url);
-    
+
     // /watch?v=VIDEO_ID
     const vParam = urlObj.searchParams.get('v');
     if (vParam) return vParam;
-    
+
     // /shorts/VIDEO_ID
     const shortsMatch = urlObj.pathname.match(/\/shorts\/([^/?]+)/);
     if (shortsMatch) return shortsMatch[1];
-    
+
     // /embed/VIDEO_ID
     const embedMatch = urlObj.pathname.match(/\/embed\/([^/?]+)/);
     if (embedMatch) return embedMatch[1];
-    
+
     // /live/VIDEO_ID
     const liveMatch = urlObj.pathname.match(/\/live\/([^/?]+)/);
     if (liveMatch) return liveMatch[1];
-    
   } catch {
     // Invalid URL
   }
-  
+
   return null;
 }
 
@@ -185,10 +172,10 @@ export function getVideoID(url?: string): VideoID | null {
 export function getVideoIDFromThumbnail(thumbnail: HTMLElement): VideoID | null {
   const link = getThumbnailLink(thumbnail);
   if (!link) return null;
-  
+
   const href = link.getAttribute('href');
   if (!href) return null;
-  
+
   return getVideoID(new URL(href, window.location.origin).href);
 }
 
@@ -199,12 +186,12 @@ export function getThumbnailLink(thumbnail: HTMLElement): HTMLAnchorElement | nu
   const selectors = isMobile()
     ? ['a.media-item-thumbnail-container', 'a.reel-item-endpoint', 'a']
     : ['ytd-thumbnail a', 'ytd-playlist-thumbnail a', 'a'];
-  
+
   for (const selector of selectors) {
     const link = thumbnail.querySelector(selector) as HTMLAnchorElement;
     if (link?.href) return link;
   }
-  
+
   return null;
 }
 
@@ -213,29 +200,23 @@ export function getThumbnailLink(thumbnail: HTMLElement): HTMLAnchorElement | nu
  */
 export function isVisible(element: HTMLElement | null): boolean {
   if (!element) return false;
-  
+
   // Special case for video elements
   if (element.tagName === 'VIDEO') {
     const video = element as HTMLVideoElement;
-    if ((element.classList.contains('html5-main-video') || element.id === 'player')
-        && video.duration) {
+    if ((element.classList.contains('html5-main-video') || element.id === 'player') && video.duration) {
       return true;
     }
   }
-  
+
   if (element.offsetHeight === 0 || element.offsetWidth === 0) {
     return false;
   }
-  
+
   const rect = element.getBoundingClientRect();
-  const elementAtPoint = document.elementFromPoint(
-    rect.left + rect.width / 2,
-    rect.top + rect.height / 2
-  );
-  
-  return elementAtPoint === element 
-    || element.contains(elementAtPoint) 
-    || elementAtPoint?.contains(element) || false;
+  const elementAtPoint = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+
+  return elementAtPoint === element || element.contains(elementAtPoint) || elementAtPoint?.contains(element) || false;
 }
 
 /**
@@ -243,10 +224,10 @@ export function isVisible(element: HTMLElement | null): boolean {
  */
 export async function waitForElement(
   selector: string,
-  options: { timeout?: number; visibleCheck?: boolean } = {}
+  options: { timeout?: number; visibleCheck?: boolean } = {},
 ): Promise<HTMLElement> {
   const { timeout = 10000, visibleCheck = false } = options;
-  
+
   return new Promise((resolve, reject) => {
     // Check if already exists
     const existing = document.querySelector(selector) as HTMLElement;
@@ -254,7 +235,7 @@ export async function waitForElement(
       resolve(existing);
       return;
     }
-    
+
     const observer = new MutationObserver(() => {
       const element = document.querySelector(selector) as HTMLElement;
       if (element && (!visibleCheck || isVisible(element))) {
@@ -262,12 +243,12 @@ export async function waitForElement(
         resolve(element);
       }
     });
-    
+
     observer.observe(document.documentElement, {
       childList: true,
       subtree: true,
     });
-    
+
     // Timeout
     setTimeout(() => {
       observer.disconnect();
@@ -279,11 +260,7 @@ export async function waitForElement(
 /**
  * Wait for a condition to be true
  */
-export async function waitFor<T>(
-  condition: () => T,
-  timeout = 5000,
-  interval = 100
-): Promise<T> {
+export async function waitFor<T>(condition: () => T, timeout = 5000, interval = 100): Promise<T> {
   return new Promise((resolve, reject) => {
     const check = () => {
       const result = condition();
@@ -292,13 +269,13 @@ export async function waitFor<T>(
         resolve(result);
       }
     };
-    
+
     const intervalId = setInterval(check, interval);
     setTimeout(() => {
       clearInterval(intervalId);
       reject(new Error('Timeout'));
     }, timeout);
-    
+
     check(); // Check immediately
   });
 }
@@ -308,18 +285,13 @@ export async function waitFor<T>(
  */
 export function getVideoElement(): HTMLVideoElement | null {
   // Try specific YouTube selectors first
-  const selectors = [
-    'video.html5-main-video',
-    '#movie_player video',
-    'video#player',
-    'video',
-  ];
-  
+  const selectors = ['video.html5-main-video', '#movie_player video', 'video#player', 'video'];
+
   for (const selector of selectors) {
     const video = document.querySelector(selector) as HTMLVideoElement;
     if (video && video.duration) return video;
   }
-  
+
   return null;
 }
 
@@ -329,7 +301,7 @@ export function getVideoElement(): HTMLVideoElement | null {
 export function getVideoDurationFromDOM(): number {
   const durationEl = document.querySelector('.ytp-time-duration');
   if (!durationEl) return 0;
-  
+
   const text = durationEl.textContent || '';
   return parseDuration(text);
 }
@@ -417,15 +389,15 @@ export function getThumbnailSelector(): string {
  */
 export function startThumbnailListener(callback: ThumbnailCallback): void {
   thumbnailCallback = callback;
-  
+
   // Initial scan
   checkForNewThumbnails();
-  
+
   // Watch for new thumbnails
   thumbnailObserver = new MutationObserver(() => {
     checkForNewThumbnails();
   });
-  
+
   thumbnailObserver.observe(document.body, {
     childList: true,
     subtree: true,
@@ -439,7 +411,7 @@ export function stopThumbnailListener(): void {
   thumbnailCallback = null;
   thumbnailObserver?.disconnect();
   thumbnailObserver = null;
-  
+
   for (const observer of handledThumbnails.values()) {
     observer.disconnect();
   }
@@ -452,14 +424,14 @@ export function stopThumbnailListener(): void {
 function checkForNewThumbnails(): void {
   if (performance.now() - lastThumbnailCheck < 50) return;
   lastThumbnailCheck = performance.now();
-  
+
   const thumbnails = document.querySelectorAll(getThumbnailSelector()) as NodeListOf<HTMLElement>;
   const newOnes: HTMLElement[] = [];
-  
+
   for (const thumbnail of thumbnails) {
     if (!handledThumbnails.has(thumbnail)) {
       newOnes.push(thumbnail);
-      
+
       // Watch for href changes (video changes in same thumbnail slot)
       const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
@@ -469,20 +441,20 @@ function checkForNewThumbnails(): void {
           }
         }
       });
-      
+
       const link = getThumbnailLink(thumbnail);
       if (link) {
         observer.observe(link, { attributes: true });
       }
-      
+
       handledThumbnails.set(thumbnail, observer);
     }
   }
-  
+
   if (newOnes.length > 0) {
     thumbnailCallback?.(newOnes);
   }
-  
+
   // Garbage collection - remove observers for elements no longer in DOM
   if (performance.now() - lastGarbageCollection > 5000) {
     for (const [thumbnail, observer] of handledThumbnails) {
@@ -508,7 +480,7 @@ let lastUrl = '';
 export function startNavigationListener(callback: NavigationCallback): void {
   navigationCallback = callback;
   lastUrl = window.location.href;
-  
+
   // Modern Navigation API (best for SPAs)
   if ('navigation' in window) {
     (window as any).navigation.addEventListener('navigate', (e: any) => {
@@ -528,9 +500,9 @@ export function startNavigationListener(callback: NavigationCallback): void {
         navigationCallback?.(lastUrl, oldUrl);
       }
     });
-    
+
     observer.observe(document.body, { childList: true, subtree: true });
-    
+
     window.addEventListener('popstate', () => {
       if (window.location.href !== lastUrl) {
         const oldUrl = lastUrl;
@@ -563,19 +535,17 @@ export function getScrollInfo(): ScrollInfo {
   const viewportHeight = window.innerHeight;
   const pageHeight = document.documentElement.scrollHeight;
   const scrollableHeight = pageHeight - viewportHeight;
-  const scrollDepthPercent = scrollableHeight > 0 
-    ? Math.round((scrollY / scrollableHeight) * 100) 
-    : 0;
-  
+  const scrollDepthPercent = scrollableHeight > 0 ? Math.round((scrollY / scrollableHeight) * 100) : 0;
+
   const now = performance.now();
   const timeDelta = now - lastScrollTime;
   const scrollDelta = scrollY - lastScrollY;
   const velocity = timeDelta > 0 ? Math.abs(scrollDelta) / (timeDelta / 1000) : 0;
   const direction = scrollDelta >= 0 ? 'down' : 'up';
-  
+
   lastScrollY = scrollY;
   lastScrollTime = now;
-  
+
   return {
     scrollY,
     scrollDepthPercent,
@@ -592,13 +562,13 @@ export function getScrollInfo(): ScrollInfo {
 export function countVisibleThumbnails(): number {
   const thumbnails = document.querySelectorAll(getThumbnailSelector());
   let count = 0;
-  
+
   for (const thumbnail of thumbnails) {
     const rect = thumbnail.getBoundingClientRect();
     if (rect.top < window.innerHeight && rect.bottom > 0) {
       count++;
     }
   }
-  
+
   return count;
 }

@@ -1,4 +1,3 @@
-from . import sync
-from . import stats
+from . import stats, sync
 
 __all__ = ["sync", "stats"]

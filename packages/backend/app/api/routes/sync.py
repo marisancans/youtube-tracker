@@ -1,22 +1,31 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
-from datetime import datetime, date
-from typing import List, Optional, Any
 import time
+from datetime import date, datetime
 
-from app.db.session import get_db
-from app.models.domain import (
-    User, VideoSession, BrowserSession, DailyStats,
-    ScrollEvent, ThumbnailEvent, PageEvent, VideoWatchEvent,
-    RecommendationEvent, InterventionEvent, MoodReport, ProductiveUrl
-)
-from app.api.deps import get_current_user, validate_sync_payload, sanitize_string, sanitize_url
-from app.config import get_settings
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user, validate_sync_payload
+from app.config import get_settings
+from app.db.session import get_db
+from app.models.domain import (
+    BrowserSession,
+    DailyStats,
+    InterventionEvent,
+    MoodReport,
+    PageEvent,
+    ProductiveUrl,
+    RecommendationEvent,
+    ScrollEvent,
+    ThumbnailEvent,
+    User,
+    VideoSession,
+    VideoWatchEvent,
+)
 
 settings = get_settings()
 limiter = Limiter(key_func=get_remote_address)
@@ -25,43 +34,44 @@ router = APIRouter()
 
 # ===== Pydantic Schemas =====
 
+
 class VideoSessionCreate(BaseModel):
     id: str = Field(..., max_length=64)
     videoId: str = Field(..., max_length=20)
-    title: Optional[str] = Field(None, max_length=500)
-    channel: Optional[str] = Field(None, max_length=255)
-    channelId: Optional[str] = Field(None, max_length=30)
+    title: str | None = Field(None, max_length=500)
+    channel: str | None = Field(None, max_length=255)
+    channelId: str | None = Field(None, max_length=30)
     durationSeconds: int = Field(0, ge=0, le=86400)  # Max 24h
     watchedSeconds: int = Field(0, ge=0, le=86400)
     watchedPercent: int = 0
-    source: Optional[str] = None
-    sourcePosition: Optional[int] = None
+    source: str | None = None
+    sourcePosition: int | None = None
     isShort: bool = False
     playbackSpeed: float = 1.0
-    averageSpeed: Optional[float] = None
-    category: Optional[str] = None
-    productivityRating: Optional[int] = None
+    averageSpeed: float | None = None
+    category: str | None = None
+    productivityRating: int | None = None
     timestamp: int
     startedAt: int
-    endedAt: Optional[int] = None
-    ratedAt: Optional[int] = None
+    endedAt: int | None = None
+    ratedAt: int | None = None
     seekCount: int = 0
     pauseCount: int = 0
     tabSwitchCount: int = 0
-    ledToAnotherVideo: Optional[bool] = None
-    nextVideoSource: Optional[str] = None
-    intention: Optional[str] = None
-    matchedIntention: Optional[bool] = None
+    ledToAnotherVideo: bool | None = None
+    nextVideoSource: str | None = None
+    intention: str | None = None
+    matchedIntention: bool | None = None
 
 
 class BrowserSessionCreate(BaseModel):
     id: str
     startedAt: int
-    endedAt: Optional[int] = None
-    entryPageType: Optional[str] = None
-    entryUrl: Optional[str] = None
-    entrySource: Optional[str] = None
-    triggerType: Optional[str] = None
+    endedAt: int | None = None
+    entryPageType: str | None = None
+    entryUrl: str | None = None
+    entrySource: str | None = None
+    triggerType: str | None = None
     totalDurationSeconds: int = 0
     activeDurationSeconds: int = 0
     backgroundSeconds: int = 0
@@ -85,8 +95,8 @@ class BrowserSessionCreate(BaseModel):
     productiveVideos: int = 0
     unproductiveVideos: int = 0
     neutralVideos: int = 0
-    exitType: Optional[str] = None
-    searchQueries: List[str] = []
+    exitType: str | None = None
+    searchQueries: list[str] = []
 
 
 class DailyStatsCreate(BaseModel):
@@ -96,7 +106,7 @@ class DailyStatsCreate(BaseModel):
     backgroundSeconds: int = 0
     sessionCount: int = 0
     avgSessionDurationSeconds: int = 0
-    firstCheckTime: Optional[str] = None
+    firstCheckTime: str | None = None
     videoCount: int = 0
     videosCompleted: int = 0
     videosAbandoned: int = 0
@@ -120,8 +130,8 @@ class DailyStatsCreate(BaseModel):
     promptsAnswered: int = 0
     interventionsShown: int = 0
     interventionsEffective: int = 0
-    hourlySeconds: Optional[dict] = None
-    topChannels: Optional[list] = None
+    hourlySeconds: dict | None = None
+    topChannels: list | None = None
     preSleepMinutes: int = 0
     bingeSessions: int = 0
 
@@ -129,7 +139,7 @@ class DailyStatsCreate(BaseModel):
 class ScrollEventCreate(BaseModel):
     type: str = "scroll"
     sessionId: str
-    pageType: Optional[str] = None
+    pageType: str | None = None
     timestamp: int
     scrollY: int
     scrollDepthPercent: int
@@ -144,9 +154,9 @@ class ThumbnailEventCreate(BaseModel):
     type: str = "thumbnail"
     sessionId: str
     videoId: str
-    videoTitle: Optional[str] = None
-    channelName: Optional[str] = None
-    pageType: Optional[str] = None
+    videoTitle: str | None = None
+    channelName: str | None = None
+    pageType: str | None = None
     positionIndex: int
     timestamp: int
     hoverDurationMs: int = 0
@@ -161,14 +171,14 @@ class PageEventCreate(BaseModel):
     type: str = "page"
     sessionId: str
     eventType: str
-    pageType: Optional[str] = None
-    pageUrl: Optional[str] = None
+    pageType: str | None = None
+    pageUrl: str | None = None
     timestamp: int
-    fromPageType: Optional[str] = None
-    navigationMethod: Optional[str] = None
-    searchQuery: Optional[str] = None
-    searchResultsCount: Optional[int] = None
-    timeOnPageMs: Optional[int] = None
+    fromPageType: str | None = None
+    navigationMethod: str | None = None
+    searchQuery: str | None = None
+    searchResultsCount: int | None = None
+    timeOnPageMs: int | None = None
 
 
 class VideoWatchEventCreate(BaseModel):
@@ -179,11 +189,11 @@ class VideoWatchEventCreate(BaseModel):
     eventType: str
     timestamp: int
     videoTimeSeconds: float
-    seekFromSeconds: Optional[float] = None
-    seekToSeconds: Optional[float] = None
-    seekDeltaSeconds: Optional[float] = None
-    playbackSpeed: Optional[float] = None
-    watchPercentAtAbandon: Optional[int] = None
+    seekFromSeconds: float | None = None
+    seekToSeconds: float | None = None
+    seekDeltaSeconds: float | None = None
+    playbackSpeed: float | None = None
+    watchPercentAtAbandon: int | None = None
 
 
 class RecommendationEventCreate(BaseModel):
@@ -192,10 +202,10 @@ class RecommendationEventCreate(BaseModel):
     location: str
     positionIndex: int
     videoId: str
-    videoTitle: Optional[str] = None
-    channelName: Optional[str] = None
+    videoTitle: str | None = None
+    channelName: str | None = None
     action: str
-    hoverDurationMs: Optional[int] = None
+    hoverDurationMs: int | None = None
     timestamp: int
     wasAutoplayNext: bool = False
     autoplayCountdownStarted: bool = False
@@ -207,12 +217,12 @@ class InterventionEventCreate(BaseModel):
     sessionId: str
     interventionType: str
     triggeredAt: int
-    triggerReason: Optional[str] = None
-    response: Optional[str] = None
-    responseAt: Optional[int] = None
-    responseTimeMs: Optional[int] = None
+    triggerReason: str | None = None
+    response: str | None = None
+    responseAt: int | None = None
+    responseTimeMs: int | None = None
     userLeftYoutube: bool = False
-    minutesUntilReturn: Optional[int] = None
+    minutesUntilReturn: int | None = None
 
 
 class MoodReportCreate(BaseModel):
@@ -220,8 +230,8 @@ class MoodReportCreate(BaseModel):
     sessionId: str
     reportType: str
     mood: int
-    intention: Optional[str] = None
-    satisfaction: Optional[int] = None
+    intention: str | None = None
+    satisfaction: int | None = None
 
 
 class ProductiveUrlCreate(BaseModel):
@@ -229,27 +239,27 @@ class ProductiveUrlCreate(BaseModel):
     url: str = Field(..., max_length=2000)
     title: str = Field(..., max_length=255)
     addedAt: int = Field(..., ge=0)
-    
-    @field_validator('url')
+
+    @field_validator("url")
     @classmethod
     def validate_url(cls, v: str) -> str:
-        if not v.startswith(('http://', 'https://')):
-            raise ValueError('URL must start with http:// or https://')
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("URL must start with http:// or https://")
         return v
 
 
 class SyncData(BaseModel):
-    videoSessions: List[VideoSessionCreate] = []
-    browserSessions: List[BrowserSessionCreate] = []
+    videoSessions: list[VideoSessionCreate] = []
+    browserSessions: list[BrowserSessionCreate] = []
     dailyStats: dict[str, DailyStatsCreate] = {}
-    scrollEvents: List[ScrollEventCreate] = []
-    thumbnailEvents: List[ThumbnailEventCreate] = []
-    pageEvents: List[PageEventCreate] = []
-    videoWatchEvents: List[VideoWatchEventCreate] = []
-    recommendationEvents: List[RecommendationEventCreate] = []
-    interventionEvents: List[InterventionEventCreate] = []
-    moodReports: List[MoodReportCreate] = []
-    productiveUrls: List[ProductiveUrlCreate] = []
+    scrollEvents: list[ScrollEventCreate] = []
+    thumbnailEvents: list[ThumbnailEventCreate] = []
+    pageEvents: list[PageEventCreate] = []
+    videoWatchEvents: list[VideoWatchEventCreate] = []
+    recommendationEvents: list[RecommendationEventCreate] = []
+    interventionEvents: list[InterventionEventCreate] = []
+    moodReports: list[MoodReportCreate] = []
+    productiveUrls: list[ProductiveUrlCreate] = []
 
 
 class SyncRequest(BaseModel):
@@ -262,32 +272,30 @@ class SyncResponse(BaseModel):
     success: bool
     syncedCounts: dict[str, int]
     lastSyncTime: int
-    errors: List[str] = []
+    errors: list[str] = []
 
 
 # ===== Main Sync Endpoint =====
 
+
 @router.post("", response_model=SyncResponse)
 @limiter.limit(settings.rate_limit_sync)
 async def sync_all(
-    request: Request,
-    body: SyncRequest,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    request: Request, body: SyncRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):
     """
     Single endpoint to sync all event types at once.
     Processes all data in a single atomic transaction.
-    
+
     Security:
     - Requires Google OAuth Bearer token (or X-User-Id in dev mode)
     - Rate limited to 20 requests/minute per user
     - Payload size validated
     """
-    
+
     # Validate payload sizes
     validate_sync_payload(body.data.model_dump())
-    
+
     counts = {
         "videoSessions": 0,
         "browserSessions": 0,
@@ -301,21 +309,20 @@ async def sync_all(
         "moodReports": 0,
         "productiveUrls": 0,
     }
-    errors: List[str] = []
+    errors: list[str] = []
     data = body.data
-    
+
     try:
         # === Video Sessions ===
         for session_data in data.videoSessions:
             existing = await db.execute(
                 select(VideoSession).where(
-                    VideoSession.user_id == user.id,
-                    VideoSession.ext_session_id == session_data.id
+                    VideoSession.user_id == user.id, VideoSession.ext_session_id == session_data.id
                 )
             )
             if existing.scalar_one_or_none():
                 continue
-                
+
             session = VideoSession(
                 user_id=user.id,
                 ext_session_id=session_data.id,
@@ -347,17 +354,13 @@ async def sync_all(
             )
             db.add(session)
             counts["videoSessions"] += 1
-        
+
         # === Browser Sessions ===
         for bs_data in data.browserSessions:
-            existing = await db.execute(
-                select(BrowserSession).where(
-                    BrowserSession.ext_session_id == bs_data.id
-                )
-            )
+            existing = await db.execute(select(BrowserSession).where(BrowserSession.ext_session_id == bs_data.id))
             if existing.scalar_one_or_none():
                 continue
-                
+
             browser_session = BrowserSession(
                 user_id=user.id,
                 ext_session_id=bs_data.id,
@@ -395,7 +398,7 @@ async def sync_all(
             )
             db.add(browser_session)
             counts["browserSessions"] += 1
-        
+
         # === Daily Stats (Upsert) ===
         for date_str, stats_data in data.dailyStats.items():
             try:
@@ -403,7 +406,7 @@ async def sync_all(
             except ValueError:
                 errors.append(f"Invalid date format: {date_str}")
                 continue
-                
+
             stmt = insert(DailyStats).values(
                 user_id=user.id,
                 date=stats_date,
@@ -441,7 +444,7 @@ async def sync_all(
                 pre_sleep_minutes=stats_data.preSleepMinutes,
                 binge_sessions=stats_data.bingeSessions,
             )
-            
+
             stmt = stmt.on_conflict_do_update(
                 index_elements=["user_id", "date"],
                 set_={
@@ -479,11 +482,11 @@ async def sync_all(
                     "pre_sleep_minutes": stmt.excluded.pre_sleep_minutes,
                     "binge_sessions": stmt.excluded.binge_sessions,
                     "updated_at": datetime.utcnow(),
-                }
+                },
             )
             await db.execute(stmt)
             counts["dailyStats"] += 1
-        
+
         # === Scroll Events ===
         for event in data.scrollEvents:
             scroll = ScrollEvent(
@@ -501,7 +504,7 @@ async def sync_all(
             )
             db.add(scroll)
             counts["scrollEvents"] += 1
-        
+
         # === Thumbnail Events ===
         for event in data.thumbnailEvents:
             thumbnail = ThumbnailEvent(
@@ -522,7 +525,7 @@ async def sync_all(
             )
             db.add(thumbnail)
             counts["thumbnailEvents"] += 1
-        
+
         # === Page Events ===
         for event in data.pageEvents:
             page = PageEvent(
@@ -540,7 +543,7 @@ async def sync_all(
             )
             db.add(page)
             counts["pageEvents"] += 1
-        
+
         # === Video Watch Events ===
         for event in data.videoWatchEvents:
             watch = VideoWatchEvent(
@@ -559,7 +562,7 @@ async def sync_all(
             )
             db.add(watch)
             counts["videoWatchEvents"] += 1
-        
+
         # === Recommendation Events ===
         for event in data.recommendationEvents:
             rec = RecommendationEvent(
@@ -579,7 +582,7 @@ async def sync_all(
             )
             db.add(rec)
             counts["recommendationEvents"] += 1
-        
+
         # === Intervention Events ===
         for event in data.interventionEvents:
             intervention = InterventionEvent(
@@ -596,7 +599,7 @@ async def sync_all(
             )
             db.add(intervention)
             counts["interventionEvents"] += 1
-        
+
         # === Mood Reports ===
         for report in data.moodReports:
             mood = MoodReport(
@@ -610,18 +613,15 @@ async def sync_all(
             )
             db.add(mood)
             counts["moodReports"] += 1
-        
+
         # === Productive URLs (Upsert with soft delete handling) ===
         for url_data in data.productiveUrls:
             # Check if exists (including soft deleted)
             existing = await db.execute(
-                select(ProductiveUrl).where(
-                    ProductiveUrl.user_id == user.id,
-                    ProductiveUrl.ext_id == url_data.id
-                )
+                select(ProductiveUrl).where(ProductiveUrl.user_id == user.id, ProductiveUrl.ext_id == url_data.id)
             )
             existing_url = existing.scalar_one_or_none()
-            
+
             if existing_url:
                 # Restore if soft deleted, update fields
                 existing_url.url = url_data.url
@@ -637,23 +637,19 @@ async def sync_all(
                 )
                 db.add(productive_url)
             counts["productiveUrls"] += 1
-        
+
         # Commit all changes atomically
         await db.commit()
-        
-        return SyncResponse(
-            success=True,
-            syncedCounts=counts,
-            lastSyncTime=int(time.time() * 1000),
-            errors=errors
-        )
-        
+
+        return SyncResponse(success=True, syncedCounts=counts, lastSyncTime=int(time.time() * 1000), errors=errors)
+
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}") from e
 
 
 # ===== Query Endpoints =====
+
 
 @router.get("/videos")
 @limiter.limit(settings.rate_limit)
@@ -662,7 +658,7 @@ async def get_synced_videos(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     limit: int = Query(100, le=500),  # Max 500 per request
-    offset: int = Query(0, ge=0)
+    offset: int = Query(0, ge=0),
 ):
     """Get synced video sessions for a user."""
     result = await db.execute(
@@ -673,7 +669,7 @@ async def get_synced_videos(
         .offset(offset)
     )
     sessions = result.scalars().all()
-    
+
     return {
         "videos": [
             {
@@ -699,35 +695,27 @@ async def get_synced_videos(
         ],
         "total": len(sessions),
         "limit": limit,
-        "offset": offset
+        "offset": offset,
     }
 
 
 @router.get("/stats/{date_str}")
 @limiter.limit(settings.rate_limit)
 async def get_daily_stats(
-    request: Request,
-    date_str: str,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    request: Request, date_str: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):
     """Get daily stats for a specific date."""
     try:
         stats_date = date.fromisoformat(date_str)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
-    
-    result = await db.execute(
-        select(DailyStats).where(
-            DailyStats.user_id == user.id,
-            DailyStats.date == stats_date
-        )
-    )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD") from e
+
+    result = await db.execute(select(DailyStats).where(DailyStats.user_id == user.id, DailyStats.date == stats_date))
     stats = result.scalar_one_or_none()
-    
+
     if not stats:
         return {"date": date_str, "found": False}
-    
+
     return {
         "date": date_str,
         "found": True,

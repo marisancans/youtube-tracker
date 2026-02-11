@@ -18,12 +18,7 @@ import {
 
 import { signIn, signOut, getAuthState, initAuth } from './auth';
 
-import {
-  getEmptyDailyStats,
-  updateDailyStats,
-  calculateBaselineStats,
-  getWeeklySummary,
-} from './stats';
+import { getEmptyDailyStats, updateDailyStats, calculateBaselineStats, getWeeklySummary } from './stats';
 
 import {
   calculateDrift,
@@ -100,7 +95,7 @@ async function handlePageUnload(data: {
 
   // Update daily stats
   const sessionsForStats = storage.videoSessions.filter(
-    (s) => s.timestamp > data.session.startedAt && s.timestamp < (data.session.endedAt || Date.now())
+    (s) => s.timestamp > data.session.startedAt && s.timestamp < (data.session.endedAt || Date.now()),
   );
   await updateDailyStats(data.session, sessionsForStats, data.temporal);
 
@@ -109,10 +104,7 @@ async function handlePageUnload(data: {
   if (settings.backend.enabled) {
     const lastSync = settings.backend.lastSync || 0;
     const timeSinceSync = Date.now() - lastSync;
-    const totalPending = Object.values(storage.pendingEvents).reduce(
-      (sum, arr) => sum + arr.length,
-      0
-    );
+    const totalPending = Object.values(storage.pendingEvents).reduce((sum, arr) => sum + arr.length, 0);
 
     // Sync every 5 minutes or if queue is getting large
     if (timeSinceSync > 5 * 60 * 1000 || totalPending > 100) {
@@ -185,11 +177,7 @@ async function handlePromptShown(): Promise<void> {
   await saveStorage({ dailyStats: storage.dailyStats });
 }
 
-async function handleInterventionResponse(data: {
-  type: string;
-  response: string;
-  effective: boolean;
-}): Promise<void> {
+async function handleInterventionResponse(data: { type: string; response: string; effective: boolean }): Promise<void> {
   const storage = await getStorage();
   const today = getTodayKey();
 
@@ -269,6 +257,22 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
         case 'GET_SYNC_STATUS':
           response = await getSyncStatus();
           break;
+        case 'GET_PENDING_COUNTS': {
+          const pendingStorage = await getStorage();
+          response = {
+            videoSessions: pendingStorage.videoSessions.length,
+            browserSessions: pendingStorage.browserSessions.length,
+            dailyStats: Object.keys(pendingStorage.dailyStats).length,
+            scroll: pendingStorage.pendingEvents.scroll.length,
+            thumbnail: pendingStorage.pendingEvents.thumbnail.length,
+            page: pendingStorage.pendingEvents.page.length,
+            video_watch: pendingStorage.pendingEvents.video_watch.length,
+            recommendation: pendingStorage.pendingEvents.recommendation.length,
+            intervention: pendingStorage.pendingEvents.intervention.length,
+            mood: pendingStorage.pendingEvents.mood.length,
+          };
+          break;
+        }
 
         // Auth
         case 'AUTH_SIGN_IN':

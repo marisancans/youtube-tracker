@@ -126,6 +126,7 @@ export const DEFAULT_SETTINGS: Settings = {
     frictionOverlay: false,
     musicDetection: false,
     nudges: false,
+    syncDebug: false,
   },
 };
 

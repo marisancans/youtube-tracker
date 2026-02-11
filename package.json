@@ -10,6 +10,9 @@
     "build": "pnpm -r run build",
     "build:ext": "pnpm --filter @yt-detox/extension build",
     "lint": "pnpm -r run lint",
+    "lint:fix": "pnpm -r run lint:fix",
+    "format": "prettier --write 'packages/{extension,shared}/src/**/*.{ts,tsx}' '*.json'",
+    "format:check": "prettier --check 'packages/{extension,shared}/src/**/*.{ts,tsx}' '*.json'",
     "typecheck": "pnpm -r run typecheck",
     "test": "playwright test",
     "test:api": "playwright test --project=api",
@@ -25,9 +28,16 @@
     "deploy:build": "pnpm build:ext && cd packages/extension/dist && zip -r ../youtube-detox.zip ."
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@playwright/test": "^1.58.2",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.0",
     "playwright": "^1.58.2",
-    "typescript": "^5.7.3"
+    "prettier": "^3.8.1",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.55.0"
   },
   "engines": {
     "node": ">=18.0.0",

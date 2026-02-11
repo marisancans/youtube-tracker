@@ -32,13 +32,13 @@ export interface VideoSession {
   matchedIntention?: boolean;
 }
 
-export type VideoSource = 
-  | 'search' 
-  | 'recommendation' 
-  | 'subscription' 
-  | 'autoplay' 
-  | 'direct' 
-  | 'shorts' 
+export type VideoSource =
+  | 'search'
+  | 'recommendation'
+  | 'subscription'
+  | 'autoplay'
+  | 'direct'
+  | 'shorts'
   | 'homepage'
   | 'notification'
   | 'history'
@@ -91,6 +91,9 @@ export interface BrowserSession {
   exitType?: ExitType;
   // Searches
   searchQueries: string[];
+  // Feed / decision tracking
+  feedLoadsCount: number;
+  decisionTimeMs?: number;
 }
 
 export type EntrySource = 'direct' | 'bookmark' | 'notification' | 'link' | 'new_tab' | 'external';
@@ -174,6 +177,9 @@ export interface ThumbnailEvent {
   previewPlayed: boolean;
   previewWatchMs: number;
   clicked: boolean;
+  // Impression tracking
+  impression?: boolean;
+  timeVisibleMs?: number;
   // Clickbait indicators
   titleCapsPercent: number;
   titleLength: number;
@@ -191,19 +197,31 @@ export interface PageEvent {
   searchQuery?: string;
   searchResultsCount?: number;
   timeOnPageMs?: number;
+  feedItemCount?: number;
+  commentData?: {
+    timeVisibleMs?: number;
+    commentCount?: number;
+    sortOrder?: string;
+  };
 }
 
-export type PageEventType = 
-  | 'page_load' 
-  | 'page_unload' 
-  | 'tab_visible' 
+export type PageEventType =
+  | 'page_load'
+  | 'page_unload'
+  | 'tab_visible'
   | 'tab_hidden'
   | 'tab_switch_away'
   | 'tab_switch_back'
   | 'page_reload'
   | 'back_button'
   | 'forward_button'
-  | 'link_click';
+  | 'link_click'
+  | 'feed_loaded'
+  | 'feed_refresh'
+  | 'comments_visible'
+  | 'comments_hidden'
+  | 'comments_sort_changed'
+  | 'comments_expanded';
 
 export type NavigationMethod = 'click' | 'back' | 'forward' | 'reload' | 'direct' | 'autoplay' | 'external';
 
@@ -259,17 +277,23 @@ export interface InterventionEvent {
   minutesUntilReturn?: number;
 }
 
-export type InterventionType = 
-  | 'productivity_prompt' 
-  | 'time_warning' 
-  | 'intention_prompt' 
+export type InterventionType =
+  | 'productivity_prompt'
+  | 'time_warning'
+  | 'intention_prompt'
   | 'friction_delay'
   | 'session_summary'
   | 'break_reminder'
   | 'daily_limit'
   | 'bedtime_warning';
 
-export type InterventionResponse = 'dismissed' | 'engaged' | 'productive' | 'unproductive' | 'neutral' | 'stopped_watching';
+export type InterventionResponse =
+  | 'dismissed'
+  | 'engaged'
+  | 'productive'
+  | 'unproductive'
+  | 'neutral'
+  | 'stopped_watching';
 
 // ===== Self-Report (Optional) =====
 
@@ -399,6 +423,7 @@ export interface DevFeatures {
   frictionOverlay: boolean;
   musicDetection: boolean;
   nudges: boolean;
+  syncDebug: boolean;
 }
 
 export type PrivacyTier = 'minimal' | 'standard' | 'full';
@@ -448,6 +473,7 @@ export type MessageType =
   // Sync
   | 'SYNC_NOW'
   | 'GET_SYNC_STATUS'
+  | 'GET_PENDING_COUNTS'
   | 'BATCH_EVENTS'
   // Auth
   | 'AUTH_SIGN_IN'

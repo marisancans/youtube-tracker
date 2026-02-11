@@ -1,17 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-  PieChart,
-  Pie,
-} from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 import {
   Video,
   TrendingUp,
@@ -205,12 +195,12 @@ export default function Dashboard({
       } else {
         // Fetch from local storage
         const data = await chrome.storage.local.get(['dailyStats', 'videoSessions', 'streak', 'xp']);
-        
+
         // Fetch phase and baseline info
         const phaseInfo = await new Promise<PhaseInfo>((resolve) => {
           chrome.runtime.sendMessage({ type: 'GET_PHASE_INFO' }, resolve);
         });
-        
+
         const baselineStats = await new Promise<BaselineStats>((resolve) => {
           chrome.runtime.sendMessage({ type: 'GET_BASELINE_STATS' }, resolve);
         });
@@ -262,25 +252,27 @@ export default function Dashboard({
         const thisWeekVideos = last7Days.reduce((sum, d) => sum + d.videoCount, 0);
         const prevWeekSeconds = prevWeekDays.reduce((sum, d) => sum + d.totalSeconds, 0);
         const prevWeekVideos = prevWeekDays.reduce((sum, d) => sum + d.videoCount, 0);
-        
+
         const thisWeekMinutes = Math.floor(thisWeekSeconds / 60);
         const prevWeekMinutes = Math.floor(prevWeekSeconds / 60);
-        
+
         // Calculate change percent (only if we have previous week data)
         let changePercent = 0;
         if (prevWeekMinutes > 0) {
           changePercent = Math.round(((thisWeekMinutes - prevWeekMinutes) / prevWeekMinutes) * 100);
         }
-        
+
         // Weekly comparison is null if no data at all
         const hasWeeklyData = last7Days.length > 0 || prevWeekDays.length > 0;
-        const weekly: WeeklyComparison | null = hasWeeklyData ? {
-          thisWeekMinutes,
-          prevWeekMinutes,
-          changePercent,
-          thisWeekVideos,
-          prevWeekVideos,
-        } : null;
+        const weekly: WeeklyComparison | null = hasWeeklyData
+          ? {
+              thisWeekMinutes,
+              prevWeekMinutes,
+              changePercent,
+              thisWeekVideos,
+              prevWeekVideos,
+            }
+          : null;
 
         // Build channel stats from video sessions
         const videoSessions: any[] = data.videoSessions || [];
@@ -441,11 +433,7 @@ export default function Dashboard({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold">Dashboard</h2>
-          {lastUpdated && (
-            <p className="text-xs text-muted-foreground">
-              Updated {lastUpdated.toLocaleTimeString()}
-            </p>
-          )}
+          {lastUpdated && <p className="text-xs text-muted-foreground">Updated {lastUpdated.toLocaleTimeString()}</p>}
         </div>
         <button
           onClick={fetchStats}
@@ -466,19 +454,13 @@ export default function Dashboard({
                   <PhaseIcon className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className={`font-semibold ${currentPhaseConfig.textColor}`}>
-                    {currentPhaseConfig.title}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {currentPhaseConfig.description}
-                  </div>
+                  <div className={`font-semibold ${currentPhaseConfig.textColor}`}>{currentPhaseConfig.title}</div>
+                  <div className="text-xs text-muted-foreground">{currentPhaseConfig.description}</div>
                 </div>
               </div>
               {stats.phase.daysRemaining > 0 && (
                 <div className="text-right">
-                  <div className={`text-lg font-bold ${currentPhaseConfig.textColor}`}>
-                    {stats.phase.daysRemaining}
-                  </div>
+                  <div className={`text-lg font-bold ${currentPhaseConfig.textColor}`}>{stats.phase.daysRemaining}</div>
                   <div className="text-xs text-muted-foreground">days left</div>
                 </div>
               )}
@@ -519,7 +501,7 @@ export default function Dashboard({
                   <div className="text-muted-foreground text-xs">Peak Hours</div>
                   <div className="font-bold flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {stats.baseline.peakHours.map(h => `${h}:00`).join(', ')}
+                    {stats.baseline.peakHours.map((h) => `${h}:00`).join(', ')}
                   </div>
                 </div>
               )}
@@ -542,22 +524,19 @@ export default function Dashboard({
               <div className="flex items-center justify-between mb-2">
                 <span className="text-2xl font-bold">{formatMinutes(todayMinutes)}</span>
                 <span className={`text-sm ${isOverGoal ? 'text-red-500' : 'text-green-500'}`}>
-                  {isOverGoal ? `+${formatMinutes(todayMinutes - dailyGoalMinutes)} over` : `${formatMinutes(dailyGoalMinutes - todayMinutes)} left`}
+                  {isOverGoal
+                    ? `+${formatMinutes(todayMinutes - dailyGoalMinutes)} over`
+                    : `${formatMinutes(dailyGoalMinutes - todayMinutes)} left`}
                 </span>
               </div>
-              <Progress
-                value={goalProgress}
-                className={isOverGoal ? '[&>div]:bg-red-500' : '[&>div]:bg-blue-500'}
-              />
+              <Progress value={goalProgress} className={isOverGoal ? '[&>div]:bg-red-500' : '[&>div]:bg-blue-500'} />
               <div className="flex justify-between mt-1 text-xs text-muted-foreground">
                 <span>0m</span>
                 <span>{formatMinutes(dailyGoalMinutes)} goal</span>
               </div>
             </>
           ) : (
-            <div className="py-4 text-center text-muted-foreground text-sm">
-              No activity today yet.
-            </div>
+            <div className="py-4 text-center text-muted-foreground text-sm">No activity today yet.</div>
           )}
         </CardContent>
       </Card>
@@ -677,12 +656,17 @@ export default function Dashboard({
                 <Waves className="w-4 h-4 text-blue-500" />
                 Drift
               </span>
-              <span className={`text-lg font-bold ${
-                stats.drift.level === 'critical' ? 'text-red-500' :
-                stats.drift.level === 'high' ? 'text-orange-500' :
-                stats.drift.level === 'medium' ? 'text-yellow-500' :
-                'text-green-500'
-              }`}>
+              <span
+                className={`text-lg font-bold ${
+                  stats.drift.level === 'critical'
+                    ? 'text-red-500'
+                    : stats.drift.level === 'high'
+                      ? 'text-orange-500'
+                      : stats.drift.level === 'medium'
+                        ? 'text-yellow-500'
+                        : 'text-green-500'
+                }`}
+              >
                 {Math.round(stats.drift.current * 100)}%
               </span>
             </CardTitle>
@@ -692,15 +676,18 @@ export default function Dashboard({
             <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-3">
               <div
                 className={`h-full rounded-full transition-all duration-500 ${
-                  stats.drift.level === 'critical' ? 'bg-gradient-to-r from-red-500 to-red-600' :
-                  stats.drift.level === 'high' ? 'bg-gradient-to-r from-orange-500 to-orange-600' :
-                  stats.drift.level === 'medium' ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' :
-                  'bg-gradient-to-r from-green-500 to-green-600'
+                  stats.drift.level === 'critical'
+                    ? 'bg-gradient-to-r from-red-500 to-red-600'
+                    : stats.drift.level === 'high'
+                      ? 'bg-gradient-to-r from-orange-500 to-orange-600'
+                      : stats.drift.level === 'medium'
+                        ? 'bg-gradient-to-r from-yellow-500 to-yellow-600'
+                        : 'bg-gradient-to-r from-green-500 to-green-600'
                 }`}
                 style={{ width: `${stats.drift.current * 100}%` }}
               />
             </div>
-            
+
             {/* Drift Level Labels */}
             <div className="flex justify-between text-xs text-muted-foreground mb-4">
               <span>Focused</span>
@@ -708,15 +695,17 @@ export default function Dashboard({
               <span>High</span>
               <span>Critical</span>
             </div>
-            
+
             {/* Drift History Chart */}
             {stats.drift.history.length > 1 && (
               <div className="h-24">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={stats.drift.history.map(h => ({
-                    time: new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    drift: Math.round(h.value * 100),
-                  }))}>
+                  <AreaChart
+                    data={stats.drift.history.map((h) => ({
+                      time: new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                      drift: Math.round(h.value * 100),
+                    }))}
+                  >
                     <defs>
                       <linearGradient id="driftGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
@@ -749,18 +738,12 @@ export default function Dashboard({
                 </ResponsiveContainer>
               </div>
             )}
-            
+
             {/* Current Status */}
             <div className="text-center text-sm mt-2">
-              {stats.drift.level === 'low' && (
-                <span className="text-green-600">🎯 You're staying focused!</span>
-              )}
-              {stats.drift.level === 'medium' && (
-                <span className="text-yellow-600">🌊 Starting to drift...</span>
-              )}
-              {stats.drift.level === 'high' && (
-                <span className="text-orange-600">⚠️ Drifting from your goals</span>
-              )}
+              {stats.drift.level === 'low' && <span className="text-green-600">🎯 You're staying focused!</span>}
+              {stats.drift.level === 'medium' && <span className="text-yellow-600">🌊 Starting to drift...</span>}
+              {stats.drift.level === 'high' && <span className="text-orange-600">⚠️ Drifting from your goals</span>}
               {stats.drift.level === 'critical' && (
                 <span className="text-red-600">🔴 High drift — friction active</span>
               )}
@@ -844,10 +827,7 @@ export default function Dashboard({
                 {productivityData.map((item) => (
                   <div key={item.name} className="flex items-center justify-between text-sm">
                     <span className="flex items-center gap-2">
-                      <span
-                        className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: item.color }}
-                      />
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
                       {item.name}
                     </span>
                     <span className="font-medium">{item.value}</span>
@@ -879,9 +859,7 @@ export default function Dashboard({
                       <span className="truncate max-w-[150px]" title={channel.channel}>
                         {channel.channel}
                       </span>
-                      <span className="text-muted-foreground">
-                        {formatMinutes(channel.totalMinutes)}
-                      </span>
+                      <span className="text-muted-foreground">{formatMinutes(channel.totalMinutes)}</span>
                     </div>
                     <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                       <div
@@ -916,11 +894,15 @@ export default function Dashboard({
                 <div
                   key={achievement.id}
                   className={`px-3 py-2 rounded-lg border text-sm flex items-center gap-2 ${
-                    achievement.rarity === 'legendary' ? 'bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border-yellow-500/30' :
-                    achievement.rarity === 'epic' ? 'bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-purple-500/30' :
-                    achievement.rarity === 'rare' ? 'bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-blue-500/30' :
-                    achievement.rarity === 'uncommon' ? 'bg-gradient-to-r from-green-500/10 to-emerald-500/10 border-green-500/30' :
-                    'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                    achievement.rarity === 'legendary'
+                      ? 'bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border-yellow-500/30'
+                      : achievement.rarity === 'epic'
+                        ? 'bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-purple-500/30'
+                        : achievement.rarity === 'rare'
+                          ? 'bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-blue-500/30'
+                          : achievement.rarity === 'uncommon'
+                            ? 'bg-gradient-to-r from-green-500/10 to-emerald-500/10 border-green-500/30'
+                            : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
                   }`}
                   title={achievement.description}
                 >

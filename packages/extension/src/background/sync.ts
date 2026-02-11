@@ -1,6 +1,6 @@
 /**
  * Backend Sync Logic
- * 
+ *
  * Security: Uses Google OAuth Bearer token for authentication
  */
 
@@ -46,17 +46,9 @@ export async function syncToBackend(): Promise<boolean> {
   storage.syncState.syncInProgress = true;
   await saveStorage({ syncState: storage.syncState });
 
-  // Get auth state for Bearer token
+  // Get auth state for Bearer token (optional in dev mode)
   const authState = await getAuthState();
-  if (!authState.token) {
-    console.log('[YT Detox] No auth token - skipping sync (user not signed in)');
-    storage.syncState.syncInProgress = false;
-    await saveStorage({ syncState: storage.syncState });
-    return false;
-  }
-
-  // Use Google ID as user ID
-  const userId = authState.user?.id || settings.backend.userId || 'anonymous';
+  const userId = authState.user?.id || settings.backend.userId || 'dev-user';
 
   try {
     // Build unified sync request
@@ -78,13 +70,17 @@ export async function syncToBackend(): Promise<boolean> {
       },
     };
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-User-Id': userId,
+    };
+    if (authState.token) {
+      headers['Authorization'] = `Bearer ${authState.token}`;
+    }
+
     const response = await fetch(`${settings.backend.url}/sync`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authState.token}`,
-        'X-User-Id': userId,  // Fallback for dev mode
-      },
+      headers,
       body: JSON.stringify(syncRequest),
     });
 
@@ -92,6 +88,9 @@ export async function syncToBackend(): Promise<boolean> {
       const errorText = await response.text();
       console.error('[YT Detox] Sync failed:', errorText);
       storage.syncState.retryCount++;
+      chrome.storage.local.set({
+        lastSyncResult: { success: false, error: errorText, timestamp: Date.now() },
+      });
       return false;
     }
 
@@ -110,10 +109,16 @@ export async function syncToBackend(): Promise<boolean> {
     });
 
     console.log('[YT Detox] Sync successful:', result.syncedCounts);
+    chrome.storage.local.set({
+      lastSyncResult: { success: true, syncedCounts: result.syncedCounts, timestamp: Date.now() },
+    });
     return true;
   } catch (error) {
     console.error('[YT Detox] Sync error:', error);
     storage.syncState.retryCount++;
+    chrome.storage.local.set({
+      lastSyncResult: { success: false, error: String(error), timestamp: Date.now() },
+    });
     return false;
   } finally {
     storage.syncState.syncInProgress = false;

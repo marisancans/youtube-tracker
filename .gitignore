@@ -35,6 +35,9 @@ yarn.lock
 # Database data
 data/
 
+# Linter caches
+.ruff_cache/
+
 # Test artifacts
 playwright-report/
 test-results/

@@ -226,6 +226,60 @@ test.describe('Query Endpoints', () => {
   });
 });
 
+test.describe('Debug Endpoint', () => {
+  test('debug db-counts returns expected shape', async ({ request }) => {
+    const response = await request.get(`${API_BASE}/debug/db-counts`, {
+      headers: { 'X-User-Id': 'debug-test-user' },
+    });
+    expect(response.ok()).toBeTruthy();
+    const data = await response.json();
+    expect(data.userId).toBeDefined();
+    expect(data.counts).toBeDefined();
+    expect(typeof data.counts.videoSessions).toBe('number');
+    expect(typeof data.counts.browserSessions).toBe('number');
+    expect(typeof data.counts.dailyStats).toBe('number');
+    expect(typeof data.counts.scrollEvents).toBe('number');
+    expect(typeof data.counts.thumbnailEvents).toBe('number');
+    expect(typeof data.counts.pageEvents).toBe('number');
+    expect(typeof data.counts.videoWatchEvents).toBe('number');
+    expect(typeof data.counts.recommendationEvents).toBe('number');
+    expect(typeof data.counts.interventionEvents).toBe('number');
+    expect(typeof data.counts.moodReports).toBe('number');
+    expect(typeof data.counts.productiveUrls).toBe('number');
+  });
+
+  test('debug db-counts reflects synced data', async ({ request }) => {
+    const testUserId = `debug-verify-${Date.now()}`;
+
+    // Sync some data
+    await request.post(`${API_BASE}/sync`, {
+      data: {
+        userId: testUserId,
+        lastSyncTime: 0,
+        data: {
+          videoSessions: [{
+            id: `debug-vid-${Date.now()}`,
+            videoId: 'dbg123',
+            title: 'Debug Test',
+            timestamp: Date.now(),
+            startedAt: Date.now() - 60000,
+            watchedSeconds: 30,
+          }],
+        },
+      },
+      headers: { 'X-User-Id': testUserId },
+    });
+
+    // Check counts
+    const response = await request.get(`${API_BASE}/debug/db-counts`, {
+      headers: { 'X-User-Id': testUserId },
+    });
+    expect(response.ok()).toBeTruthy();
+    const data = await response.json();
+    expect(data.counts.videoSessions).toBeGreaterThanOrEqual(1);
+  });
+});
+
 test.describe('Stats Endpoints', () => {
   test('daily stats endpoint exists', async ({ request }) => {
     const response = await request.get(`${API_BASE}/stats/daily`);

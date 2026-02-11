@@ -7,7 +7,7 @@ import type { VideoInfo, PageType } from '@yt-detox/shared';
 export function getPageType(): PageType {
   const path = window.location.pathname;
   const search = window.location.search;
-  
+
   if (path === '/' || path === '/feed/trending' || path === '/feed/explore') return 'homepage';
   if (path === '/watch' || search.includes('v=')) return 'watch';
   if (path.startsWith('/shorts')) return 'shorts';
@@ -29,34 +29,42 @@ export function getVideoId(): string | null {
 export function scrapeVideoInfo(): VideoInfo | null {
   const videoElement = document.querySelector('video') as HTMLVideoElement | null;
   const isShorts = window.location.pathname.startsWith('/shorts');
-  
+
   // Get title
   let title = '';
   if (isShorts) {
     const titleEl = document.querySelector('yt-shorts-video-title-view-model h2');
     title = titleEl?.textContent?.trim() || '';
   } else {
-    const titleEl = document.querySelector('h1.ytd-video-primary-info-renderer yt-formatted-string') ||
-                    document.querySelector('h1.ytd-watch-metadata yt-formatted-string') ||
-                    document.querySelector('#title h1 yt-formatted-string');
+    const titleEl =
+      document.querySelector('h1.ytd-video-primary-info-renderer yt-formatted-string') ||
+      document.querySelector('h1.ytd-watch-metadata yt-formatted-string') ||
+      document.querySelector('#title h1 yt-formatted-string');
     title = titleEl?.textContent?.trim() || '';
   }
-  
+
   // Get channel
   let channel = '';
   let channelId: string | undefined;
   if (isShorts) {
     const channelEl = document.querySelector('ytd-channel-name yt-formatted-string a');
     channel = channelEl?.textContent?.trim() || '';
-    channelId = channelEl?.getAttribute('href')?.replace(/^\/@?/, '').replace(/^channel\//, '');
+    channelId = channelEl
+      ?.getAttribute('href')
+      ?.replace(/^\/@?/, '')
+      .replace(/^channel\//, '');
   } else {
-    const channelEl = document.querySelector('#owner #channel-name a') ||
-                      document.querySelector('#owner ytd-channel-name a') ||
-                      document.querySelector('ytd-video-owner-renderer ytd-channel-name a');
+    const channelEl =
+      document.querySelector('#owner #channel-name a') ||
+      document.querySelector('#owner ytd-channel-name a') ||
+      document.querySelector('ytd-video-owner-renderer ytd-channel-name a');
     channel = channelEl?.textContent?.trim() || '';
-    channelId = channelEl?.getAttribute('href')?.replace(/^\/@?/, '').replace(/^channel\//, '');
+    channelId = channelEl
+      ?.getAttribute('href')
+      ?.replace(/^\/@?/, '')
+      .replace(/^channel\//, '');
   }
-  
+
   // Get duration
   let durationSeconds = 0;
   if (videoElement && videoElement.duration && !isNaN(videoElement.duration)) {
@@ -69,11 +77,11 @@ export function scrapeVideoInfo(): VideoInfo | null {
       if (parts.length === 3) durationSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
     }
   }
-  
+
   const currentTime = videoElement?.currentTime || 0;
   const playbackSpeed = videoElement?.playbackRate || 1;
   const isPaused = videoElement?.paused ?? true;
-  
+
   return {
     videoId: getVideoId(),
     title,
@@ -90,7 +98,7 @@ export function scrapeVideoInfo(): VideoInfo | null {
 
 function inferCategory(title: string, channel: string): string | undefined {
   const text = `${title} ${channel}`.toLowerCase();
-  
+
   const keywords: Record<string, string[]> = {
     education: ['tutorial', 'learn', 'course', 'lecture', 'explained', 'how to', 'documentary', 'science'],
     entertainment: ['funny', 'comedy', 'prank', 'meme', 'react', 'vlog', 'challenge'],
@@ -101,13 +109,13 @@ function inferCategory(title: string, channel: string): string | undefined {
     fitness: ['workout', 'exercise', 'fitness', 'yoga', 'gym', 'training'],
     cooking: ['recipe', 'cooking', 'food', 'chef', 'kitchen', 'baking'],
   };
-  
+
   for (const [category, words] of Object.entries(keywords)) {
-    if (words.some(word => text.includes(word))) {
+    if (words.some((word) => text.includes(word))) {
       return category;
     }
   }
-  
+
   return undefined;
 }
 
@@ -117,10 +125,7 @@ export function getThumbnails(): NodeListOf<Element> {
 
 export function getRecommendations(): NodeListOf<Element> {
   return document.querySelectorAll(
-    'ytd-compact-video-renderer, ' +
-    'ytd-grid-video-renderer, ' +
-    'ytd-rich-grid-media, ' +
-    '.ytp-videowall-still'
+    'ytd-compact-video-renderer, ' + 'ytd-grid-video-renderer, ' + 'ytd-rich-grid-media, ' + '.ytp-videowall-still',
   );
 }
 

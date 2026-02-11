@@ -89,7 +89,7 @@ export async function handleTabCreated(tab: chrome.tabs.Tab): Promise<void> {
 export async function handleTabUpdated(
   tabId: number,
   changeInfo: chrome.tabs.TabChangeInfo,
-  _tab: chrome.tabs.Tab
+  _tab: chrome.tabs.Tab,
 ): Promise<void> {
   if (changeInfo.url) {
     const wasYouTube = tabState.youtubeTabs.has(tabId);

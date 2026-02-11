@@ -20,6 +20,7 @@ import {
   CloudRain,
   CloudLightning,
   Sun,
+  Activity,
 } from 'lucide-react';
 
 // ===== Types =====
@@ -74,12 +75,16 @@ interface SettingsState {
     frictionOverlay: boolean;
     musicDetection: boolean;
     nudges: boolean;
+    syncDebug: boolean;
   };
 }
 
 // ===== Constants =====
 
-const CHALLENGE_TIERS: Record<ChallengeTier, { goalMinutes: number; xpMultiplier: number; icon: string; label: string }> = {
+const CHALLENGE_TIERS: Record<
+  ChallengeTier,
+  { goalMinutes: number; xpMultiplier: number; icon: string; label: string }
+> = {
   casual: { goalMinutes: 60, xpMultiplier: 1.0, icon: '🌱', label: 'Casual' },
   focused: { goalMinutes: 45, xpMultiplier: 1.5, icon: '🎯', label: 'Focused' },
   disciplined: { goalMinutes: 30, xpMultiplier: 2.0, icon: '⚡', label: 'Disciplined' },
@@ -89,7 +94,11 @@ const CHALLENGE_TIERS: Record<ChallengeTier, { goalMinutes: number; xpMultiplier
 
 const GOAL_MODES: Record<GoalMode, { icon: JSX.Element; label: string; desc: string }> = {
   music: { icon: <Music className="w-5 h-5" />, label: 'Music Mode', desc: 'Music videos are exempt from tracking' },
-  time_reduction: { icon: <Clock className="w-5 h-5" />, label: 'Time Reduction', desc: 'Focus on reducing daily watch time' },
+  time_reduction: {
+    icon: <Clock className="w-5 h-5" />,
+    label: 'Time Reduction',
+    desc: 'Focus on reducing daily watch time',
+  },
   strict: { icon: <Lock className="w-5 h-5" />, label: 'Strict Mode', desc: 'Faster drift buildup (1.5x)' },
   cold_turkey: { icon: <Snowflake className="w-5 h-5" />, label: 'Cold Turkey', desc: 'Hard block when over limit' },
 };
@@ -105,10 +114,17 @@ const defaultSettings: SettingsState = {
   challengeTier: 'casual',
   frictionEnabled: { thumbnails: true, sidebar: true, comments: true, autoplay: true },
   whitelistedChannels: [],
-  devFeatures: { driftEffects: false, frictionOverlay: false, musicDetection: false, nudges: false },
+  devFeatures: { driftEffects: false, frictionOverlay: false, musicDetection: false, nudges: false, syncDebug: false },
 };
 
 // ===== Helpers =====
+
+function friendlyFetchError(e: unknown): string {
+  const msg = String(e);
+  if (msg.includes('Failed to fetch')) return 'Could not connect — is the server running?';
+  if (msg.includes('NetworkError')) return 'Network error — check your connection';
+  return msg;
+}
 
 function formatMinutes(mins: number): string {
   if (mins >= 60) {
@@ -173,32 +189,28 @@ function DriftWeather({ drift, level }: { drift: number; level: string }) {
       {/* Animated clouds/wind effect */}
       <div className="absolute inset-0 opacity-20">
         <div className="absolute top-4 left-10 w-32 h-16 bg-white/30 rounded-full blur-xl animate-pulse" />
-        <div className="absolute top-12 right-20 w-24 h-12 bg-white/20 rounded-full blur-lg animate-pulse" style={{ animationDelay: '1s' }} />
-        <div className="absolute bottom-8 left-1/3 w-40 h-20 bg-white/25 rounded-full blur-xl animate-pulse" style={{ animationDelay: '0.5s' }} />
+        <div
+          className="absolute top-12 right-20 w-24 h-12 bg-white/20 rounded-full blur-lg animate-pulse"
+          style={{ animationDelay: '1s' }}
+        />
+        <div
+          className="absolute bottom-8 left-1/3 w-40 h-20 bg-white/25 rounded-full blur-xl animate-pulse"
+          style={{ animationDelay: '0.5s' }}
+        />
       </div>
 
       <div className="relative flex items-center justify-between">
         <div>
           <div className="flex items-center gap-3 mb-2">
             <Wind className={`w-5 h-5 ${weather.accentColor}`} />
-            <span className={`text-sm font-medium uppercase tracking-wide ${weather.accentColor}`}>
-              Drift Level
-            </span>
+            <span className={`text-sm font-medium uppercase tracking-wide ${weather.accentColor}`}>Drift Level</span>
           </div>
-          <div className={`text-6xl font-bold ${weather.textColor} mb-1`}>
-            {percentage}%
-          </div>
-          <div className={`text-xl font-medium ${weather.textColor}`}>
-            {weather.label}
-          </div>
-          <div className={`text-sm ${weather.accentColor} mt-1`}>
-            {weather.desc}
-          </div>
+          <div className={`text-6xl font-bold ${weather.textColor} mb-1`}>{percentage}%</div>
+          <div className={`text-xl font-medium ${weather.textColor}`}>{weather.label}</div>
+          <div className={`text-sm ${weather.accentColor} mt-1`}>{weather.desc}</div>
         </div>
 
-        <div className={weather.textColor}>
-          {weather.icon}
-        </div>
+        <div className={weather.textColor}>{weather.icon}</div>
       </div>
 
       {/* Drift bar */}
@@ -232,6 +244,33 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'settings'>('dashboard');
   const [showWeekly, setShowWeekly] = useState(false);
 
+  const fetchBackendHealth = useCallback(async () => {
+    try {
+      const headers: Record<string, string> = {};
+      if (settings.backend.userId) headers['X-User-Id'] = settings.backend.userId;
+      const stored = await chrome.storage.local.get('authState');
+      if (stored.authState?.token) headers['Authorization'] = `Bearer ${stored.authState.token}`;
+      const res = await fetch(`${settings.backend.url}/debug/health`, { headers });
+      return await res.json();
+    } catch (e) {
+      return { error: friendlyFetchError(e), url: settings.backend.url };
+    }
+  }, [settings.backend.url, settings.backend.userId]);
+
+  // Sync & Debug state
+  const [lastSyncResult, setLastSyncResult] = useState<{
+    success: boolean;
+    syncedCounts?: Record<string, number>;
+    error?: string;
+    timestamp: number;
+  } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [pendingCounts, setPendingCounts] = useState<Record<string, number> | null>(null);
+  const [backendHealth, setBackendHealth] = useState<any>(null);
+  const [showPending, setShowPending] = useState(false);
+  const [showBackendDetails, setShowBackendDetails] = useState(false);
+  const [checkingBackend, setCheckingBackend] = useState(false);
+
   // ===== Fetch Data =====
 
   const fetchData = useCallback(async () => {
@@ -263,6 +302,11 @@ export default function Settings() {
 
       chrome.runtime.sendMessage({ type: 'AUTH_GET_STATE' }, (response) => {
         if (response?.user) setAuthUser(response.user);
+      });
+
+      // Sync & Debug data
+      chrome.storage.local.get(['lastSyncResult'], (data) => {
+        if (data.lastSyncResult) setLastSyncResult(data.lastSyncResult);
       });
     } catch (err) {
       console.error('Failed to fetch data:', err);
@@ -317,14 +361,23 @@ export default function Settings() {
 
   const handleSignIn = async () => {
     setAuthLoading(true);
-    chrome.runtime.sendMessage({ type: 'AUTH_SIGN_IN' }, (response) => {
+    chrome.runtime.sendMessage({ type: 'AUTH_SIGN_IN' }, async (response) => {
       setAuthLoading(false);
       if (response?.success && response.user) {
         setAuthUser(response.user);
-        setSettings(prev => ({
-          ...prev,
-          backend: { ...prev.backend, userId: response.user.id, enabled: true }
-        }));
+        setSettings((prev) => {
+          const updated = {
+            ...prev,
+            backend: { ...prev.backend, userId: response.user.id, enabled: true },
+          };
+          chrome.storage.local.get('settings', (data) => {
+            const stored = data.settings || {};
+            chrome.storage.local.set({
+              settings: { ...stored, backend: { ...stored.backend, userId: response.user.id, enabled: true } },
+            });
+          });
+          return updated;
+        });
       }
     });
   };
@@ -335,10 +388,19 @@ export default function Settings() {
       setAuthLoading(false);
       if (response?.success) {
         setAuthUser(null);
-        setSettings(prev => ({
-          ...prev,
-          backend: { ...prev.backend, userId: '', enabled: false }
-        }));
+        setSettings((prev) => {
+          const updated = {
+            ...prev,
+            backend: { ...prev.backend, userId: '', enabled: false },
+          };
+          chrome.storage.local.get('settings', (data) => {
+            const stored = data.settings || {};
+            chrome.storage.local.set({
+              settings: { ...stored, backend: { ...stored.backend, userId: '', enabled: false } },
+            });
+          });
+          return updated;
+        });
       }
     });
   };
@@ -371,13 +433,8 @@ export default function Settings() {
           <div className="flex items-center gap-2">
             {authUser ? (
               <div className="flex items-center gap-2">
-                {authUser.picture && (
-                  <img src={authUser.picture} alt="" className="w-8 h-8 rounded-full" />
-                )}
-                <button
-                  onClick={handleSignOut}
-                  className="p-2 hover:bg-slate-100 rounded-lg text-slate-500"
-                >
+                {authUser.picture && <img src={authUser.picture} alt="" className="w-8 h-8 rounded-full" />}
+                <button onClick={handleSignOut} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500">
                   <LogOut className="w-4 h-4" />
                 </button>
               </div>
@@ -391,10 +448,7 @@ export default function Settings() {
                 Sign In
               </button>
             )}
-            <button
-              onClick={fetchData}
-              className="p-2 hover:bg-slate-100 rounded-lg text-slate-500"
-            >
+            <button onClick={fetchData} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500">
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
@@ -432,33 +486,24 @@ export default function Settings() {
         {activeTab === 'dashboard' ? (
           <div className="space-y-6">
             {/* Drift Weather Card - Main Focus */}
-            {drift && (
-              <DriftWeather drift={drift.current} level={drift.level} />
-            )}
+            {drift && <DriftWeather drift={drift.current} level={drift.level} />}
 
             {/* Today's Stats */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">
-                Today
-              </h2>
+              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">Today</h2>
 
               <div className="flex items-end justify-between mb-6">
                 <div>
-                  <div className="text-4xl font-bold text-slate-900">
-                    {formatMinutes(todayMinutes)}
-                  </div>
+                  <div className="text-4xl font-bold text-slate-900">{formatMinutes(todayMinutes)}</div>
                   <div className={`text-sm mt-1 ${isOverGoal ? 'text-red-500' : 'text-emerald-600'}`}>
                     {isOverGoal
                       ? `${formatMinutes(Math.abs(remaining))} over goal`
-                      : `${formatMinutes(remaining)} remaining`
-                    }
+                      : `${formatMinutes(remaining)} remaining`}
                   </div>
                 </div>
 
                 <div className="text-right">
-                  <div className="text-2xl font-semibold text-slate-700">
-                    {todayStats?.videoCount || 0}
-                  </div>
+                  <div className="text-2xl font-semibold text-slate-700">{todayStats?.videoCount || 0}</div>
                   <div className="text-sm text-slate-500">videos</div>
                 </div>
               </div>
@@ -521,7 +566,7 @@ export default function Settings() {
                   <div className="flex items-end justify-between h-32 pt-4 gap-2">
                     {last7Days.map((day) => {
                       const mins = Math.round(day.totalSeconds / 60);
-                      const maxMins = Math.max(...last7Days.map(d => Math.round(d.totalSeconds / 60)), 1);
+                      const maxMins = Math.max(...last7Days.map((d) => Math.round(d.totalSeconds / 60)), 1);
                       const height = (mins / maxMins) * 100;
                       const dayName = ['S', 'M', 'T', 'W', 'T', 'F', 'S'][new Date(day.date).getDay()];
                       const isToday = day.date === todayKey;
@@ -576,23 +621,23 @@ export default function Settings() {
           <div className="space-y-6">
             {/* Goal Mode */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">
-                Goal Mode
-              </h2>
+              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">Goal Mode</h2>
               <div className="grid grid-cols-1 gap-3">
-                {(Object.entries(GOAL_MODES) as [GoalMode, typeof GOAL_MODES[GoalMode]][]).map(([mode, config]) => (
+                {(Object.entries(GOAL_MODES) as [GoalMode, (typeof GOAL_MODES)[GoalMode]][]).map(([mode, config]) => (
                   <button
                     key={mode}
-                    onClick={() => setSettings(p => ({ ...p, goalMode: mode }))}
+                    onClick={() => setSettings((p) => ({ ...p, goalMode: mode }))}
                     className={`p-4 rounded-xl border text-left transition-all flex items-center gap-4 ${
                       settings.goalMode === mode
                         ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-200'
                         : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                     }`}
                   >
-                    <div className={`p-2 rounded-lg ${
-                      settings.goalMode === mode ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'
-                    }`}>
+                    <div
+                      className={`p-2 rounded-lg ${
+                        settings.goalMode === mode ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
                       {config.icon}
                     </div>
                     <div>
@@ -608,40 +653,40 @@ export default function Settings() {
 
             {/* Challenge Tier */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">
-                Challenge Tier
-              </h2>
+              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4">Challenge Tier</h2>
               <div className="grid grid-cols-5 gap-2">
-                {(Object.entries(CHALLENGE_TIERS) as [ChallengeTier, typeof CHALLENGE_TIERS[ChallengeTier]][]).map(([tier, config]) => (
-                  <button
-                    key={tier}
-                    onClick={() => setSettings(p => ({ ...p, challengeTier: tier, dailyGoalMinutes: config.goalMinutes }))}
-                    className={`p-3 rounded-xl border text-center transition-all ${
-                      settings.challengeTier === tier
-                        ? 'border-amber-400 bg-amber-50 ring-1 ring-amber-200'
-                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    <span className="text-2xl block mb-1">{config.icon}</span>
-                    <span className={`text-xs font-medium block ${
-                      settings.challengeTier === tier ? 'text-amber-700' : 'text-slate-600'
-                    }`}>
-                      {config.label}
-                    </span>
-                    <span className="text-xs text-slate-400 block">{config.goalMinutes}m</span>
-                  </button>
-                ))}
+                {(Object.entries(CHALLENGE_TIERS) as [ChallengeTier, (typeof CHALLENGE_TIERS)[ChallengeTier]][]).map(
+                  ([tier, config]) => (
+                    <button
+                      key={tier}
+                      onClick={() =>
+                        setSettings((p) => ({ ...p, challengeTier: tier, dailyGoalMinutes: config.goalMinutes }))
+                      }
+                      className={`p-3 rounded-xl border text-center transition-all ${
+                        settings.challengeTier === tier
+                          ? 'border-amber-400 bg-amber-50 ring-1 ring-amber-200'
+                          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="text-2xl block mb-1">{config.icon}</span>
+                      <span
+                        className={`text-xs font-medium block ${
+                          settings.challengeTier === tier ? 'text-amber-700' : 'text-slate-600'
+                        }`}
+                      >
+                        {config.label}
+                      </span>
+                      <span className="text-xs text-slate-400 block">{config.goalMinutes}m</span>
+                    </button>
+                  ),
+                )}
               </div>
             </div>
 
             {/* Friction Effects */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-1">
-                Friction Effects
-              </h2>
-              <p className="text-sm text-slate-400 mb-4">
-                These activate as drift increases
-              </p>
+              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-1">Friction Effects</h2>
+              <p className="text-sm text-slate-400 mb-4">These activate as drift increases</p>
               <div className="space-y-3">
                 {[
                   { key: 'thumbnails', label: 'Blur thumbnails', desc: 'Reduce visual temptation' },
@@ -649,20 +694,19 @@ export default function Settings() {
                   { key: 'comments', label: 'Reduce comments', desc: 'Less social distraction' },
                   { key: 'autoplay', label: 'Control autoplay', desc: 'Delay auto-play' },
                 ].map(({ key, label, desc }) => (
-                  <div
-                    key={key}
-                    className="flex items-center justify-between py-2"
-                  >
+                  <div key={key} className="flex items-center justify-between py-2">
                     <div>
                       <div className="font-medium text-slate-700">{label}</div>
                       <div className="text-sm text-slate-400">{desc}</div>
                     </div>
                     <Switch
                       checked={(settings.frictionEnabled as any)[key]}
-                      onCheckedChange={(v) => setSettings(p => ({
-                        ...p,
-                        frictionEnabled: { ...p.frictionEnabled, [key]: v }
-                      }))}
+                      onCheckedChange={(v) =>
+                        setSettings((p) => ({
+                          ...p,
+                          frictionEnabled: { ...p.frictionEnabled, [key]: v },
+                        }))
+                      }
                     />
                   </div>
                 ))}
@@ -671,36 +715,233 @@ export default function Settings() {
 
             {/* Dev Switches */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-1">
-                Dev Switches
-              </h2>
-              <p className="text-sm text-slate-400 mb-4">
-                Toggle extension features on/off (all off by default)
-              </p>
+              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-1">Dev Switches</h2>
+              <p className="text-sm text-slate-400 mb-4">Toggle extension features on/off (all off by default)</p>
               <div className="space-y-3">
                 {[
-                  { key: 'driftEffects', label: 'Drift CSS Effects', desc: 'Blur thumbnails, hide sidebar/comments based on drift' },
+                  {
+                    key: 'driftEffects',
+                    label: 'Drift CSS Effects',
+                    desc: 'Blur thumbnails, hide sidebar/comments based on drift',
+                  },
                   { key: 'frictionOverlay', label: 'Friction Overlay', desc: 'Drift rating popup over video player' },
-                  { key: 'musicDetection', label: 'Music Detection', desc: 'Detect music videos and exempt from drift' },
+                  {
+                    key: 'musicDetection',
+                    label: 'Music Detection',
+                    desc: 'Detect music videos and exempt from drift',
+                  },
                   { key: 'nudges', label: 'Nudges', desc: 'Time warnings, break reminders, bedtime alerts' },
+                  { key: 'syncDebug', label: 'Sync Debug', desc: 'Show sync debug panel in widget overlay' },
                 ].map(({ key, label, desc }) => (
-                  <div
-                    key={key}
-                    className="flex items-center justify-between py-2"
-                  >
+                  <div key={key} className="flex items-center justify-between py-2">
                     <div>
                       <div className="font-medium text-slate-700">{label}</div>
                       <div className="text-sm text-slate-400">{desc}</div>
                     </div>
                     <Switch
                       checked={(settings.devFeatures as any)[key]}
-                      onCheckedChange={(v) => setSettings(p => ({
-                        ...p,
-                        devFeatures: { ...p.devFeatures, [key]: v }
-                      }))}
+                      onCheckedChange={(v) =>
+                        setSettings((p) => ({
+                          ...p,
+                          devFeatures: { ...p.devFeatures, [key]: v },
+                        }))
+                      }
                     />
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Sync & Debug */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-4 flex items-center gap-2">
+                <Activity className="w-4 h-4" />
+                Sync & Debug
+              </h2>
+
+              {/* Status line */}
+              <div className="mb-3">
+                {!settings.backend.enabled ? (
+                  <div className="flex items-center gap-2 text-sm text-slate-400">
+                    <span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />
+                    Sync disabled
+                  </div>
+                ) : lastSyncResult && !lastSyncResult.success ? (
+                  <div className="flex items-start gap-2 text-sm text-red-600">
+                    <span className="w-2 h-2 rounded-full bg-red-500 inline-block mt-1.5 shrink-0" />
+                    <span>
+                      Last sync failed at {new Date(lastSyncResult.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                ) : lastSyncResult?.timestamp ? (
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                    <span>
+                      Last synced: {new Date(lastSyncResult.timestamp).toLocaleTimeString()}
+                      <span className="text-slate-400">
+                        {' '}({Math.round((Date.now() - lastSyncResult.timestamp) / 60000)}m ago)
+                      </span>
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                    <span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />
+                    Never synced
+                  </div>
+                )}
+              </div>
+
+              {/* Last sync result */}
+              {lastSyncResult && (
+                <div className={`text-xs mb-4 px-3 py-2 rounded-lg ${lastSyncResult.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                  {lastSyncResult.success ? (
+                    <>
+                      OK
+                      {lastSyncResult.syncedCounts && (
+                        <span>
+                          {' \u2014 '}
+                          {Object.entries(lastSyncResult.syncedCounts)
+                            .filter(([, v]) => v > 0)
+                            .map(([k, v]) => `${k}: ${v}`)
+                            .join(', ') || 'nothing new'}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span>{lastSyncResult.error}</span>
+                  )}
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={async () => {
+                    setSyncing(true);
+                    chrome.runtime.sendMessage({ type: 'SYNC_NOW' }, () => {
+                      setTimeout(() => {
+                        chrome.storage.local.get(['lastSyncResult'], (data) => {
+                          if (data.lastSyncResult) setLastSyncResult(data.lastSyncResult);
+                          setSyncing(false);
+                        });
+                      }, 500);
+                    });
+                  }}
+                  disabled={syncing || !settings.backend.enabled}
+                  className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  Sync Now
+                </button>
+                <button
+                  onClick={async () => {
+                    setCheckingBackend(true);
+                    const data = await fetchBackendHealth();
+                    setBackendHealth(data);
+                    setCheckingBackend(false);
+                  }}
+                  disabled={checkingBackend}
+                  className="px-4 py-2 text-sm font-medium rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {checkingBackend ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Activity className="w-3.5 h-3.5" />}
+                  Check Backend
+                </button>
+              </div>
+
+              {/* Pending Queue (collapsible) */}
+              <div className="border-t border-slate-100">
+                <button
+                  onClick={() => {
+                    if (!showPending) {
+                      chrome.runtime.sendMessage({ type: 'GET_PENDING_COUNTS' }, (response) => {
+                        if (response && !response.error) setPendingCounts(response);
+                      });
+                    }
+                    setShowPending(!showPending);
+                  }}
+                  className="w-full py-3 flex items-center justify-between text-sm text-slate-600 hover:text-slate-800"
+                >
+                  <span className="font-medium">Pending Queue</span>
+                  {showPending ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                {showPending && (
+                  <div className="pb-3 text-xs font-mono text-slate-500">
+                    {pendingCounts ? (
+                      (() => {
+                        const nonZero = Object.entries(pendingCounts).filter(([, v]) => v > 0);
+                        return nonZero.length > 0 ? (
+                          <div className="space-y-1">
+                            {nonZero.map(([k, v]) => (
+                              <div key={k}>
+                                {k}: <span className="text-slate-700">{v}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 italic">empty</span>
+                        );
+                      })()
+                    ) : (
+                      <span className="text-slate-400">Loading...</span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Backend Details (collapsible) */}
+              <div className="border-t border-slate-100">
+                <button
+                  onClick={() => {
+                    if (!showBackendDetails && !backendHealth) {
+                      setCheckingBackend(true);
+                      fetchBackendHealth()
+                        .then((data) => setBackendHealth(data))
+                        .finally(() => setCheckingBackend(false));
+                    }
+                    setShowBackendDetails(!showBackendDetails);
+                  }}
+                  className="w-full py-3 flex items-center justify-between text-sm text-slate-600 hover:text-slate-800"
+                >
+                  <span className="font-medium">Backend Details</span>
+                  {showBackendDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                {showBackendDetails && (
+                  <div className="pb-3 text-xs font-mono text-slate-500 space-y-1">
+                    {backendHealth ? (
+                      backendHealth.error && !backendHealth.status ? (
+                        <div>
+                          <div className="text-red-600">Backend unreachable</div>
+                          <div className="text-slate-400 break-all">{backendHealth.url || settings.backend.url}</div>
+                          <div className="text-red-500 mt-1">{backendHealth.error}</div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <div>
+                            status: <span className="text-slate-700">{backendHealth.status}</span>
+                          </div>
+                          <div>
+                            database: <span className="text-slate-700">{backendHealth.database}</span>
+                          </div>
+                          <div>
+                            migration: <span className="text-slate-700">{backendHealth.migration}</span>
+                          </div>
+                          {backendHealth.userCounts && (
+                            <div className="mt-2 pt-2 border-t border-slate-100">
+                              <div className="text-slate-400 mb-1">Row counts:</div>
+                              {Object.entries(backendHealth.userCounts as Record<string, number>).map(([k, v]) => (
+                                <div key={k}>
+                                  {k}: <span className="text-slate-700">{v}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    ) : checkingBackend ? (
+                      <span className="text-slate-400">Loading...</span>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </div>
 

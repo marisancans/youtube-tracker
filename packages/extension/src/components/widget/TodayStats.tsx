@@ -1,14 +1,14 @@
-import type { DailyStats } from '@yt-detox/shared'
+import type { DailyStats } from '@yt-detox/shared';
 
 interface TodayStatsProps {
-  today: DailyStats
-  dailyGoalMinutes: number
+  today: DailyStats;
+  dailyGoalMinutes: number;
 }
 
 export function TodayStats({ today, dailyGoalMinutes }: TodayStatsProps) {
-  const totalMinutes = Math.round((today.totalSeconds || 0) / 60)
-  const goalProgress = Math.min((totalMinutes / dailyGoalMinutes) * 100, 100)
-  
+  const totalMinutes = Math.round((today.totalSeconds || 0) / 60);
+  const goalProgress = Math.min((totalMinutes / dailyGoalMinutes) * 100, 100);
+
   return (
     <div className="space-y-3">
       {/* Main stats row */}
@@ -31,13 +31,13 @@ export function TodayStats({ today, dailyGoalMinutes }: TodayStatsProps) {
       <div className="space-y-1">
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>Daily Goal</span>
-          <span>{totalMinutes}/{dailyGoalMinutes}m</span>
+          <span>
+            {totalMinutes}/{dailyGoalMinutes}m
+          </span>
         </div>
         <div className="h-2 bg-secondary rounded-full overflow-hidden">
-          <div 
-            className={`h-full transition-all duration-300 ${
-              goalProgress >= 100 ? 'bg-destructive' : 'bg-primary'
-            }`}
+          <div
+            className={`h-full transition-all duration-300 ${goalProgress >= 100 ? 'bg-destructive' : 'bg-primary'}`}
             style={{ width: `${goalProgress}%` }}
           />
         </div>
@@ -55,5 +55,5 @@ export function TodayStats({ today, dailyGoalMinutes }: TodayStatsProps) {
         </span>
       </div>
     </div>
-  )
+  );
 }

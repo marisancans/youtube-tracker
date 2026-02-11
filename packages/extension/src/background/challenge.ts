@@ -25,7 +25,7 @@ export async function getChallengeProgress(): Promise<ChallengeProgress> {
   const currentTier: ChallengeTier = (settings.challengeTier as ChallengeTier) || 'casual';
   const dailyStats = data.dailyStats || {};
 
-  let progress: ChallengeProgress = data.challengeProgress || {
+  const progress: ChallengeProgress = data.challengeProgress || {
     currentTier,
     daysUnderGoal: 0,
     lastUnderGoalDate: null,
@@ -181,7 +181,7 @@ export async function checkDailyChallenge(): Promise<void> {
 // ===== Set Goal Mode =====
 
 export async function setGoalMode(
-  mode: 'music' | 'time_reduction' | 'strict' | 'cold_turkey'
+  mode: 'music' | 'time_reduction' | 'strict' | 'cold_turkey',
 ): Promise<{ success: boolean; mode: string }> {
   const storage = await getStorage();
   (storage.settings as any).goalMode = mode;
@@ -191,9 +191,7 @@ export async function setGoalMode(
 
 // ===== Set Challenge Tier =====
 
-export async function setChallengeTier(
-  tier: ChallengeTier
-): Promise<{ success: boolean; tier: ChallengeTier }> {
+export async function setChallengeTier(tier: ChallengeTier): Promise<{ success: boolean; tier: ChallengeTier }> {
   const storage = await getStorage();
   (storage.settings as any).challengeTier = tier;
   storage.settings.dailyGoalMinutes = CHALLENGE_TIERS[tier].goalMinutes;

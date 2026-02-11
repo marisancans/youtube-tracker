@@ -47,7 +47,9 @@ function generateDriftCSS(effects: DriftEffects): string {
     }
     
     /* Subtle animation for high drift */
-    ${effects.thumbnailGrayscale >= 50 ? `
+    ${
+      effects.thumbnailGrayscale >= 50
+        ? `
       @keyframes drift-pulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.92; }
@@ -56,7 +58,9 @@ function generateDriftCSS(effects: DriftEffects): string {
       ytd-thumbnail img {
         animation: drift-pulse 3s ease-in-out infinite;
       }
-    ` : ''}
+    `
+        : ''
+    }
   `);
 
   // Thumbnail effects
@@ -69,12 +73,16 @@ function generateDriftCSS(effects: DriftEffects): string {
       }
       
       /* Show clearer on hover (unless text-only mode) */
-      ${!effects.showTextOnly ? `
+      ${
+        !effects.showTextOnly
+          ? `
         ytd-thumbnail:hover img,
         ytd-playlist-thumbnail:hover img {
           filter: blur(${Math.max(0, effects.thumbnailBlur - 2)}px) grayscale(${Math.max(0, effects.thumbnailGrayscale - 20)}%) !important;
         }
-      ` : ''}
+      `
+          : ''
+      }
     `);
   }
 

@@ -80,6 +80,11 @@ test.describe('Complete Sync API Tests', () => {
       expect(result.syncedCounts.videoSessions).toBe(1);
     });
 
+    test('verify video session in DB via debug counts', async () => {
+      const counts = await (await request.get('/debug/db-counts')).json();
+      expect(counts.counts.videoSessions).toBeGreaterThanOrEqual(1);
+    });
+
     test('retrieve video session', async () => {
       const response = await request.get('/sync/videos');
       expect(response.ok()).toBeTruthy();
@@ -145,6 +150,11 @@ test.describe('Complete Sync API Tests', () => {
       const result = await response.json();
       expect(result.success).toBe(true);
       expect(result.syncedCounts.browserSessions).toBe(1);
+    });
+
+    test('verify browser session in DB via debug counts', async () => {
+      const counts = await (await request.get('/debug/db-counts')).json();
+      expect(counts.counts.browserSessions).toBeGreaterThanOrEqual(1);
     });
 
     test('retrieve browser session via stats', async () => {
@@ -214,6 +224,11 @@ test.describe('Complete Sync API Tests', () => {
       expect(result.syncedCounts.dailyStats).toBe(1);
     });
 
+    test('verify daily stats in DB via debug counts', async () => {
+      const counts = await (await request.get('/debug/db-counts')).json();
+      expect(counts.counts.dailyStats).toBeGreaterThanOrEqual(1);
+    });
+
     test('retrieve daily stats', async () => {
       const response = await request.get(`/sync/stats/${today}`);
       expect(response.ok()).toBeTruthy();
@@ -268,6 +283,9 @@ test.describe('Complete Sync API Tests', () => {
       const result = await response.json();
       expect(result.success).toBe(true);
       expect(result.syncedCounts.scrollEvents).toBe(2);
+
+      const counts = await (await request.get('/debug/db-counts')).json();
+      expect(counts.counts.scrollEvents).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -321,6 +339,9 @@ test.describe('Complete Sync API Tests', () => {
       const result = await response.json();
       expect(result.success).toBe(true);
       expect(result.syncedCounts.thumbnailEvents).toBe(2);
+
+      const counts = await (await request.get('/debug/db-counts')).json();
+      expect(counts.counts.thumbnailEvents).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -375,6 +396,9 @@ test.describe('Complete Sync API Tests', () => {
       const result = await response.json();
       expect(result.success).toBe(true);
       expect(result.syncedCounts.pageEvents).toBe(3);
+
+      const counts = await (await request.get('/debug/db-counts')).json();
+      expect(counts.counts.pageEvents).toBeGreaterThanOrEqual(3);
     });
   });
 
@@ -447,6 +471,9 @@ test.describe('Complete Sync API Tests', () => {
       const result = await response.json();
       expect(result.success).toBe(true);
       expect(result.syncedCounts.videoWatchEvents).toBe(5);
+
+      const counts = await (await request.get('/debug/db-counts')).json();
+      expect(counts.counts.videoWatchEvents).toBeGreaterThanOrEqual(5);
     });
   });
 
@@ -511,6 +538,9 @@ test.describe('Complete Sync API Tests', () => {
       const result = await response.json();
       expect(result.success).toBe(true);
       expect(result.syncedCounts.recommendationEvents).toBe(3);
+
+      const counts = await (await request.get('/debug/db-counts')).json();
+      expect(counts.counts.recommendationEvents).toBeGreaterThanOrEqual(3);
     });
   });
 
@@ -555,6 +585,9 @@ test.describe('Complete Sync API Tests', () => {
       const result = await response.json();
       expect(result.success).toBe(true);
       expect(result.syncedCounts.interventionEvents).toBe(2);
+
+      const counts = await (await request.get('/debug/db-counts')).json();
+      expect(counts.counts.interventionEvents).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -590,6 +623,9 @@ test.describe('Complete Sync API Tests', () => {
       const result = await response.json();
       expect(result.success).toBe(true);
       expect(result.syncedCounts.moodReports).toBe(2);
+
+      const counts = await (await request.get('/debug/db-counts')).json();
+      expect(counts.counts.moodReports).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -698,6 +734,20 @@ test.describe('Complete Sync API Tests', () => {
       expect(result.syncedCounts.recommendationEvents).toBe(1);
       expect(result.syncedCounts.interventionEvents).toBe(1);
       expect(result.syncedCounts.moodReports).toBe(1);
+
+      // Comprehensive DB verification
+      const counts = await (await request.get('/debug/db-counts')).json();
+      expect(counts.counts).toBeDefined();
+      expect(counts.counts.videoSessions).toBeGreaterThanOrEqual(1);
+      expect(counts.counts.browserSessions).toBeGreaterThanOrEqual(1);
+      expect(counts.counts.dailyStats).toBeGreaterThanOrEqual(1);
+      expect(counts.counts.scrollEvents).toBeGreaterThanOrEqual(1);
+      expect(counts.counts.thumbnailEvents).toBeGreaterThanOrEqual(1);
+      expect(counts.counts.pageEvents).toBeGreaterThanOrEqual(1);
+      expect(counts.counts.videoWatchEvents).toBeGreaterThanOrEqual(1);
+      expect(counts.counts.recommendationEvents).toBeGreaterThanOrEqual(1);
+      expect(counts.counts.interventionEvents).toBeGreaterThanOrEqual(1);
+      expect(counts.counts.moodReports).toBeGreaterThanOrEqual(1);
     });
   });
 

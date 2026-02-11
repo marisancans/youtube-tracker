@@ -102,20 +102,22 @@ export function detectMusic(): MusicDetectionResult {
   const reasons: string[] = [];
   let score = 0;
   const maxScore = 100;
-  
+
   // Get page info
   const title = document.title.toLowerCase();
-  const channelElement = document.querySelector('ytd-channel-name a, .ytd-channel-name a, #owner-name a, #channel-name a');
+  const channelElement = document.querySelector(
+    'ytd-channel-name a, .ytd-channel-name a, #owner-name a, #channel-name a',
+  );
   const channelName = channelElement?.textContent?.toLowerCase().trim() || '';
-  
+
   // Get video category from meta tags
   const categoryMeta = document.querySelector('meta[itemprop="genre"]');
   const category = categoryMeta?.getAttribute('content')?.toLowerCase() || '';
-  
+
   // Get video description
   const descriptionElement = document.querySelector('#description-inline-expander, #description');
   const description = descriptionElement?.textContent?.toLowerCase() || '';
-  
+
   // Check title for music keywords
   for (const keyword of MUSIC_TITLE_KEYWORDS) {
     if (title.includes(keyword)) {
@@ -124,7 +126,7 @@ export function detectMusic(): MusicDetectionResult {
       break; // Only count once
     }
   }
-  
+
   // Check channel name
   for (const keyword of MUSIC_CHANNEL_KEYWORDS) {
     if (channelName.includes(keyword)) {
@@ -133,7 +135,7 @@ export function detectMusic(): MusicDetectionResult {
       break;
     }
   }
-  
+
   // Check known music channels
   for (const channel of KNOWN_MUSIC_CHANNELS) {
     if (channelName.includes(channel)) {
@@ -142,20 +144,20 @@ export function detectMusic(): MusicDetectionResult {
       break;
     }
   }
-  
+
   // Check category
   if (MUSIC_CATEGORIES.includes(category)) {
     score += 30;
     reasons.push(`Category: ${category}`);
   }
-  
+
   // Check for music-related hashtags in title/description
   const hashtagRegex = /#(music|song|lyrics|remix|official|vevo|beats|lofi|chill)/gi;
   if (hashtagRegex.test(title) || hashtagRegex.test(description.slice(0, 500))) {
     score += 15;
     reasons.push('Music-related hashtags');
   }
-  
+
   // Check for duration (music videos are typically 2-7 minutes)
   const durationElement = document.querySelector('.ytp-time-duration');
   const durationText = durationElement?.textContent || '';
@@ -164,31 +166,32 @@ export function detectMusic(): MusicDetectionResult {
     const minutes = parseInt(durationMatch[1]);
     const seconds = parseInt(durationMatch[2]);
     const totalSeconds = minutes * 60 + seconds;
-    
+
     if (totalSeconds >= 120 && totalSeconds <= 420) {
       // 2-7 minutes is typical for songs
       score += 10;
       reasons.push('Typical song duration');
     }
   }
-  
+
   // Check for playlist context
-  const playlistTitle = document.querySelector('yt-formatted-string.ytd-playlist-panel-renderer')?.textContent?.toLowerCase() || '';
+  const playlistTitle =
+    document.querySelector('yt-formatted-string.ytd-playlist-panel-renderer')?.textContent?.toLowerCase() || '';
   if (playlistTitle.includes('music') || playlistTitle.includes('playlist') || playlistTitle.includes('mix')) {
     score += 15;
     reasons.push('In music playlist');
   }
-  
+
   // Check for YouTube Music branding
   if (document.querySelector('[data-ytmusic-client-name]') || window.location.hostname === 'music.youtube.com') {
     score += 50;
     reasons.push('YouTube Music');
   }
-  
+
   // Normalize score
   const confidence = Math.min(score / maxScore, 1);
   const isMusic = confidence >= 0.4; // 40% confidence threshold
-  
+
   return {
     isMusic,
     confidence,
@@ -201,14 +204,16 @@ export function detectMusic(): MusicDetectionResult {
  */
 export function isChannelWhitelisted(channelName: string, whitelist: string[]): boolean {
   const normalized = channelName.toLowerCase().trim();
-  return whitelist.some(w => normalized.includes(w.toLowerCase()));
+  return whitelist.some((w) => normalized.includes(w.toLowerCase()));
 }
 
 /**
  * Get the current channel name
  */
 export function getCurrentChannelName(): string | null {
-  const channelElement = document.querySelector('ytd-channel-name a, .ytd-channel-name a, #owner-name a, #channel-name a');
+  const channelElement = document.querySelector(
+    'ytd-channel-name a, .ytd-channel-name a, #owner-name a, #channel-name a',
+  );
   return channelElement?.textContent?.trim() || null;
 }
 
