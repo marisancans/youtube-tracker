@@ -58,6 +58,8 @@ interface TrackerState {
   };
   lastVideoTime: number;
   lastVideoPaused: boolean;
+  playTimeAccumulatedMs: number;
+  lastPlayStartTime: number | null;
   videoSeekCount: number;
   videoPauseCount: number;
   autoplayCountdownActive: boolean;
@@ -96,6 +98,8 @@ const state: TrackerState = {
   },
   lastVideoTime: 0,
   lastVideoPaused: true,
+  playTimeAccumulatedMs: 0,
+  lastPlayStartTime: null,
   videoSeekCount: 0,
   videoPauseCount: 0,
   autoplayCountdownActive: false,
@@ -354,6 +358,29 @@ function scrapeSidebarRecommendations(): Array<{ videoId: string; videoTitle: st
   return recommendations;
 }
 
+// ===== Play Time Tracking =====
+
+function startPlayTimeTracking(): void {
+  if (state.lastPlayStartTime === null) {
+    state.lastPlayStartTime = Date.now();
+  }
+}
+
+function stopPlayTimeTracking(): void {
+  if (state.lastPlayStartTime !== null) {
+    state.playTimeAccumulatedMs += Date.now() - state.lastPlayStartTime;
+    state.lastPlayStartTime = null;
+  }
+}
+
+function getCurrentPlayTimeMs(): number {
+  let total = state.playTimeAccumulatedMs;
+  if (state.lastPlayStartTime !== null) {
+    total += Date.now() - state.lastPlayStartTime;
+  }
+  return total;
+}
+
 // ===== Browser Session Management =====
 
 export async function initBrowserSession(): Promise<void> {
@@ -383,6 +410,7 @@ export async function initBrowserSession(): Promise<void> {
     entrySource: document.referrer.includes('youtube.com') ? 'link' : 'direct',
     triggerType: 'unknown',
     totalDurationSeconds: 0,
+    playDurationSeconds: 0,
     activeDurationSeconds: 0,
     backgroundSeconds: 0,
     pagesVisited: 1,
@@ -440,6 +468,7 @@ export function updateBrowserSession(): void {
   const activeMs = totalMs - backgroundMs;
   
   state.currentBrowserSession.totalDurationSeconds = Math.floor(totalMs / 1000);
+  state.currentBrowserSession.playDurationSeconds = Math.floor(getCurrentPlayTimeMs() / 1000);
   state.currentBrowserSession.activeDurationSeconds = Math.floor(activeMs / 1000);
   state.currentBrowserSession.backgroundSeconds = Math.floor(backgroundMs / 1000);
   
@@ -560,9 +589,14 @@ export function startVideoSession(): void {
     }
   }
   
+  // Start play time tracking if video is already playing
+  if (!videoInfo.isPaused) {
+    startPlayTimeTracking();
+  }
+
   // Record video play event
   recordVideoEvent('play');
-  
+
   // Track sidebar recommendations shown
   trackSidebarRecommendationsShown();
 }
@@ -595,8 +629,10 @@ export function updateVideoSession(): void {
   if (!wasPaused && isPaused) {
     state.videoPauseCount++;
     state.currentVideoSession.pauseCount = state.videoPauseCount;
+    stopPlayTimeTracking();
     recordVideoEvent('pause');
   } else if (wasPaused && !isPaused) {
+    startPlayTimeTracking();
     recordVideoEvent('play');
   }
   
@@ -617,7 +653,8 @@ export function updateVideoSession(): void {
 
 export function endVideoSession(reason: 'ended' | 'abandoned' | 'navigated' = 'navigated'): void {
   if (!state.currentVideoSession) return;
-  
+
+  stopPlayTimeTracking();
   updateVideoSession();
   state.currentVideoSession.endedAt = Date.now();
   
@@ -1167,9 +1204,10 @@ export function handleVisibilityChange(): void {
   if (document.hidden) {
     state.visibilityHiddenAt = Date.now();
     state.tabSwitchCount++;
-    
+    stopPlayTimeTracking();
+
     recordPageEvent('tab_hidden');
-    
+
     // Pause tracking for video
     if (state.currentVideoSession) {
       state.currentVideoSession.tabSwitchCount++;
@@ -1180,7 +1218,13 @@ export function handleVisibilityChange(): void {
       state.backgroundAccumulatedMs += hiddenMs;
       state.visibilityHiddenAt = null;
     }
-    
+
+    // Resume play time tracking if video is still playing
+    const videoInfo = scrapeVideoInfo();
+    if (videoInfo && !videoInfo.isPaused && state.currentVideoSession) {
+      startPlayTimeTracking();
+    }
+
     recordPageEvent('tab_visible');
   }
 }

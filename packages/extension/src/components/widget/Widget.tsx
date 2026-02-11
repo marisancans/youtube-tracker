@@ -3,6 +3,7 @@ import {
   getCurrentSession,
   getCurrentVideoSession,
   getCurrentVideoInfo,
+  getTemporalData,
   rateVideo,
 } from '../../content/tracker';
 import { safeSendMessageWithCallback, safeSendMessage } from '../../lib/messaging';
@@ -70,7 +71,7 @@ interface WidgetState {
   unproductiveCount: number;
   currentVideoSeconds: number;
   streak: number;
-  weeklyData: number[];
+  hourlyData: number[];
   level: number;
   xp: number;
   achievements: string[];
@@ -89,6 +90,9 @@ interface WidgetState {
   productiveUrls: ProductiveUrl[];
   suggestedUrl: ProductiveUrl | null;
   dismissedSuggestion: boolean;
+  // Background time
+  todayBackgroundMinutes: number;
+  sessionBackgroundSeconds: number;
   // Sync status
   lastSyncTime: number | null;
   showSyncStatus: boolean;
@@ -133,6 +137,25 @@ function getLevelInfo(xp: number): { level: number; currentXp: number; nextLevel
   return { level, currentXp: xp - currentLevelXp, nextLevelXp: nextLevelXp - currentLevelXp, progress };
 }
 
+// Compute 24h hourly data by merging stored DailyStats + live temporal data
+function compute24hData(
+  storedHourly: Record<string, number> | undefined,
+  liveHourly: Record<string, number>,
+): number[] {
+  const data: number[] = new Array(24).fill(0);
+  if (storedHourly) {
+    for (const [hour, seconds] of Object.entries(storedHourly)) {
+      const h = parseInt(hour, 10);
+      if (h >= 0 && h < 24) data[h] += seconds;
+    }
+  }
+  for (const [hour, seconds] of Object.entries(liveHourly)) {
+    const h = parseInt(hour, 10);
+    if (h >= 0 && h < 24) data[h] += seconds;
+  }
+  return data.map(s => Math.round(s / 60));
+}
+
 // Icons as SVG components
 const Icons = {
   Clock: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>,
@@ -148,6 +171,7 @@ const Icons = {
   Trophy: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>,
   Star: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
   TrendingUp: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>,
+  TrendingDown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>,
   Award: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>,
   Brain: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3 4 4.5 4.5 0 0 1-3-4"/><path d="M12 9v4"/><path d="M12 6v.01"/></svg>,
   Layers: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/></svg>,
@@ -164,71 +188,63 @@ const Icons = {
   Check: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>,
 };
 
-// Mini sparkline component - full width with proper circles
-function Sparkline({ data, color }: { data: number[]; color: string }) {
+// 24h day cycle bar chart
+function DayCycleChart({ data }: { data: number[] }) {
   const max = Math.max(...data, 1);
-  const height = 32;
-  const padding = 4;
-  
+  const currentHour = new Date().getHours();
+  const labels = [
+    { hour: 0, text: '12a' },
+    { hour: 6, text: '6a' },
+    { hour: 12, text: '12p' },
+    { hour: 18, text: '6p' },
+  ];
+
   return (
-    <div style={{ position: 'relative', width: '100%', height: `${height}px` }}>
-      {/* SVG for line and gradient - stretches */}
-      <svg 
-        width="100%" 
-        height={height} 
-        viewBox={`0 0 100 ${height}`} 
-        preserveAspectRatio="none"
-        style={{ position: 'absolute', top: 0, left: 0 }}
-      >
-        <defs>
-          <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.3"/>
-            <stop offset="100%" stopColor={color} stopOpacity="0"/>
-          </linearGradient>
-        </defs>
-        <polygon
-          points={data.map((v, i) => {
-            const x = (i / (data.length - 1)) * 100;
-            const y = height - padding - (v / max) * (height - padding * 2);
-            return `${x},${y}`;
-          }).join(' ') + ` 100,${height} 0,${height}`}
-          fill="url(#sparkGrad)"
-        />
-        <polyline
-          points={data.map((v, i) => {
-            const x = (i / (data.length - 1)) * 100;
-            const y = height - padding - (v / max) * (height - padding * 2);
-            return `${x},${y}`;
-          }).join(' ')}
-          fill="none"
-          stroke={color}
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-        />
-      </svg>
-      {/* Circles positioned with percentages - stay round */}
-      {data.map((v, i) => {
-        const leftPercent = (i / (data.length - 1)) * 100;
-        const top = height - padding - (v / max) * (height - padding * 2);
-        return (
+    <div style={{ width: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', height: '36px', gap: '1px' }}>
+        {data.map((minutes, hour) => (
           <div
-            key={i}
+            key={hour}
+            title={`${hour}:00 — ${minutes}m`}
             style={{
-              position: 'absolute',
-              left: `${leftPercent}%`,
-              top: `${top}px`,
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: color,
-              transform: 'translate(-50%, -50%)',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+              flex: 1,
+              minHeight: minutes > 0 ? '3px' : '1px',
+              height: `${Math.max(minutes > 0 ? 8 : 3, (minutes / max) * 100)}%`,
+              background: hour === currentHour
+                ? '#3b82f6'
+                : minutes > 0
+                ? 'rgba(74, 222, 128, 0.5)'
+                : 'rgba(255,255,255,0.06)',
+              borderRadius: '1.5px 1.5px 0 0',
+              transition: 'height 0.5s ease',
             }}
           />
-        );
-      })}
+        ))}
+      </div>
+      <div style={{ position: 'relative', height: '12px', marginTop: '2px' }}>
+        {labels.map(({ hour, text }) => (
+          <span
+            key={hour}
+            style={{
+              position: 'absolute',
+              left: `${(hour / 24) * 100}%`,
+              fontSize: '8px',
+              color: 'rgba(255,255,255,0.3)',
+              transform: hour === 0 ? 'none' : 'translateX(-50%)',
+            }}
+          >
+            {text}
+          </span>
+        ))}
+        <span style={{
+          position: 'absolute',
+          right: 0,
+          fontSize: '8px',
+          color: 'rgba(255,255,255,0.3)',
+        }}>
+          12a
+        </span>
+      </div>
     </div>
   );
 }
@@ -346,8 +362,8 @@ export default function Widget(): JSX.Element {
     collapsed: false, minimized: false, sessionDuration: 0, videosWatched: 0, todayMinutes: 0,
     dailyGoal: 60, showPrompt: false, videoTitle: null, lastRatedVideo: null,
     productiveCount: 0, unproductiveCount: 0, currentVideoSeconds: 0,
-    streak: 5, weeklyData: [45, 32, 60, 28, 55, 40, 35], level: 1, xp: 0,
-    achievements: ['🔥 5-day streak', '🎯 Under goal'],
+    streak: 0, hourlyData: new Array(24).fill(0), level: 1, xp: 0,
+    achievements: [],
     youtubeTabs: 1,
     activeNudge: null,
     lastBreakReminder: 0,
@@ -370,6 +386,8 @@ export default function Widget(): JSX.Element {
     productiveUrls: [],
     suggestedUrl: null,
     dismissedSuggestion: false,
+    todayBackgroundMinutes: 0,
+    sessionBackgroundSeconds: 0,
     lastSyncTime: null,
     showSyncStatus: false,
     syncEnabled: false,
@@ -398,17 +416,29 @@ export default function Widget(): JSX.Element {
         setState(p => ({ ...p, streak: response.streak }));
       }
     });
-    // Load xp, weeklyData, phase, productiveUrls, and sync status from storage
-    chrome.storage.local.get(['xp', 'weeklyData', 'settings', 'productiveUrls', 'syncState'], (result) => {
-      if (result.xp) setState(p => ({ ...p, xp: result.xp }));
-      if (result.weeklyData) setState(p => ({ ...p, weeklyData: result.weeklyData }));
-      if (result.settings?.phase) setState(p => ({ ...p, phase: result.settings.phase }));
-      if (result.productiveUrls) setState(p => ({ ...p, productiveUrls: result.productiveUrls }));
-      if (result.syncState?.lastSyncTime) {
-        setState(p => ({ ...p, lastSyncTime: result.syncState.lastSyncTime }));
-      }
-      if (result.settings?.backend?.enabled) {
-        setState(p => ({ ...p, syncEnabled: result.settings.backend.enabled }));
+    // Load xp, dailyStats, phase, productiveUrls, and sync status from storage
+    if (!chrome.storage?.local) return;
+    chrome.storage.local.get(['xp', 'dailyStats', 'settings', 'productiveUrls', 'syncState'], (result) => {
+      const today = new Date().toISOString().split('T')[0];
+      const storedHourly = result.dailyStats?.[today]?.hourlySeconds;
+      const liveHourly = getTemporalData().hourlySeconds;
+      setState(p => ({
+        ...p,
+        xp: result.xp || p.xp,
+        hourlyData: compute24hData(storedHourly, liveHourly),
+        phase: result.settings?.phase || p.phase,
+        productiveUrls: result.productiveUrls || p.productiveUrls,
+        lastSyncTime: result.syncState?.lastSyncTime || p.lastSyncTime,
+        syncEnabled: result.settings?.backend?.enabled || false,
+      }));
+    });
+    // Load achievements
+    safeSendMessageWithCallback('GET_ACHIEVEMENTS', undefined, (response: any) => {
+      if (response?.unlocked) {
+        setState(p => ({
+          ...p,
+          achievements: response.unlocked.map((a: any) => `${a.icon} ${a.name}`),
+        }));
       }
     });
     // Load drift
@@ -457,22 +487,34 @@ export default function Widget(): JSX.Element {
         }
       });
       // Update XP, productive URLs, and sync state
+      if (!chrome.storage?.local) return;
       chrome.storage.local.get(['xp', 'productiveUrls', 'syncState', 'settings'], (result) => {
-        if (result.xp !== undefined) {
-          setState(p => ({ ...p, xp: result.xp }));
-        }
-        if (result.productiveUrls) {
-          setState(p => ({ ...p, productiveUrls: result.productiveUrls }));
-        }
-        if (result.syncState?.lastSyncTime) {
-          setState(p => ({ ...p, lastSyncTime: result.syncState.lastSyncTime }));
-        }
-        if (result.settings?.backend?.enabled !== undefined) {
-          setState(p => ({ ...p, syncEnabled: result.settings.backend.enabled }));
-        }
+        setState(p => ({
+          ...p,
+          xp: result.xp !== undefined ? result.xp : p.xp,
+          productiveUrls: result.productiveUrls || p.productiveUrls,
+          lastSyncTime: result.syncState?.lastSyncTime || p.lastSyncTime,
+          syncEnabled: result.settings?.backend?.enabled !== undefined ? result.settings.backend.enabled : p.syncEnabled,
+        }));
       });
     }, 10000); // Update every 10 seconds
     return () => clearInterval(updateInterval);
+  }, []);
+
+  // Update 24h chart every 60 seconds
+  useEffect(() => {
+    const update24h = () => {
+      if (!chrome.storage?.local) return;
+      chrome.storage.local.get(['dailyStats'], (result) => {
+        const today = new Date().toISOString().split('T')[0];
+        const storedHourly = result.dailyStats?.[today]?.hourlySeconds;
+        const liveHourly = getTemporalData().hourlySeconds;
+        setState(p => ({ ...p, hourlyData: compute24hData(storedHourly, liveHourly) }));
+      });
+    };
+    update24h();
+    const interval = setInterval(update24h, 60000);
+    return () => clearInterval(interval);
   }, []);
   
   // Fetch challenge progress periodically
@@ -636,17 +678,22 @@ export default function Widget(): JSX.Element {
       
       if (browserSession) {
         setState(p => ({
-          ...p, sessionDuration: browserSession.totalDurationSeconds,
+          ...p, sessionDuration: browserSession.playDurationSeconds,
           videosWatched: browserSession.videosWatched,
           productiveCount: browserSession.productiveVideos,
           unproductiveCount: browserSession.unproductiveVideos,
+          sessionBackgroundSeconds: browserSession.backgroundSeconds || 0,
         }));
       }
       if (videoSession) setState(p => ({ ...p, currentVideoSeconds: videoSession.watchedSeconds }));
       if (videoInfo) setState(p => ({ ...p, videoTitle: videoInfo.title || null }));
       
       safeSendMessageWithCallback('GET_STATS', undefined, (response: any) => {
-        if (response?.today) setState(p => ({ ...p, todayMinutes: Math.floor(response.today.totalSeconds / 60) }));
+        if (response?.today) setState(p => ({
+          ...p,
+          todayMinutes: Math.floor((response.today.activeSeconds || response.today.totalSeconds) / 60),
+          todayBackgroundMinutes: Math.floor((response.today.backgroundSeconds || 0) / 60),
+        }));
       });
 
       // Get tab count
@@ -779,8 +826,15 @@ export default function Widget(): JSX.Element {
             {/* Hero Row: Timer + Focus Score */}
             <div style={s.heroRow}>
               <div style={s.timerSection}>
-                <div style={s.timerValue}>{formatTime(state.sessionDuration)}</div>
-                <div style={s.timerLabel}>Session Time</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                  <div style={s.timerValue}>{formatTime(state.sessionDuration)}</div>
+                  {state.sessionBackgroundSeconds >= 60 && (
+                    <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', fontWeight: '400' }}>
+                      +{Math.floor(state.sessionBackgroundSeconds / 60)}m bg
+                    </span>
+                  )}
+                </div>
+                <div style={s.timerLabel}>Watch Time</div>
               </div>
               <FocusRing score={focusScore} />
               {state.streak > 0 && (
@@ -1058,16 +1112,18 @@ export default function Widget(): JSX.Element {
               </div>
             )}
             
-            {/* Weekly Trend */}
-            <div style={s.weeklySection}>
-              <div style={s.weeklyHeader}>
-                <div style={s.weeklyTitle}><Icons.TrendingUp /> This Week</div>
-                <div style={s.weeklyTrend}>
-                  <Icons.TrendingUp /> 12% better
+            {/* 24h Day Cycle */}
+            {state.hourlyData.some(v => v > 0) && (
+              <div style={s.weeklySection}>
+                <div style={s.weeklyHeader}>
+                  <div style={s.weeklyTitle}><Icons.Clock /> Today</div>
+                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)' }}>
+                    {formatMinutes(state.hourlyData.reduce((a, b) => a + b, 0))} total
+                  </div>
                 </div>
+                <DayCycleChart data={state.hourlyData} />
               </div>
-              <Sparkline data={state.weeklyData} color="#4ade80" />
-            </div>
+            )}
             
             {/* Daily Progress */}
             <div style={s.progressSection}>
@@ -1075,11 +1131,21 @@ export default function Widget(): JSX.Element {
                 <div style={s.progressLabel}><Icons.Target /> Daily Goal</div>
                 <span style={{ ...s.progressValue, color: getProgressTextColor() }}>
                   {formatMinutes(state.todayMinutes)} / {formatMinutes(state.dailyGoal)}
+                  {state.todayBackgroundMinutes > 0 && (
+                    <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)', marginLeft: '4px', fontWeight: '400' }}>
+                      (+{formatMinutes(state.todayBackgroundMinutes)} bg)
+                    </span>
+                  )}
                 </span>
               </div>
               <div style={s.progressBar}>
                 <div style={{ ...s.progressFill, width: `${progressPercent}%`, background: getProgressColor() }} />
               </div>
+              {state.todayBackgroundMinutes > 0 && !isOverGoal && (
+                <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  🎧 +{formatMinutes(state.todayBackgroundMinutes)} background
+                </div>
+              )}
               {isOverGoal && (
                 <div style={s.overLimit}><Icons.Flame /> Over by {formatMinutes(state.todayMinutes - state.dailyGoal)}</div>
               )}

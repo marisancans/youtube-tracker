@@ -60,6 +60,7 @@ export interface BrowserSession {
   triggerType?: TriggerType;
   // Totals
   totalDurationSeconds: number;
+  playDurationSeconds: number;
   activeDurationSeconds: number;
   backgroundSeconds: number;
   // Counts
