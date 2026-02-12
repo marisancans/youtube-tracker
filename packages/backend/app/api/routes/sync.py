@@ -1,11 +1,11 @@
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -728,4 +728,216 @@ async def get_daily_stats(
         "unproductiveVideos": stats.unproductive_videos,
         "hourlySeconds": stats.hourly_seconds,
         "topChannels": stats.top_channels,
+    }
+
+
+# ===== Data Check & Restore Endpoints =====
+
+
+# All child tables with user_id FK
+_CHILD_TABLES = [
+    VideoSession,
+    BrowserSession,
+    DailyStats,
+    ScrollEvent,
+    ThumbnailEvent,
+    PageEvent,
+    VideoWatchEvent,
+    RecommendationEvent,
+    InterventionEvent,
+    MoodReport,
+    ProductiveUrl,
+]
+
+
+@router.get("/check")
+@limiter.limit(settings.rate_limit)
+async def check_existing_data(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Check if the current user already has data on the server.
+    Used after sign-in to detect reinstalls and offer data restore.
+
+    Auth: X-User-Id header (Google ID) — user is auto-created by get_current_user if new.
+    """
+    counts: dict[str, int] = {}
+    total = 0
+    for model in _CHILD_TABLES:
+        result = await db.execute(select(func.count()).where(model.user_id == user.id))
+        count = result.scalar() or 0
+        counts[model.__tablename__] = count
+        total += count
+
+    return {
+        "hasData": total > 0,
+        "counts": counts,
+    }
+
+
+@router.get("/restore")
+@limiter.limit(settings.rate_limit)
+async def restore_data(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return the current user's recent data in extension-compatible format.
+    Used after linking to restore data from a previous install.
+    """
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+
+    # Video sessions (last 500)
+    vs_result = await db.execute(
+        select(VideoSession)
+        .where(VideoSession.user_id == user.id, VideoSession.timestamp >= thirty_days_ago)
+        .order_by(VideoSession.timestamp.desc())
+        .limit(500)
+    )
+    video_sessions = vs_result.scalars().all()
+
+    # Browser sessions (last 100)
+    bs_result = await db.execute(
+        select(BrowserSession)
+        .where(BrowserSession.user_id == user.id, BrowserSession.started_at >= thirty_days_ago)
+        .order_by(BrowserSession.started_at.desc())
+        .limit(100)
+    )
+    browser_sessions = bs_result.scalars().all()
+
+    # Daily stats (last 30 days)
+    ds_result = await db.execute(
+        select(DailyStats)
+        .where(DailyStats.user_id == user.id, DailyStats.date >= thirty_days_ago.date())
+        .order_by(DailyStats.date.desc())
+    )
+    daily_stats = ds_result.scalars().all()
+
+    # Format video sessions
+    formatted_videos = [
+        {
+            "id": s.ext_session_id or str(s.id),
+            "videoId": s.video_id,
+            "title": s.title,
+            "channel": s.channel,
+            "channelId": s.channel_id,
+            "durationSeconds": s.duration_seconds,
+            "watchedSeconds": s.watched_seconds,
+            "watchedPercent": s.watched_percent,
+            "category": s.category,
+            "source": s.source,
+            "sourcePosition": s.source_position,
+            "isShort": s.is_short,
+            "playbackSpeed": s.playback_speed,
+            "averageSpeed": s.average_speed,
+            "seekCount": s.seek_count,
+            "pauseCount": s.pause_count,
+            "tabSwitchCount": s.tab_switch_count,
+            "productivityRating": s.productivity_rating,
+            "ratedAt": int(s.rated_at.timestamp() * 1000) if s.rated_at else None,
+            "intention": s.intention,
+            "matchedIntention": s.matched_intention,
+            "ledToAnotherVideo": s.led_to_another_video,
+            "nextVideoSource": s.next_video_source,
+            "timestamp": int(s.timestamp.timestamp() * 1000),
+            "startedAt": int(s.started_at.timestamp() * 1000),
+            "endedAt": int(s.ended_at.timestamp() * 1000) if s.ended_at else None,
+        }
+        for s in video_sessions
+    ]
+
+    # Format browser sessions
+    formatted_browser = [
+        {
+            "id": s.ext_session_id,
+            "startedAt": int(s.started_at.timestamp() * 1000),
+            "endedAt": int(s.ended_at.timestamp() * 1000) if s.ended_at else None,
+            "entryPageType": s.entry_page_type,
+            "entryUrl": s.entry_url,
+            "entrySource": s.entry_source,
+            "triggerType": s.trigger_type,
+            "totalDurationSeconds": s.total_duration_seconds,
+            "activeDurationSeconds": s.active_duration_seconds,
+            "backgroundSeconds": s.background_seconds,
+            "pagesVisited": s.pages_visited,
+            "videosWatched": s.videos_watched,
+            "videosStartedNotFinished": s.videos_started_not_finished,
+            "shortsCount": s.shorts_count,
+            "totalScrollPixels": s.total_scroll_pixels,
+            "thumbnailsHovered": s.thumbnails_hovered,
+            "thumbnailsClicked": s.thumbnails_clicked,
+            "pageReloads": s.page_reloads,
+            "backButtonPresses": s.back_button_presses,
+            "recommendationClicks": s.recommendation_clicks,
+            "autoplayCount": s.autoplay_count,
+            "autoplayCancelled": s.autoplay_cancelled,
+            "searchCount": s.search_count,
+            "timeOnHomeSeconds": s.time_on_home_seconds,
+            "timeOnWatchSeconds": s.time_on_watch_seconds,
+            "timeOnSearchSeconds": s.time_on_search_seconds,
+            "timeOnShortsSeconds": s.time_on_shorts_seconds,
+            "productiveVideos": s.productive_videos,
+            "unproductiveVideos": s.unproductive_videos,
+            "neutralVideos": s.neutral_videos,
+            "exitType": s.exit_type,
+            "searchQueries": s.search_queries or [],
+        }
+        for s in browser_sessions
+    ]
+
+    # Format daily stats keyed by ISO date
+    formatted_daily: dict[str, dict] = {}
+    for ds in daily_stats:
+        formatted_daily[ds.date.isoformat()] = {
+            "date": ds.date.isoformat(),
+            "totalSeconds": ds.total_seconds,
+            "activeSeconds": ds.active_seconds,
+            "backgroundSeconds": ds.background_seconds,
+            "sessionCount": ds.session_count,
+            "avgSessionDurationSeconds": ds.avg_session_duration_seconds,
+            "firstCheckTime": ds.first_check_time,
+            "videoCount": ds.video_count,
+            "videosCompleted": ds.videos_completed,
+            "videosAbandoned": ds.videos_abandoned,
+            "shortsCount": ds.shorts_count,
+            "uniqueChannels": ds.unique_channels,
+            "searchCount": ds.search_count,
+            "recommendationClicks": ds.recommendation_clicks,
+            "autoplayCount": ds.autoplay_count,
+            "autoplayCancelled": ds.autoplay_cancelled,
+            "totalScrollPixels": ds.total_scroll_pixels,
+            "avgScrollVelocity": ds.avg_scroll_velocity,
+            "thumbnailsHovered": ds.thumbnails_hovered,
+            "thumbnailsClicked": ds.thumbnails_clicked,
+            "pageReloads": ds.page_reloads,
+            "backButtonPresses": ds.back_button_presses,
+            "tabSwitches": ds.tab_switches,
+            "productiveVideos": ds.productive_videos,
+            "unproductiveVideos": ds.unproductive_videos,
+            "neutralVideos": ds.neutral_videos,
+            "promptsShown": ds.prompts_shown,
+            "promptsAnswered": ds.prompts_answered,
+            "interventionsShown": ds.interventions_shown,
+            "interventionsEffective": ds.interventions_effective,
+            "hourlySeconds": ds.hourly_seconds,
+            "topChannels": ds.top_channels,
+            "preSleepMinutes": ds.pre_sleep_minutes,
+            "bingeSessions": ds.binge_sessions,
+        }
+
+    return {
+        "success": True,
+        "data": {
+            "videoSessions": formatted_videos,
+            "browserSessions": formatted_browser,
+            "dailyStats": formatted_daily,
+        },
+        "counts": {
+            "videoSessions": len(formatted_videos),
+            "browserSessions": len(formatted_browser),
+            "dailyStats": len(formatted_daily),
+        },
     }

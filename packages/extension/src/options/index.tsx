@@ -16,24 +16,28 @@ function App() {
     });
   }, []);
 
-  const handleOnboardingComplete = async (settings: { goalMode: string; dailyGoalMinutes: number }) => {
-    // Save settings
-    const existingSettings = (await chrome.storage.local.get('settings')).settings || {};
-    const newSettings = {
-      ...existingSettings,
-      goalMode: settings.goalMode,
-      dailyGoalMinutes: settings.dailyGoalMinutes,
-      phase: 'observation',
-      installDate: Date.now(),
-    };
+  const handleOnboardingComplete = async (settings: { goalMode: string; dailyGoalMinutes: number; restored?: boolean }) => {
+    if (settings.restored) {
+      // Data restored from server — don't overwrite settings, just mark onboarding done
+      await chrome.storage.local.set({ onboardingCompleted: true });
+    } else {
+      // Fresh setup — save chosen settings
+      const existingSettings = (await chrome.storage.local.get('settings')).settings || {};
+      const newSettings = {
+        ...existingSettings,
+        goalMode: settings.goalMode,
+        dailyGoalMinutes: settings.dailyGoalMinutes,
+        phase: 'observation',
+        installDate: Date.now(),
+      };
 
-    await chrome.storage.local.set({
-      settings: newSettings,
-      onboardingCompleted: true,
-    });
+      await chrome.storage.local.set({
+        settings: newSettings,
+        onboardingCompleted: true,
+      });
 
-    // Notify background
-    chrome.runtime.sendMessage({ type: 'SET_GOAL_MODE', data: { mode: settings.goalMode } });
+      chrome.runtime.sendMessage({ type: 'SET_GOAL_MODE', data: { mode: settings.goalMode } });
+    }
 
     setShowOnboarding(false);
   };

@@ -207,3 +207,56 @@ export async function handleSyncAlarm(): Promise<void> {
     await syncToBackend();
   }
 }
+
+// ===== Restore from Backend =====
+
+export async function restoreFromBackend(userId: string): Promise<{ success: boolean; counts?: Record<string, number>; error?: string }> {
+  const storage = await getStorage();
+  const backendUrl = storage.settings.backend.url;
+
+  try {
+    const response = await fetch(`${backendUrl}/sync/restore`, {
+      headers: { 'X-User-Id': userId },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { success: false, error: `Restore failed: ${errorText}` };
+    }
+
+    const result = await response.json();
+    if (!result.success) {
+      return { success: false, error: 'Server returned failure' };
+    }
+
+    const data = result.data;
+
+    // Merge daily stats — server data takes precedence
+    const mergedDailyStats = { ...storage.dailyStats };
+    for (const [dateKey, stats] of Object.entries(data.dailyStats as Record<string, any>)) {
+      mergedDailyStats[dateKey] = stats;
+    }
+
+    // Merge video sessions — deduplicate by id
+    const existingVideoIds = new Set(storage.videoSessions.map((s: any) => s.id));
+    const newVideos = (data.videoSessions || []).filter((s: any) => !existingVideoIds.has(s.id));
+    const mergedVideoSessions = [...storage.videoSessions, ...newVideos].slice(-500);
+
+    // Merge browser sessions — deduplicate by id
+    const existingBrowserIds = new Set(storage.browserSessions.map((s: any) => s.id));
+    const newBrowser = (data.browserSessions || []).filter((s: any) => !existingBrowserIds.has(s.id));
+    const mergedBrowserSessions = [...storage.browserSessions, ...newBrowser].slice(-100);
+
+    await saveStorage({
+      dailyStats: mergedDailyStats,
+      videoSessions: mergedVideoSessions,
+      browserSessions: mergedBrowserSessions,
+    });
+
+    console.log('[YT Detox] Restore complete:', result.counts);
+    return { success: true, counts: result.counts };
+  } catch (err) {
+    console.error('[YT Detox] Restore error:', err);
+    return { success: false, error: String(err) };
+  }
+}

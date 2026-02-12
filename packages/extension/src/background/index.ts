@@ -42,7 +42,7 @@ import {
   handleNotificationClick,
 } from './challenge';
 
-import { syncToBackend, queueEvents, getSyncStatus, startPeriodicSync, handleSyncAlarm } from './sync';
+import { syncToBackend, queueEvents, getSyncStatus, startPeriodicSync, handleSyncAlarm, restoreFromBackend } from './sync';
 
 import { getTabState, initTabs, registerTabListeners } from './tabs';
 
@@ -284,6 +284,12 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
         case 'AUTH_GET_STATE':
           response = await getAuthState();
           break;
+        case 'RESTORE_DATA': {
+          const restoreStorage = await getStorage();
+          const restoreUserId = (data as any)?.userId || restoreStorage.settings.backend.userId || '';
+          response = await restoreFromBackend(restoreUserId);
+          break;
+        }
 
         // Phase
         case 'GET_PHASE_INFO':

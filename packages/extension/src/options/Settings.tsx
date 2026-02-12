@@ -4,7 +4,6 @@ import {
   Settings as SettingsIcon,
   Loader2,
   LogOut,
-  User,
   Wind,
   Clock,
   Video,
@@ -21,6 +20,9 @@ import {
   CloudLightning,
   Sun,
   Activity,
+  User,
+  Download,
+  X,
 } from 'lucide-react';
 
 // ===== Types =====
@@ -271,6 +273,11 @@ export default function Settings() {
   const [showBackendDetails, setShowBackendDetails] = useState(false);
   const [checkingBackend, setCheckingBackend] = useState(false);
 
+  // Restore modal state
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [restoreData, setRestoreData] = useState<{ currentDeviceId: string; googleId: string; existingCounts: Record<string, number> } | null>(null);
+  const [resolving, setResolving] = useState(false);
+
   // ===== Fetch Data =====
 
   const fetchData = useCallback(async () => {
@@ -365,19 +372,32 @@ export default function Settings() {
       setAuthLoading(false);
       if (response?.success && response.user) {
         setAuthUser(response.user);
-        setSettings((prev) => {
-          const updated = {
-            ...prev,
-            backend: { ...prev.backend, userId: response.user.id, enabled: true },
-          };
-          chrome.storage.local.get('settings', (data) => {
-            const stored = data.settings || {};
-            chrome.storage.local.set({
-              settings: { ...stored, backend: { ...stored.backend, userId: response.user.id, enabled: true } },
-            });
+        setSettings((prev) => ({
+          ...prev,
+          backend: { ...prev.backend, userId: response.user.id, enabled: true },
+        }));
+
+        // Check if server already has data (reinstall)
+        if (response.hasExistingData) {
+          setRestoreData({
+            currentDeviceId: response.user.id,
+            googleId: response.user.id,
+            existingCounts: response.existingCounts || {},
           });
-          return updated;
-        });
+          setShowRestoreModal(true);
+        }
+      }
+    });
+  };
+
+  const handleRestore = () => {
+    setResolving(true);
+    chrome.runtime.sendMessage({ type: 'RESTORE_DATA' }, (response) => {
+      setResolving(false);
+      setShowRestoreModal(false);
+      setRestoreData(null);
+      if (response?.success) {
+        fetchData();
       }
     });
   };
@@ -388,19 +408,10 @@ export default function Settings() {
       setAuthLoading(false);
       if (response?.success) {
         setAuthUser(null);
-        setSettings((prev) => {
-          const updated = {
-            ...prev,
-            backend: { ...prev.backend, userId: '', enabled: false },
-          };
-          chrome.storage.local.get('settings', (data) => {
-            const stored = data.settings || {};
-            chrome.storage.local.set({
-              settings: { ...stored, backend: { ...stored.backend, userId: '', enabled: false } },
-            });
-          });
-          return updated;
-        });
+        setSettings((prev) => ({
+          ...prev,
+          backend: { ...prev.backend, userId: '', enabled: false },
+        }));
       }
     });
   };
@@ -434,7 +445,8 @@ export default function Settings() {
             {authUser ? (
               <div className="flex items-center gap-2">
                 {authUser.picture && <img src={authUser.picture} alt="" className="w-8 h-8 rounded-full" />}
-                <button onClick={handleSignOut} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500">
+                <span className="text-sm text-slate-600 hidden sm:inline">{authUser.email}</span>
+                <button onClick={handleSignOut} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500" title="Sign Out">
                   <LogOut className="w-4 h-4" />
                 </button>
               </div>
@@ -955,6 +967,53 @@ export default function Settings() {
           </div>
         )}
       </main>
+
+      {/* Restore Modal */}
+      {showRestoreModal && restoreData && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-900">Existing Data Found</h3>
+              <button
+                onClick={() => { setShowRestoreModal(false); setRestoreData(null); }}
+                className="p-1 hover:bg-slate-100 rounded-lg text-slate-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-600 mb-4">
+              Your Google account has data from a previous install. Would you like to restore it?
+            </p>
+
+            <div className="bg-slate-50 rounded-lg p-3 mb-4 text-xs font-mono text-slate-600 space-y-1">
+              {Object.entries(restoreData.existingCounts)
+                .filter(([, v]) => v > 0)
+                .map(([k, v]) => (
+                  <div key={k}>{k}: <span className="text-slate-800">{v}</span></div>
+                ))}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleRestore}
+                disabled={resolving}
+                className="flex-1 py-2.5 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {resolving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                Restore Data
+              </button>
+              <button
+                onClick={() => { setShowRestoreModal(false); setRestoreData(null); }}
+                disabled={resolving}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-colors disabled:opacity-50"
+              >
+                Start Fresh
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

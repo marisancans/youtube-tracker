@@ -1,20 +1,23 @@
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowRight, CheckCircle2, Waves, Music, Clock, Lock, Snowflake } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Waves, Music, Clock, Lock, Snowflake, Loader2, User } from 'lucide-react';
 
 type GoalMode = 'music' | 'time_reduction' | 'strict' | 'cold_turkey';
 
 interface OnboardingProps {
-  onComplete: (settings: { goalMode: GoalMode; dailyGoalMinutes: number }) => void;
+  onComplete: (settings: { goalMode: GoalMode; dailyGoalMinutes: number; restored?: boolean }) => void;
 }
 
-const STEPS = ['welcome', 'goal', 'time', 'ready'] as const;
+const STEPS = ['welcome', 'signin', 'goal', 'time', 'ready'] as const;
 type Step = (typeof STEPS)[number];
 
 export default function Onboarding({ onComplete }: OnboardingProps) {
   const [step, setStep] = useState<Step>('welcome');
   const [goalMode, setGoalMode] = useState<GoalMode>('time_reduction');
   const [dailyGoal, setDailyGoal] = useState(60);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authUser, setAuthUser] = useState<{ email: string; picture: string } | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const nextStep = () => {
     const currentIndex = STEPS.indexOf(step);
@@ -27,6 +30,32 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     onComplete({
       goalMode,
       dailyGoalMinutes: dailyGoal,
+    });
+  };
+
+  const handleSignIn = () => {
+    setAuthLoading(true);
+    setAuthError(null);
+    chrome.runtime.sendMessage({ type: 'AUTH_SIGN_IN' }, (response) => {
+      if (response?.success && response.user) {
+        setAuthUser({ email: response.user.email, picture: response.user.picture });
+        // Immediately try to restore — this checks if the server has data
+        chrome.runtime.sendMessage({ type: 'RESTORE_DATA', data: { userId: response.user.id } }, (restoreResp) => {
+          setAuthLoading(false);
+          if (restoreResp?.success && restoreResp.counts) {
+            const total = Object.values(restoreResp.counts as Record<string, number>).reduce((a, b) => a + b, 0);
+            if (total > 0) {
+              // Server had data and it was restored — skip remaining steps
+              onComplete({ goalMode: 'time_reduction', dailyGoalMinutes: 60, restored: true });
+              return;
+            }
+          }
+          // No existing data (or restore returned empty) — continue normal setup
+        });
+      } else {
+        setAuthLoading(false);
+        setAuthError(response?.error || 'Sign in failed');
+      }
     });
   };
 
@@ -61,6 +90,63 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                 Get Started
                 <ArrowRight className="w-5 h-5" />
               </button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Step: Sign In */}
+        {step === 'signin' && (
+          <Card className="bg-white/10 backdrop-blur border-white/20">
+            <CardContent className="pt-8 pb-6 text-center">
+              <div className="text-6xl mb-6">🔐</div>
+              <h2 className="text-2xl font-bold text-white mb-4">Sign in with Google</h2>
+              <p className="text-white/70 mb-8 leading-relaxed">
+                Your Google account is used to sync data to the server.
+                <br />
+                This keeps your stats safe across reinstalls.
+              </p>
+
+              {authUser ? (
+                <div>
+                  <div className="inline-flex items-center gap-3 bg-white/10 rounded-xl px-5 py-3 mb-6">
+                    {authUser.picture && <img src={authUser.picture} alt="" className="w-8 h-8 rounded-full" />}
+                    <span className="text-white font-medium">{authUser.email}</span>
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  </div>
+
+                  <button
+                    onClick={nextStep}
+                    className="w-full py-3 bg-white text-slate-900 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-white/90 transition-colors"
+                  >
+                    Continue
+                    <ArrowRight className="w-5 h-5" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button
+                    onClick={handleSignIn}
+                    disabled={authLoading}
+                    className="w-full py-3 bg-white text-slate-900 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-white/90 transition-colors disabled:opacity-50"
+                  >
+                    {authLoading ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <User className="w-5 h-5" />
+                    )}
+                    Sign in with Google
+                  </button>
+                  {authError && (
+                    <p className="text-red-400 text-sm mt-3">{authError}</p>
+                  )}
+                  <button
+                    onClick={nextStep}
+                    className="mt-4 text-white/40 hover:text-white/60 text-sm transition-colors"
+                  >
+                    Skip for now
+                  </button>
+                </>
+              )}
             </CardContent>
           </Card>
         )}

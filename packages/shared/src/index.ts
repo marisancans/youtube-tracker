@@ -500,7 +500,9 @@ export type MessageType =
   // Achievements
   | 'GET_ACHIEVEMENTS'
   | 'CHECK_ACHIEVEMENTS'
-  | 'GET_STREAK';
+  | 'GET_STREAK'
+  // Data restore
+  | 'RESTORE_DATA';
 
 // ===== Batch Sync Types =====
 

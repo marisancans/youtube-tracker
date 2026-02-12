@@ -1,5 +1,8 @@
 /**
  * Google Authentication
+ *
+ * Google-only auth: user must sign in with Google before sync works.
+ * On sign-in, checks if server already has data for this Google ID (reinstall case).
  */
 
 import { getStorage, saveStorage, type AuthState, type GoogleUser } from './storage';
@@ -51,7 +54,11 @@ async function fetchGoogleUserInfo(token: string): Promise<GoogleUser | null> {
 
 // ===== Public API =====
 
-export async function signIn(): Promise<{ success: boolean; user: GoogleUser | null; error?: string }> {
+export async function signIn(): Promise<{
+  success: boolean;
+  user: GoogleUser | null;
+  error?: string;
+}> {
   try {
     const token = await getAuthToken(true); // interactive = true
     if (!token) {
@@ -72,7 +79,7 @@ export async function signIn(): Promise<{ success: boolean; user: GoogleUser | n
     // Save to storage
     await chrome.storage.local.set({ authState });
 
-    // Update settings with user ID and enable sync
+    // Update settings with Google ID and enable sync
     const storage = await getStorage();
     storage.settings.backend.userId = user.id;
     storage.settings.backend.enabled = true;
@@ -93,12 +100,13 @@ export async function signOut(): Promise<{ success: boolean }> {
         authState = { user: null, token: null, expiresAt: null };
         await chrome.storage.local.remove('authState');
 
-        // Clear user ID from settings
+        // Disable sync — no anonymous sync without Google
         const storage = await getStorage();
         storage.settings.backend.userId = null;
+        storage.settings.backend.enabled = false;
         await saveStorage({ settings: storage.settings });
 
-        console.log('[YT Detox] Signed out');
+        console.log('[YT Detox] Signed out, sync disabled');
         resolve({ success: true });
       });
     } else {
