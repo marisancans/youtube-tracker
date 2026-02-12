@@ -2,97 +2,136 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Base layer for options page (non-shadow DOM) */
+/* ===== Nautical Cartography Design System ===== */
+
+/* Nautical raw color tokens */
+:root {
+  --parchment: #f5e6c8;
+  --parchment-dark: #e8d5b7;
+  --parchment-darker: #d4c5a0;
+  --ink: #2c1810;
+  --ink-light: #4a3728;
+  --navy: #0a1628;
+  --navy-light: #1a2744;
+  --teal: #0d9488;
+  --teal-light: #5eead4;
+  --gold: #d4a574;
+  --gold-dark: #b8956a;
+  --amber-warn: #f59e0b;
+  --storm-red: #991b1b;
+  --storm-gray: #334155;
+  --seafoam: #a7f3d0;
+}
+
+/* HSL variables for shadcn compatibility — Parchment Light Theme */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --background: 36 58% 87%;       /* #f5e6c8 parchment */
+    --foreground: 18 40% 12%;       /* #2c1810 ink */
+    --card: 36 50% 92%;             /* lighter parchment */
+    --card-foreground: 18 40% 12%;
+    --popover: 36 50% 92%;
+    --popover-foreground: 18 40% 12%;
+    --primary: 174 83% 30%;         /* #0d9488 teal */
+    --primary-foreground: 36 58% 95%;
+    --secondary: 28 37% 64%;        /* #d4a574 gold */
+    --secondary-foreground: 18 40% 12%;
+    --muted: 36 35% 80%;            /* parchment-dark */
+    --muted-foreground: 20 20% 40%;
+    --accent: 220 60% 10%;          /* #0a1628 navy */
+    --accent-foreground: 36 58% 90%;
+    --destructive: 0 75% 35%;       /* #991b1b storm-red */
+    --destructive-foreground: 36 58% 95%;
+    --border: 28 25% 72%;           /* gold-ish border */
+    --input: 28 25% 72%;
+    --ring: 174 83% 30%;            /* teal ring */
     --radius: 0.5rem;
   }
 
+  /* Deep Ocean Dark Theme */
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --background: 220 60% 10%;      /* #0a1628 navy */
+    --foreground: 36 58% 87%;       /* parchment text */
+    --card: 222 45% 15%;            /* #1a2744 navy-light */
+    --card-foreground: 36 58% 87%;
+    --popover: 222 45% 15%;
+    --popover-foreground: 36 58% 87%;
+    --primary: 174 75% 58%;         /* #5eead4 teal-light */
+    --primary-foreground: 220 60% 10%;
+    --secondary: 28 37% 55%;        /* gold */
+    --secondary-foreground: 36 58% 95%;
+    --muted: 222 40% 20%;
+    --muted-foreground: 36 30% 65%;
+    --accent: 36 58% 87%;           /* parchment accent */
+    --accent-foreground: 220 60% 10%;
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --destructive-foreground: 36 58% 95%;
+    --border: 222 30% 25%;
+    --input: 222 30% 25%;
+    --ring: 174 75% 58%;
   }
 }
 
-/* Shadow DOM styles (for content script widget) */
+/* Shadow DOM variables (content script widget) */
 :host {
-  --background: 0 0% 100%;
-  --foreground: 222.2 84% 4.9%;
-  --card: 0 0% 100%;
-  --card-foreground: 222.2 84% 4.9%;
-  --primary: 221.2 83.2% 53.3%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222.2 47.4% 11.2%;
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
-  --accent: 210 40% 96.1%;
-  --accent-foreground: 222.2 47.4% 11.2%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
-  --ring: 221.2 83.2% 53.3%;
+  --parchment: #f5e6c8;
+  --parchment-dark: #e8d5b7;
+  --parchment-darker: #d4c5a0;
+  --ink: #2c1810;
+  --ink-light: #4a3728;
+  --navy: #0a1628;
+  --navy-light: #1a2744;
+  --teal: #0d9488;
+  --teal-light: #5eead4;
+  --gold: #d4a574;
+  --gold-dark: #b8956a;
+  --storm-red: #991b1b;
+  --storm-gray: #334155;
+  --seafoam: #a7f3d0;
+
+  --background: 36 58% 87%;
+  --foreground: 18 40% 12%;
+  --card: 36 50% 92%;
+  --card-foreground: 18 40% 12%;
+  --primary: 174 83% 30%;
+  --primary-foreground: 36 58% 95%;
+  --secondary: 28 37% 64%;
+  --secondary-foreground: 18 40% 12%;
+  --muted: 36 35% 80%;
+  --muted-foreground: 20 20% 40%;
+  --accent: 220 60% 10%;
+  --accent-foreground: 36 58% 90%;
+  --destructive: 0 75% 35%;
+  --destructive-foreground: 36 58% 95%;
+  --border: 28 25% 72%;
+  --input: 28 25% 72%;
+  --ring: 174 83% 30%;
   --radius: 0.5rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :host {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --background: 220 60% 10%;
+    --foreground: 36 58% 87%;
+    --card: 222 45% 15%;
+    --card-foreground: 36 58% 87%;
+    --primary: 174 75% 58%;
+    --primary-foreground: 220 60% 10%;
+    --secondary: 28 37% 55%;
+    --secondary-foreground: 36 58% 95%;
+    --muted: 222 40% 20%;
+    --muted-foreground: 36 30% 65%;
+    --accent: 36 58% 87%;
+    --accent-foreground: 220 60% 10%;
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --destructive-foreground: 36 58% 95%;
+    --border: 222 30% 25%;
+    --input: 222 30% 25%;
+    --ring: 174 75% 58%;
   }
 }
+
+/* ===== Base Resets ===== */
 
 @layer base {
   * {
@@ -100,12 +139,147 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 }
 
 .yt-detox-root {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   color: hsl(var(--foreground));
+}
+
+/* ===== Nautical Utility Classes ===== */
+
+.parchment-texture {
+  background-color: var(--parchment);
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 2px,
+      rgba(44, 24, 16, 0.02) 2px,
+      rgba(44, 24, 16, 0.02) 4px
+    );
+}
+
+.map-grid {
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(184, 149, 106, 0.08) 0px,
+      rgba(184, 149, 106, 0.08) 1px,
+      transparent 1px,
+      transparent 40px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(184, 149, 106, 0.08) 0px,
+      rgba(184, 149, 106, 0.08) 1px,
+      transparent 1px,
+      transparent 40px
+    );
+}
+
+.rope-border {
+  border: 2px solid var(--gold);
+  box-shadow:
+    inset 0 0 0 1px var(--gold-dark),
+    0 0 0 1px rgba(184, 149, 106, 0.3);
+}
+
+.ink-heading {
+  font-family: 'Playfair Display', Georgia, serif;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+}
+
+.captains-log {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-style: italic;
+  color: var(--ink-light);
+}
+
+.coordinate-text {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  letter-spacing: 0.05em;
+}
+
+/* ===== Keyframe Animations ===== */
+
+@keyframes ship-rock {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(var(--rock-intensity, 3deg)); }
+  75% { transform: rotate(calc(var(--rock-intensity, 3deg) * -1)); }
+}
+
+@keyframes wave-gentle {
+  0% { transform: translateX(0) translateY(0); }
+  50% { transform: translateX(-10px) translateY(-3px); }
+  100% { transform: translateX(0) translateY(0); }
+}
+
+@keyframes wave-medium {
+  0% { transform: translateX(0) translateY(0); }
+  50% { transform: translateX(-20px) translateY(-8px); }
+  100% { transform: translateX(0) translateY(0); }
+}
+
+@keyframes wave-storm {
+  0% { transform: translateX(0) translateY(0); }
+  25% { transform: translateX(-15px) translateY(-12px); }
+  50% { transform: translateX(10px) translateY(-5px); }
+  75% { transform: translateX(-20px) translateY(-15px); }
+  100% { transform: translateX(0) translateY(0); }
+}
+
+@keyframes fog-drift {
+  0% { opacity: 0.3; transform: translateX(-5%); }
+  50% { opacity: 0.5; transform: translateX(5%); }
+  100% { opacity: 0.3; transform: translateX(-5%); }
+}
+
+@keyframes compass-needle {
+  0%, 100% { transform: rotate(var(--needle-rotation, 0deg)); }
+  5% { transform: rotate(calc(var(--needle-rotation, 0deg) + 2deg)); }
+  10% { transform: rotate(calc(var(--needle-rotation, 0deg) - 1deg)); }
+  15% { transform: rotate(var(--needle-rotation, 0deg)); }
+}
+
+@keyframes parchment-unfurl {
+  from { max-height: 0; opacity: 0; transform: scaleY(0.8); }
+  to { max-height: 2000px; opacity: 1; transform: scaleY(1); }
+}
+
+@keyframes beacon-rotate {
+  0% { opacity: 0.2; transform: rotate(0deg); }
+  25% { opacity: 0.8; }
+  50% { opacity: 0.2; transform: rotate(180deg); }
+  75% { opacity: 0.8; }
+  100% { opacity: 0.2; transform: rotate(360deg); }
+}
+
+@keyframes drift-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+
+/* ===== Custom Scrollbar ===== */
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--parchment-dark, #e8d5b7);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gold, #d4a574);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gold-dark, #b8956a);
 }

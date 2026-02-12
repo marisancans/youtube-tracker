@@ -3,26 +3,26 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 import {
-  Video,
   TrendingUp,
   TrendingDown,
-  Flame,
-  Target,
-  ThumbsUp,
-  ThumbsDown,
   RefreshCw,
-  Tv,
-  Calendar,
-  Zap,
-  Eye,
-  Brain,
-  Shield,
-  Rocket,
   Clock,
-  BarChart2,
-  Waves,
-  Trophy,
+  Star,
 } from 'lucide-react';
+import {
+  CompassRose,
+  ShipIcon,
+  AnchorIcon,
+  WaveDecoration,
+  ShipsWheel,
+  Lighthouse,
+  Spyglass,
+  RopeKnot,
+} from '@/components/nautical/NauticalIcons';
+
+// ---------------------------------------------------------------------------
+// Types (unchanged)
+// ---------------------------------------------------------------------------
 
 interface PhaseInfo {
   phase: 'observation' | 'awareness' | 'intervention' | 'reduction';
@@ -109,12 +109,16 @@ interface BackendSettings {
   userId: string;
 }
 
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
 const COLORS = {
-  productive: '#22c55e',
-  neutral: '#fbbf24',
-  unproductive: '#ef4444',
-  primary: '#3b82f6',
-  purple: '#a855f7',
+  productive: '#0d9488',   // teal — "Valuable Cargo"
+  neutral: '#d4a574',      // gold — "Ballast"
+  unproductive: '#991b1b', // storm-red — "Contraband"
+  primary: '#0d9488',      // teal
+  chartFill: '#5eead4',    // teal-light (seafoam end)
 };
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -127,6 +131,29 @@ function formatMinutes(mins: number): string {
   }
   return `${mins}m`;
 }
+
+/** Format minutes as coordinate-style text: 42'30" */
+function formatCoordinate(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h > 0) return `${h}h ${m}'00"`;
+  return `${m}'00"`;
+}
+
+/** Section divider using rope + knot decoration */
+function RopeDivider() {
+  return (
+    <div className="flex items-center justify-center gap-2 py-2 text-gold-dark">
+      <WaveDecoration width={80} className="opacity-40" />
+      <RopeKnot className="flex-shrink-0" />
+      <WaveDecoration width={80} className="opacity-40" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export default function Dashboard({
   backend,
@@ -153,6 +180,9 @@ export default function Dashboard({
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
+  // -----------------------------------------------------------------------
+  // Data fetching (IDENTICAL to original)
+  // -----------------------------------------------------------------------
   const fetchStats = useCallback(async () => {
     setLoading(true);
     try {
@@ -360,7 +390,10 @@ export default function Dashboard({
     fetchStats();
   }, [fetchStats]);
 
-  // Chart data
+  // -----------------------------------------------------------------------
+  // Derived data (same logic, nautical presentation names)
+  // -----------------------------------------------------------------------
+
   const weeklyChartData = stats.last7Days.map((d) => ({
     name: DAY_NAMES[new Date(d.date).getDay()],
     minutes: Math.round(d.totalSeconds / 60),
@@ -375,9 +408,9 @@ export default function Dashboard({
     const total = productive + neutral + unproductive;
     if (total === 0) return [];
     return [
-      { name: 'Productive', value: productive, color: COLORS.productive },
-      { name: 'Neutral', value: neutral, color: COLORS.neutral },
-      { name: 'Wasted', value: unproductive, color: COLORS.unproductive },
+      { name: 'Valuable Cargo', value: productive, color: COLORS.productive },
+      { name: 'Ballast', value: neutral, color: COLORS.neutral },
+      { name: 'Contraband', value: unproductive, color: COLORS.unproductive },
     ];
   })();
 
@@ -385,83 +418,170 @@ export default function Dashboard({
   const goalProgress = Math.min(100, (todayMinutes / dailyGoalMinutes) * 100);
   const isOverGoal = todayMinutes > dailyGoalMinutes;
 
+  // Focus score for compass: 100 = on track (north), 0 = way over (south)
+  const focusScore = Math.max(0, Math.min(100, Math.round(100 - (todayMinutes / dailyGoalMinutes) * 100)));
+
+  // -----------------------------------------------------------------------
+  // Phase config — nautical themed
+  // -----------------------------------------------------------------------
+
   const phaseConfig = {
     observation: {
-      icon: Eye,
-      color: 'blue',
-      title: 'Observation Week',
-      description: 'Learning your patterns',
-      bgGradient: 'from-blue-500/10 to-cyan-500/10',
-      borderColor: 'border-blue-500/30',
-      textColor: 'text-blue-600',
+      icon: Spyglass,
+      title: 'Charting Unknown Waters',
+      description: 'Surveying your viewing patterns',
+      accent: 'border-l-teal',
+      textColor: 'text-teal',
+      bgClass: 'bg-teal/5',
     },
     awareness: {
-      icon: Brain,
-      color: 'purple',
-      title: 'Awareness Phase',
-      description: 'Building mindfulness',
-      bgGradient: 'from-purple-500/10 to-pink-500/10',
-      borderColor: 'border-purple-500/30',
-      textColor: 'text-purple-600',
+      icon: CompassRoseIcon,
+      title: 'Reading the Stars',
+      description: 'Navigating toward awareness',
+      accent: 'border-l-gold',
+      textColor: 'text-gold-dark',
+      bgClass: 'bg-gold/5',
     },
     intervention: {
-      icon: Shield,
-      color: 'orange',
-      title: 'Intervention Phase',
-      description: 'Active habit change',
-      bgGradient: 'from-orange-500/10 to-yellow-500/10',
-      borderColor: 'border-orange-500/30',
-      textColor: 'text-orange-600',
+      icon: ShipsWheel,
+      title: 'Adjusting the Sails',
+      description: 'Active course correction',
+      accent: 'border-l-gold-dark',
+      textColor: 'text-ink',
+      bgClass: 'bg-gold-dark/5',
     },
     reduction: {
-      icon: Rocket,
-      color: 'green',
-      title: 'Reduction Phase',
-      description: 'Sustaining progress',
-      bgGradient: 'from-green-500/10 to-emerald-500/10',
-      borderColor: 'border-green-500/30',
-      textColor: 'text-green-600',
+      icon: AnchorIcon,
+      title: 'Steady as She Goes',
+      description: 'Holding your course',
+      accent: 'border-l-teal',
+      textColor: 'text-teal',
+      bgClass: 'bg-seafoam/10',
     },
   };
 
   const currentPhaseConfig = stats.phase ? phaseConfig[stats.phase.phase] : null;
-  const PhaseIcon = currentPhaseConfig?.icon || Eye;
+  const PhaseIcon = currentPhaseConfig?.icon || Spyglass;
+
+  // -----------------------------------------------------------------------
+  // Challenge tier — nautical ranks
+  // -----------------------------------------------------------------------
+
+  const tierConfig: Record<string, { rank: string; icon: React.ReactNode; xpLabel: string }> = {
+    casual: {
+      rank: 'Deckhand',
+      icon: <AnchorIcon size={20} className="text-gold-dark" />,
+      xpLabel: '60 min -- 1.0x XP',
+    },
+    focused: {
+      rank: 'Helmsman',
+      icon: <ShipsWheel size={20} className="text-gold-dark" />,
+      xpLabel: '45 min -- 1.5x XP',
+    },
+    disciplined: {
+      rank: 'First Mate',
+      icon: <CompassRose score={75} size={20} className="text-gold-dark" />,
+      xpLabel: '30 min -- 2.0x XP',
+    },
+    monk: {
+      rank: 'Captain',
+      icon: <Star className="w-5 h-5 text-gold fill-gold" />,
+      xpLabel: '15 min -- 3.0x XP',
+    },
+    ascetic: {
+      rank: 'Admiral',
+      icon: <Star className="w-5 h-5 text-gold fill-gold" />,
+      xpLabel: '5 min -- 5.0x XP',
+    },
+  };
+
+  const currentTier = tierConfig[stats.challengeTier] || tierConfig.casual;
+
+  // -----------------------------------------------------------------------
+  // Drift nautical messages
+  // -----------------------------------------------------------------------
+
+  const driftMessages: Record<string, { text: string; color: string }> = {
+    low: { text: 'Calm seas -- steady as she goes', color: 'text-teal' },
+    medium: { text: 'Choppy waters -- watch the horizon', color: 'text-gold-dark' },
+    high: { text: 'Rough seas -- reef the sails!', color: 'text-storm-red' },
+    critical: { text: 'STORM WARNING -- all hands on deck!', color: 'text-storm-red font-bold' },
+  };
+
+  // -----------------------------------------------------------------------
+  // Achievement rarity border colors (maritime medal style)
+  // -----------------------------------------------------------------------
+
+  const rarityBorderColor: Record<string, string> = {
+    common: '#cd7f32',
+    uncommon: '#c0c0c0',
+    rare: '#d4a574',
+    epic: '#2563eb',
+    legendary: '#d4a574',
+  };
+
+  // -----------------------------------------------------------------------
+  // RENDER
+  // -----------------------------------------------------------------------
 
   return (
-    <div className="space-y-4">
-      {/* Header with refresh */}
-      <div className="flex items-center justify-between">
+    <div className="parchment-texture map-grid space-y-1 p-4 rounded-xl font-body animate-parchment-unfurl">
+
+      {/* ============================================================= */}
+      {/* HEADER — "Captain's Log"                                       */}
+      {/* ============================================================= */}
+      <div className="flex items-center justify-between mb-1">
         <div>
-          <h2 className="text-xl font-bold">Dashboard</h2>
-          {lastUpdated && <p className="text-xs text-muted-foreground">Updated {lastUpdated.toLocaleTimeString()}</p>}
+          <h2 className="font-display text-2xl text-ink tracking-tight ink-heading">
+            Captain's Log
+          </h2>
+          {lastUpdated && (
+            <p className="text-xs text-ink-light/60 font-mono coordinate-text mt-0.5">
+              Last entry: {lastUpdated.toLocaleTimeString()}
+            </p>
+          )}
         </div>
         <button
           onClick={fetchStats}
           disabled={loading}
-          className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          className="p-2 rounded-lg border border-gold/40 bg-parchment hover:bg-parchment-dark transition-colors text-gold-dark"
+          title="Refresh"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
 
-      {/* Phase Banner */}
+      <RopeDivider />
+
+      {/* ============================================================= */}
+      {/* PHASE BANNER                                                   */}
+      {/* ============================================================= */}
       {stats.phase && currentPhaseConfig && (
-        <Card className={`bg-gradient-to-r ${currentPhaseConfig.bgGradient} ${currentPhaseConfig.borderColor} border`}>
-          <CardContent className="py-3">
+        <Card
+          variant="nautical"
+          className={`border-l-4 ${currentPhaseConfig.accent} ${currentPhaseConfig.bgClass}`}
+        >
+          <CardContent className="py-3 px-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg bg-white/50 ${currentPhaseConfig.textColor}`}>
-                  <PhaseIcon className="w-5 h-5" />
+                <div className="p-2 rounded-lg bg-parchment/80">
+                  <PhaseIcon size={20} className={currentPhaseConfig.textColor} />
                 </div>
                 <div>
-                  <div className={`font-semibold ${currentPhaseConfig.textColor}`}>{currentPhaseConfig.title}</div>
-                  <div className="text-xs text-muted-foreground">{currentPhaseConfig.description}</div>
+                  <div className={`font-display font-semibold ${currentPhaseConfig.textColor}`}>
+                    {currentPhaseConfig.title}
+                  </div>
+                  <div className="text-xs text-ink-light/70 captains-log">
+                    {currentPhaseConfig.description}
+                  </div>
                 </div>
               </div>
               {stats.phase.daysRemaining > 0 && (
                 <div className="text-right">
-                  <div className={`text-lg font-bold ${currentPhaseConfig.textColor}`}>{stats.phase.daysRemaining}</div>
-                  <div className="text-xs text-muted-foreground">days left</div>
+                  <div className={`text-lg font-display font-bold ${currentPhaseConfig.textColor}`}>
+                    {stats.phase.daysRemaining}
+                  </div>
+                  <div className="text-xs text-ink-light/60">days to port</div>
                 </div>
               )}
             </div>
@@ -469,38 +589,48 @@ export default function Dashboard({
         </Card>
       )}
 
-      {/* Baseline Stats (shown during observation) */}
+      {/* ============================================================= */}
+      {/* BASELINE STATS (shown during observation)                      */}
+      {/* ============================================================= */}
       {stats.phase?.phase === 'observation' && stats.baseline && stats.baseline.totalDays > 0 && (
-        <Card>
+        <Card variant="nautical">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <BarChart2 className="w-4 h-4 text-blue-500" />
-              Your Baseline ({stats.baseline.totalDays} days)
+            <CardTitle className="text-base flex items-center gap-2 font-display text-ink">
+              <Spyglass size={18} className="text-teal" />
+              Survey Results ({stats.baseline.totalDays} days charted)
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                <div className="text-muted-foreground text-xs">Daily Average</div>
-                <div className="font-bold">{formatMinutes(stats.baseline.avgDailyMinutes)}</div>
+              <div className="p-2 bg-parchment-dark/40 rounded-lg border border-gold/20">
+                <div className="text-ink-light/70 text-xs">Daily Voyage</div>
+                <div className="font-bold text-ink font-mono coordinate-text">
+                  {formatMinutes(stats.baseline.avgDailyMinutes)}
+                </div>
               </div>
-              <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                <div className="text-muted-foreground text-xs">Videos/Day</div>
-                <div className="font-bold">{stats.baseline.avgDailyVideos}</div>
+              <div className="p-2 bg-parchment-dark/40 rounded-lg border border-gold/20">
+                <div className="text-ink-light/70 text-xs">Ships/Day</div>
+                <div className="font-bold text-ink font-mono coordinate-text">
+                  {stats.baseline.avgDailyVideos}
+                </div>
               </div>
-              <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                <div className="text-muted-foreground text-xs">Productive</div>
-                <div className="font-bold text-green-600">{stats.baseline.productivityRatio}%</div>
+              <div className="p-2 bg-parchment-dark/40 rounded-lg border border-gold/20">
+                <div className="text-ink-light/70 text-xs">Cargo Quality</div>
+                <div className="font-bold text-teal font-mono coordinate-text">
+                  {stats.baseline.productivityRatio}%
+                </div>
               </div>
-              <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                <div className="text-muted-foreground text-xs">From Recs</div>
-                <div className="font-bold text-orange-600">{stats.baseline.recommendationRatio}%</div>
+              <div className="p-2 bg-parchment-dark/40 rounded-lg border border-gold/20">
+                <div className="text-ink-light/70 text-xs">From Currents</div>
+                <div className="font-bold text-gold-dark font-mono coordinate-text">
+                  {stats.baseline.recommendationRatio}%
+                </div>
               </div>
               {stats.baseline.peakHours.length > 0 && (
-                <div className="col-span-2 p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
-                  <div className="text-muted-foreground text-xs">Peak Hours</div>
-                  <div className="font-bold flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
+                <div className="col-span-2 p-2 bg-parchment-dark/40 rounded-lg border border-gold/20">
+                  <div className="text-ink-light/70 text-xs">Peak Tides</div>
+                  <div className="font-bold text-ink flex items-center gap-1 font-mono coordinate-text">
+                    <Clock className="w-3 h-3 text-gold-dark" />
                     {stats.baseline.peakHours.map((h) => `${h}:00`).join(', ')}
                   </div>
                 </div>
@@ -510,81 +640,125 @@ export default function Dashboard({
         </Card>
       )}
 
-      {/* Today's Progress */}
-      <Card>
+      {/* ============================================================= */}
+      {/* TODAY'S HEADING                                                 */}
+      {/* ============================================================= */}
+      <Card variant="nautical">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Target className="w-4 h-4 text-blue-500" />
-            Today's Progress
+          <CardTitle className="text-base flex items-center gap-2 font-display text-ink">
+            <CompassRose score={focusScore} size={28} className="text-ink" />
+            Today's Heading
           </CardTitle>
         </CardHeader>
         <CardContent>
           {stats.today ? (
             <>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-2xl font-bold">{formatMinutes(todayMinutes)}</span>
-                <span className={`text-sm ${isOverGoal ? 'text-red-500' : 'text-green-500'}`}>
-                  {isOverGoal
-                    ? `+${formatMinutes(todayMinutes - dailyGoalMinutes)} over`
-                    : `${formatMinutes(dailyGoalMinutes - todayMinutes)} left`}
+                <span className="text-2xl font-display font-bold text-ink coordinate-text">
+                  {formatCoordinate(todayMinutes)}
+                </span>
+                <span className="text-sm font-mono coordinate-text text-ink-light/70">
+                  / {formatCoordinate(dailyGoalMinutes)}
                 </span>
               </div>
-              <Progress value={goalProgress} className={isOverGoal ? '[&>div]:bg-red-500' : '[&>div]:bg-blue-500'} />
-              <div className="flex justify-between mt-1 text-xs text-muted-foreground">
-                <span>0m</span>
-                <span>{formatMinutes(dailyGoalMinutes)} goal</span>
+              <Progress
+                value={goalProgress}
+                variant="nautical"
+                className={isOverGoal ? '[&>div]:bg-gradient-to-r [&>div]:from-storm-red [&>div]:to-storm-red/80' : ''}
+              />
+              <div className="flex justify-between mt-1.5 text-xs text-ink-light/60 font-mono coordinate-text">
+                <span>0'00"</span>
+                <span className={isOverGoal ? 'text-storm-red font-semibold' : 'text-teal'}>
+                  {isOverGoal
+                    ? `+${formatMinutes(todayMinutes - dailyGoalMinutes)} past charted course`
+                    : `${formatMinutes(dailyGoalMinutes - todayMinutes)} to destination`}
+                </span>
               </div>
             </>
           ) : (
-            <div className="py-4 text-center text-muted-foreground text-sm">No activity today yet.</div>
+            <div className="py-6 text-center text-ink-light/60 text-sm captains-log">
+              No voyages logged today. The sea awaits.
+            </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Quick Stats */}
+      {/* ============================================================= */}
+      {/* QUICK STATS — 4 parchment cards                                */}
+      {/* ============================================================= */}
       <div className="grid grid-cols-4 gap-2">
-        <Card className="p-3">
+        {/* Ships Spotted (videos) */}
+        <Card variant="nautical" className="p-3">
           <div className="flex flex-col items-center">
-            <Video className="w-4 h-4 text-purple-500 mb-1" />
-            <span className="text-lg font-bold">{stats.today?.videoCount ?? '-'}</span>
-            <span className="text-[10px] text-muted-foreground">Videos</span>
+            <ShipIcon drift={0} size={20} className="text-ink mb-1" />
+            <span className="text-lg font-display font-bold text-ink">
+              {stats.today?.videoCount ?? '-'}
+            </span>
+            <span className="text-[10px] text-ink-light/60">Ships Spotted</span>
           </div>
         </Card>
-        <Card className="p-3">
+
+        {/* Lighthouse Beacon (streak) */}
+        <Card variant="nautical" className="p-3">
           <div className="flex flex-col items-center">
-            <Flame className="w-4 h-4 text-orange-500 mb-1" />
-            <span className="text-lg font-bold">{stats.streak > 0 ? stats.streak : '-'}</span>
-            <span className="text-[10px] text-muted-foreground">Streak</span>
+            <Lighthouse size={20} beacon={stats.streak > 0} className="text-gold-dark mb-1" />
+            <span className="text-lg font-display font-bold text-ink">
+              {stats.streak > 0 ? stats.streak : '-'}
+            </span>
+            <span className="text-[10px] text-ink-light/60">Beacon</span>
           </div>
         </Card>
-        <Card className="p-3">
+
+        {/* Fair Winds (productive) */}
+        <Card variant="nautical" className="p-3">
           <div className="flex flex-col items-center">
-            <ThumbsUp className="w-4 h-4 text-green-500 mb-1" />
-            <span className="text-lg font-bold">{stats.today?.productiveVideos ?? '-'}</span>
-            <span className="text-[10px] text-muted-foreground">Good</span>
+            <span className="text-teal mb-1">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2 10 Q5 6, 10 8 Q15 10, 18 6" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                <path d="M2 14 Q5 10, 10 12 Q15 14, 18 10" stroke="currentColor" strokeWidth="1" opacity="0.5" fill="none" />
+              </svg>
+            </span>
+            <span className="text-lg font-display font-bold text-teal">
+              {stats.today?.productiveVideos ?? '-'}
+            </span>
+            <span className="text-[10px] text-ink-light/60">Fair Winds</span>
           </div>
         </Card>
-        <Card className="p-3">
+
+        {/* Sirens' Call (unproductive) */}
+        <Card variant="nautical" className="p-3">
           <div className="flex flex-col items-center">
-            <ThumbsDown className="w-4 h-4 text-red-500 mb-1" />
-            <span className="text-lg font-bold">{stats.today?.unproductiveVideos ?? '-'}</span>
-            <span className="text-[10px] text-muted-foreground">Wasted</span>
+            <span className="text-storm-red mb-1">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 2 L10 4 M10 16 L10 18 M4 10 L2 10 M18 10 L16 10" stroke="currentColor" strokeWidth="1.5" />
+                <circle cx="10" cy="10" r="5" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                <circle cx="10" cy="10" r="1.5" fill="currentColor" />
+              </svg>
+            </span>
+            <span className="text-lg font-display font-bold text-storm-red">
+              {stats.today?.unproductiveVideos ?? '-'}
+            </span>
+            <span className="text-[10px] text-ink-light/60">Sirens' Call</span>
           </div>
         </Card>
       </div>
 
-      {/* Weekly Trend */}
-      <Card>
+      <RopeDivider />
+
+      {/* ============================================================= */}
+      {/* NAVIGATION CHART (weekly trend)                                */}
+      {/* ============================================================= */}
+      <Card variant="nautical">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center justify-between">
+          <CardTitle className="text-base flex items-center justify-between font-display text-ink">
             <span className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-blue-500" />
-              This Week
+              <CompassRose score={50} size={20} className="text-ink-light" />
+              Navigation Chart
             </span>
             {stats.weekly && stats.weekly.prevWeekMinutes > 0 && stats.weekly.changePercent !== 0 && (
               <span
-                className={`text-sm flex items-center gap-1 ${
-                  stats.weekly.changePercent < 0 ? 'text-green-500' : 'text-red-500'
+                className={`text-sm flex items-center gap-1 font-body ${
+                  stats.weekly.changePercent < 0 ? 'text-teal' : 'text-storm-red'
                 }`}
               >
                 {stats.weekly.changePercent < 0 ? (
@@ -592,7 +766,7 @@ export default function Dashboard({
                 ) : (
                   <TrendingUp className="w-4 h-4" />
                 )}
-                {Math.abs(stats.weekly.changePercent)}% vs last week
+                {Math.abs(stats.weekly.changePercent)}% vs last voyage
               </span>
             )}
           </CardTitle>
@@ -600,71 +774,97 @@ export default function Dashboard({
         <CardContent>
           {stats.last7Days.length > 0 ? (
             <>
-              <div className="h-32">
+              <div className="h-36 map-grid rounded-lg p-1">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={weeklyChartData}>
                     <defs>
-                      <linearGradient id="colorMinutes" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.3} />
-                        <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0} />
+                      <linearGradient id="nauticalGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#0d9488" stopOpacity={0.4} />
+                        <stop offset="50%" stopColor="#5eead4" stopOpacity={0.15} />
+                        <stop offset="95%" stopColor="#5eead4" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <XAxis dataKey="name" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: 10, fill: '#4a3728' }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
                     <YAxis hide />
                     <Tooltip
                       content={({ active, payload }) => {
                         if (active && payload && payload.length) {
                           return (
-                            <div className="bg-slate-800 text-white px-2 py-1 rounded text-xs">
-                              {formatMinutes(payload[0].value as number)} • {payload[0].payload.videos} videos
+                            <div className="bg-navy text-parchment px-3 py-1.5 rounded-lg text-xs border border-gold/30 font-mono">
+                              {formatMinutes(payload[0].value as number)} -- {payload[0].payload.videos} ships
                             </div>
                           );
                         }
                         return null;
                       }}
                     />
+                    {/* Goal line (dashed gold "trade route") */}
+                    <Area
+                      type="monotone"
+                      dataKey="goal"
+                      stroke="#d4a574"
+                      strokeWidth={1.5}
+                      strokeDasharray="6 3"
+                      fillOpacity={0}
+                      fill="none"
+                      dot={false}
+                      activeDot={false}
+                    />
+                    {/* Actual data area */}
                     <Area
                       type="monotone"
                       dataKey="minutes"
-                      stroke={COLORS.primary}
+                      stroke="#0d9488"
                       strokeWidth={2}
                       fillOpacity={1}
-                      fill="url(#colorMinutes)"
+                      fill="url(#nauticalGrad)"
                     />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
-              <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                <span>Total: {formatMinutes(stats.weekly?.thisWeekMinutes ?? 0)}</span>
-                <span>{stats.weekly?.thisWeekVideos ?? 0} videos</span>
+              <div className="flex justify-between text-xs text-ink-light/60 mt-2 font-mono coordinate-text">
+                <span>Total voyage: {formatMinutes(stats.weekly?.thisWeekMinutes ?? 0)}</span>
+                <span>{stats.weekly?.thisWeekVideos ?? 0} ships logged</span>
+              </div>
+              {/* Legend for dashed trade route */}
+              <div className="flex items-center gap-2 mt-1 text-xs text-ink-light/50">
+                <svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke="#d4a574" strokeWidth="1.5" strokeDasharray="4 2" /></svg>
+                <span>Charted route ({formatMinutes(dailyGoalMinutes)} goal)</span>
               </div>
             </>
           ) : (
-            <div className="h-32 flex items-center justify-center text-muted-foreground text-sm">
-              No data yet. Start watching to see your stats.
+            <div className="h-36 flex items-center justify-center text-ink-light/50 text-sm captains-log map-grid rounded-lg">
+              No charts drawn yet. Set sail to begin mapping.
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Drift Card 🌊 */}
+      {/* ============================================================= */}
+      {/* CURRENTS & TIDES (drift)                                       */}
+      {/* ============================================================= */}
       {stats.drift && (
-        <Card>
+        <Card variant="nautical">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center justify-between">
+            <CardTitle className="text-base flex items-center justify-between font-display text-ink">
               <span className="flex items-center gap-2">
-                <Waves className="w-4 h-4 text-blue-500" />
-                Drift
+                <ShipIcon drift={stats.drift.current} size={24} className="text-ink" />
+                Currents &amp; Tides
               </span>
               <span
-                className={`text-lg font-bold ${
+                className={`text-lg font-display font-bold font-mono ${
                   stats.drift.level === 'critical'
-                    ? 'text-red-500'
+                    ? 'text-storm-red'
                     : stats.drift.level === 'high'
-                      ? 'text-orange-500'
+                      ? 'text-storm-red/80'
                       : stats.drift.level === 'medium'
-                        ? 'text-yellow-500'
-                        : 'text-green-500'
+                        ? 'text-gold-dark'
+                        : 'text-teal'
                 }`}
               >
                 {Math.round(stats.drift.current * 100)}%
@@ -672,33 +872,35 @@ export default function Dashboard({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Drift Progress Bar */}
-            <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-3">
+            {/* Wave intensity bar — gradient from teal to amber to storm */}
+            <div className="h-3 rounded-full overflow-hidden mb-3 border border-gold/20">
               <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  stats.drift.level === 'critical'
-                    ? 'bg-gradient-to-r from-red-500 to-red-600'
-                    : stats.drift.level === 'high'
-                      ? 'bg-gradient-to-r from-orange-500 to-orange-600'
-                      : stats.drift.level === 'medium'
-                        ? 'bg-gradient-to-r from-yellow-500 to-yellow-600'
-                        : 'bg-gradient-to-r from-green-500 to-green-600'
-                }`}
-                style={{ width: `${stats.drift.current * 100}%` }}
+                className="h-full rounded-full transition-all duration-700"
+                style={{
+                  width: `${stats.drift.current * 100}%`,
+                  background:
+                    stats.drift.level === 'critical'
+                      ? 'linear-gradient(90deg, #991b1b, #dc2626)'
+                      : stats.drift.level === 'high'
+                        ? 'linear-gradient(90deg, #f59e0b, #991b1b)'
+                        : stats.drift.level === 'medium'
+                          ? 'linear-gradient(90deg, #0d9488, #f59e0b)'
+                          : 'linear-gradient(90deg, #0d9488, #5eead4)',
+                }}
               />
             </div>
 
-            {/* Drift Level Labels */}
-            <div className="flex justify-between text-xs text-muted-foreground mb-4">
-              <span>Focused</span>
-              <span>Drifting</span>
-              <span>High</span>
-              <span>Critical</span>
+            {/* Wave-level labels */}
+            <div className="flex justify-between text-xs text-ink-light/50 mb-4 font-mono coordinate-text">
+              <span>Calm</span>
+              <span>Choppy</span>
+              <span>Rough</span>
+              <span>Storm</span>
             </div>
 
-            {/* Drift History Chart */}
+            {/* Drift history chart */}
             {stats.drift.history.length > 1 && (
-              <div className="h-24">
+              <div className="h-24 map-grid rounded-lg">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
                     data={stats.drift.history.map((h) => ({
@@ -707,18 +909,23 @@ export default function Dashboard({
                     }))}
                   >
                     <defs>
-                      <linearGradient id="driftGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                      <linearGradient id="driftNauticalGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#d4a574" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#d4a574" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <XAxis dataKey="time" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                    <XAxis
+                      dataKey="time"
+                      tick={{ fontSize: 10, fill: '#4a3728' }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
                     <YAxis domain={[0, 100]} hide />
                     <Tooltip
                       content={({ active, payload }) => {
                         if (active && payload && payload.length) {
                           return (
-                            <div className="bg-slate-800 text-white px-2 py-1 rounded text-xs">
+                            <div className="bg-navy text-parchment px-3 py-1.5 rounded-lg text-xs border border-gold/30 font-mono">
                               {payload[0].value}% drift at {payload[0].payload.time}
                             </div>
                           );
@@ -729,77 +936,91 @@ export default function Dashboard({
                     <Area
                       type="monotone"
                       dataKey="drift"
-                      stroke="#f97316"
+                      stroke="#b8956a"
                       strokeWidth={2}
                       fillOpacity={1}
-                      fill="url(#driftGrad)"
+                      fill="url(#driftNauticalGrad)"
                     />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
             )}
 
-            {/* Current Status */}
-            <div className="text-center text-sm mt-2">
-              {stats.drift.level === 'low' && <span className="text-green-600">🎯 You're staying focused!</span>}
-              {stats.drift.level === 'medium' && <span className="text-yellow-600">🌊 Starting to drift...</span>}
-              {stats.drift.level === 'high' && <span className="text-orange-600">⚠️ Drifting from your goals</span>}
-              {stats.drift.level === 'critical' && (
-                <span className="text-red-600">🔴 High drift — friction active</span>
-              )}
+            {/* Animated wave decoration at bottom, intensity based on level */}
+            <div className={`flex justify-center mt-2 text-teal-light ${
+              stats.drift.level === 'critical'
+                ? 'animate-wave-storm text-storm-red'
+                : stats.drift.level === 'high'
+                  ? 'animate-wave-medium text-gold-dark'
+                  : stats.drift.level === 'medium'
+                    ? 'animate-wave-gentle text-gold'
+                    : 'animate-wave-gentle'
+            }`}>
+              <WaveDecoration width={200} />
+            </div>
+
+            {/* Status message */}
+            <div className="text-center text-sm mt-2 captains-log">
+              <span className={driftMessages[stats.drift.level]?.color || 'text-teal'}>
+                {driftMessages[stats.drift.level]?.text || 'Calm seas'}
+              </span>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Challenge Tier Card */}
-      <Card>
+      <RopeDivider />
+
+      {/* ============================================================= */}
+      {/* NAUTICAL RANK (challenge tier)                                  */}
+      {/* ============================================================= */}
+      <Card variant="nautical">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Trophy className="w-4 h-4 text-yellow-500" />
-            Challenge Tier
+          <CardTitle className="text-base flex items-center gap-2 font-display text-ink">
+            <AnchorIcon size={18} className="text-gold-dark" />
+            Rank &amp; Commission
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <span className="text-2xl">
-                {stats.challengeTier === 'casual' && '🌱'}
-                {stats.challengeTier === 'focused' && '🎯'}
-                {stats.challengeTier === 'disciplined' && '⚡'}
-                {stats.challengeTier === 'monk' && '🔥'}
-                {stats.challengeTier === 'ascetic' && '💎'}
-              </span>
+              <div className="p-2 rounded-lg bg-parchment-dark/50 border border-gold/30">
+                {currentTier.icon}
+              </div>
               <div>
-                <div className="font-semibold capitalize">{stats.challengeTier}</div>
-                <div className="text-xs text-muted-foreground">
-                  {stats.challengeTier === 'casual' && '60 min • 1.0x XP'}
-                  {stats.challengeTier === 'focused' && '45 min • 1.5x XP'}
-                  {stats.challengeTier === 'disciplined' && '30 min • 2.0x XP'}
-                  {stats.challengeTier === 'monk' && '15 min • 3.0x XP'}
-                  {stats.challengeTier === 'ascetic' && '5 min • 5.0x XP'}
+                <div className="font-display font-semibold text-ink text-lg">
+                  {currentTier.rank}
+                </div>
+                <div className="text-xs text-ink-light/60 font-mono coordinate-text">
+                  {currentTier.xpLabel}
                 </div>
               </div>
             </div>
             <div className="text-right">
-              <div className="text-sm font-medium">
-                {stats.goalMode === 'music' && '🎵 Music Mode'}
-                {stats.goalMode === 'time_reduction' && '⏱️ Time Mode'}
-                {stats.goalMode === 'strict' && '🔒 Strict Mode'}
-                {stats.goalMode === 'cold_turkey' && '🧊 Cold Turkey'}
+              <div className="text-sm font-body text-ink-light">
+                {stats.goalMode === 'music' && 'Shanty Mode'}
+                {stats.goalMode === 'time_reduction' && 'Timed Voyage'}
+                {stats.goalMode === 'strict' && 'Strict Orders'}
+                {stats.goalMode === 'cold_turkey' && 'Dry Dock'}
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Productivity Breakdown */}
+      {/* ============================================================= */}
+      {/* SHIP'S MANIFEST (productivity pie)                              */}
+      {/* ============================================================= */}
       {productivityData.length > 0 && (
-        <Card>
+        <Card variant="nautical">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Zap className="w-4 h-4 text-yellow-500" />
-              Video Quality (7 days)
+            <CardTitle className="text-base flex items-center gap-2 font-display text-ink">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gold-dark">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <line x1="3" y1="9" x2="21" y2="9" />
+                <line x1="9" y1="3" x2="9" y2="21" />
+              </svg>
+              Ship's Manifest (7 days)
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -826,11 +1047,14 @@ export default function Dashboard({
               <div className="flex-1 space-y-2">
                 {productivityData.map((item) => (
                   <div key={item.name} className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
+                    <span className="flex items-center gap-2 text-ink">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full border border-gold/30"
+                        style={{ backgroundColor: item.color }}
+                      />
                       {item.name}
                     </span>
-                    <span className="font-medium">{item.value}</span>
+                    <span className="font-mono font-medium text-ink coordinate-text">{item.value}</span>
                   </div>
                 ))}
               </div>
@@ -839,35 +1063,39 @@ export default function Dashboard({
         </Card>
       )}
 
-      {/* Top Channels */}
+      {/* ============================================================= */}
+      {/* PORTS OF CALL (top channels)                                    */}
+      {/* ============================================================= */}
       {stats.channels.length > 0 && (
-        <Card>
+        <Card variant="nautical">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Tv className="w-4 h-4 text-purple-500" />
-              Top Channels (7 days)
+            <CardTitle className="text-base flex items-center gap-2 font-display text-ink">
+              <AnchorIcon size={18} className="text-teal" />
+              Ports of Call (7 days)
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {stats.channels.slice(0, 5).map((channel, i) => {
                 const maxMinutes = stats.channels[0]?.totalMinutes || 1;
                 const percent = (channel.totalMinutes / maxMinutes) * 100;
                 return (
                   <div key={channel.channel} className="space-y-1">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="truncate max-w-[150px]" title={channel.channel}>
+                      <span className="truncate max-w-[150px] text-ink font-body" title={channel.channel}>
                         {channel.channel}
                       </span>
-                      <span className="text-muted-foreground">{formatMinutes(channel.totalMinutes)}</span>
+                      <span className="text-ink-light/70 font-mono coordinate-text text-xs">
+                        {formatMinutes(channel.totalMinutes)} at port
+                      </span>
                     </div>
-                    <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-2 bg-parchment-darker/50 rounded-full overflow-hidden border border-gold/15">
                       <div
                         className="h-full rounded-full"
                         style={{
                           width: `${percent}%`,
-                          backgroundColor: COLORS.purple,
-                          opacity: 1 - i * 0.15,
+                          background: `linear-gradient(90deg, #b8956a, #d4a574)`,
+                          opacity: 1 - i * 0.12,
                         }}
                       />
                     </div>
@@ -879,61 +1107,85 @@ export default function Dashboard({
         </Card>
       )}
 
-      {/* Achievements */}
+      <RopeDivider />
+
+      {/* ============================================================= */}
+      {/* CREW'S QUARTERS (achievements)                                  */}
+      {/* ============================================================= */}
       {stats.achievements.length > 0 && (
-        <Card>
+        <Card variant="nautical">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Trophy className="w-4 h-4 text-yellow-500" />
-              Achievements ({stats.achievements.length})
+            <CardTitle className="text-base flex items-center gap-2 font-display text-ink">
+              <Star className="w-4 h-4 text-gold fill-gold" />
+              Crew's Quarters ({stats.achievements.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
-              {stats.achievements.slice(0, 8).map((achievement) => (
-                <div
-                  key={achievement.id}
-                  className={`px-3 py-2 rounded-lg border text-sm flex items-center gap-2 ${
-                    achievement.rarity === 'legendary'
-                      ? 'bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border-yellow-500/30'
-                      : achievement.rarity === 'epic'
-                        ? 'bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-purple-500/30'
-                        : achievement.rarity === 'rare'
-                          ? 'bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-blue-500/30'
-                          : achievement.rarity === 'uncommon'
-                            ? 'bg-gradient-to-r from-green-500/10 to-emerald-500/10 border-green-500/30'
-                            : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                  }`}
-                  title={achievement.description}
-                >
-                  <span className="text-lg">{achievement.icon}</span>
-                  <span className="font-medium">{achievement.name}</span>
-                </div>
-              ))}
+              {stats.achievements.slice(0, 8).map((achievement) => {
+                const borderColor = rarityBorderColor[achievement.rarity] || '#cd7f32';
+                const isLegendary = achievement.rarity === 'legendary';
+                return (
+                  <div
+                    key={achievement.id}
+                    className={`px-3 py-2 rounded-lg text-sm flex items-center gap-2 bg-parchment-dark/30 ${
+                      isLegendary ? 'animate-drift-pulse' : ''
+                    }`}
+                    style={{
+                      border: `2px solid ${borderColor}`,
+                      boxShadow: isLegendary
+                        ? `0 0 8px ${borderColor}40, 0 0 16px ${borderColor}20`
+                        : `0 1px 2px ${borderColor}15`,
+                    }}
+                    title={achievement.description}
+                  >
+                    <span className="text-lg">{achievement.icon}</span>
+                    <span className="font-display font-medium text-ink text-xs">
+                      {achievement.name}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
             {stats.achievements.length > 8 && (
-              <p className="text-xs text-muted-foreground mt-2 text-center">
-                +{stats.achievements.length - 8} more achievements
+              <p className="text-xs text-ink-light/50 mt-2 text-center captains-log">
+                +{stats.achievements.length - 8} more medals in the collection
               </p>
             )}
           </CardContent>
         </Card>
       )}
 
-      {/* Data Source Indicator */}
-      <div className="text-center text-xs text-muted-foreground">
+      {/* ============================================================= */}
+      {/* DATA SOURCE INDICATOR                                           */}
+      {/* ============================================================= */}
+      <div className="text-center text-xs text-ink-light/50 pt-2 pb-1">
         {backend.enabled ? (
-          <span className="flex items-center justify-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-            Synced with backend
+          <span className="flex items-center justify-center gap-1.5 font-mono coordinate-text">
+            <span className="w-1.5 h-1.5 rounded-full bg-teal" />
+            Compass synced with fleet headquarters
           </span>
         ) : (
-          <span className="flex items-center justify-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
-            Local data only
+          <span className="flex items-center justify-center gap-1.5 font-mono coordinate-text">
+            <span className="w-1.5 h-1.5 rounded-full bg-gold" />
+            Personal logbook only
           </span>
         )}
       </div>
+
+      {/* Bottom wave decoration */}
+      <div className="flex justify-center text-gold/30 animate-wave-gentle pb-2">
+        <WaveDecoration width={250} />
+      </div>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Small helper wrapper so CompassRose can be used as a phase icon
+// (the awareness phase needs a compass, but the icon prop expects a
+//  component with {size, className} — same signature as Spyglass etc.)
+// ---------------------------------------------------------------------------
+function CompassRoseIcon({ size = 24, className }: { size?: number; className?: string }) {
+  return <CompassRose score={75} size={size} className={className} />;
 }

@@ -8,6 +8,15 @@ import {
 } from '../../content/tracker';
 import { safeSendMessageWithCallback, safeSendMessage } from '../../lib/messaging';
 import { showFrictionOverlay, isFrictionOverlayVisible } from '../../content/friction-overlay';
+import {
+  compassRoseSvg,
+  shipIconSvg,
+  anchorSvg,
+  lighthouseSvg,
+  waveSvg,
+  shipsWheelSvg,
+  ropeBorderSvg,
+} from '../../components/nautical/nautical-svg-strings';
 
 interface Nudge {
   id: string;
@@ -49,6 +58,15 @@ const TIER_CONFIG: Record<ChallengeTier, { icon: string; label: string; nextLabe
 };
 
 const TIER_ORDER: ChallengeTier[] = ['casual', 'focused', 'disciplined', 'monk', 'ascetic'];
+
+// Nautical rank mapping
+const NAUTICAL_RANKS: Record<ChallengeTier, string> = {
+  casual: 'Deckhand',
+  focused: 'Helmsman',
+  disciplined: 'First Mate',
+  monk: 'Captain',
+  ascetic: 'Admiral',
+};
 
 interface ProductiveUrl {
   id: string;
@@ -121,6 +139,13 @@ function formatMinutes(minutes: number): string {
   return `${minutes}m`;
 }
 
+// Format time in nautical coordinate style: 14'23"
+function formatTimeCoordinate(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}'${s.toString().padStart(2, '0')}"`;
+}
+
 // Calculate focus score (0-100)
 function calculateFocusScore(productive: number, unproductive: number, todayMinutes: number, goal: number): number {
   if (productive + unproductive === 0) return 100;
@@ -161,7 +186,26 @@ function compute24hData(
   return data.map((s) => Math.round(s / 60));
 }
 
-// Icons as SVG components
+// Drift level color mapping
+function getDriftColor(level: DriftData['level']): string {
+  switch (level) {
+    case 'low': return '#0d9488';
+    case 'medium': return '#f59e0b';
+    case 'high': return '#f97316';
+    case 'critical': return '#991b1b';
+  }
+}
+
+function getDriftStatusText(level: DriftData['level']): { text: string; color: string } {
+  switch (level) {
+    case 'low': return { text: 'Calm Seas', color: '#0d9488' };
+    case 'medium': return { text: 'Choppy Waters', color: '#f59e0b' };
+    case 'high': return { text: 'Rough Seas', color: '#f97316' };
+    case 'critical': return { text: 'STORM', color: '#991b1b' };
+  }
+}
+
+// Icons as SVG components (restyled for nautical theme)
 const Icons = {
   Clock: () => (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -344,8 +388,8 @@ const Icons = {
   ),
 };
 
-// 24h day cycle bar chart
-function DayCycleChart({ data }: { data: number[] }) {
+// Nautical 24h Ship's Log chart
+function ShipsLogChart({ data }: { data: number[] }) {
   const max = Math.max(...data, 1);
   const currentHour = new Date().getHours();
   const labels = [
@@ -357,24 +401,77 @@ function DayCycleChart({ data }: { data: number[] }) {
 
   return (
     <div style={{ width: '100%' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', height: '36px', gap: '1px' }}>
-        {data.map((minutes, hour) => (
-          <div
-            key={hour}
-            title={`${hour}:00 — ${minutes}m`}
-            style={{
-              flex: 1,
-              minHeight: minutes > 0 ? '3px' : '1px',
-              height: `${Math.max(minutes > 0 ? 8 : 3, (minutes / max) * 100)}%`,
-              background:
-                hour === currentHour ? '#3b82f6' : minutes > 0 ? 'rgba(74, 222, 128, 0.5)' : 'rgba(255,255,255,0.06)',
-              borderRadius: '1.5px 1.5px 0 0',
-              transition: 'height 0.5s ease',
-            }}
-          />
-        ))}
+      {/* Faint map-grid lines */}
+      <div style={{
+        position: 'relative',
+        height: '48px',
+        backgroundImage: 'linear-gradient(to right, rgba(44,24,16,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(44,24,16,0.06) 1px, transparent 1px)',
+        backgroundSize: `${100 / 24}% 12px`,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', height: '100%', gap: '1px', position: 'relative', zIndex: 1 }}>
+          {data.map((minutes, hour) => {
+            const isCurrentHour = hour === currentHour;
+            const barHeight = minutes > 0 ? Math.max(10, (minutes / max) * 100) : 4;
+            return (
+              <div
+                key={hour}
+                title={`${hour}:00 -- ${minutes}m`}
+                style={{
+                  flex: 1,
+                  position: 'relative',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  height: '100%',
+                }}
+              >
+                {/* Gold dot marker for current hour */}
+                {isCurrentHour && minutes > 0 && (
+                  <div style={{
+                    width: '4px',
+                    height: '4px',
+                    borderRadius: '50%',
+                    background: '#d4a574',
+                    marginBottom: '2px',
+                    boxShadow: '0 0 4px rgba(212,165,116,0.6)',
+                  }} />
+                )}
+                {/* Mast bar */}
+                <div style={{
+                  width: minutes > 0 ? '3px' : '1px',
+                  height: `${barHeight}%`,
+                  minHeight: minutes > 0 ? '4px' : '1px',
+                  background: isCurrentHour
+                    ? '#d4a574'
+                    : minutes > 0
+                      ? 'rgba(26,39,68,0.6)'
+                      : 'rgba(44,24,16,0.08)',
+                  borderRadius: '1px 1px 0 0',
+                  transition: 'height 0.5s ease',
+                  position: 'relative',
+                }} >
+                  {/* Flag-like top for bars with data */}
+                  {minutes > 0 && (
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: '3px',
+                      width: '5px',
+                      height: '4px',
+                      background: isCurrentHour
+                        ? 'rgba(212,165,116,0.8)'
+                        : 'rgba(26,39,68,0.3)',
+                      clipPath: 'polygon(0 0, 100% 25%, 0 100%)',
+                    }} />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
-      <div style={{ position: 'relative', height: '12px', marginTop: '2px' }}>
+      <div style={{ position: 'relative', height: '14px', marginTop: '2px' }}>
         {labels.map(({ hour, text }) => (
           <span
             key={hour}
@@ -382,62 +479,23 @@ function DayCycleChart({ data }: { data: number[] }) {
               position: 'absolute',
               left: `${(hour / 24) * 100}%`,
               fontSize: '8px',
-              color: 'rgba(255,255,255,0.3)',
+              color: 'rgba(44,24,16,0.4)',
+              fontFamily: '"Source Sans 3", sans-serif',
               transform: hour === 0 ? 'none' : 'translateX(-50%)',
             }}
           >
             {text}
           </span>
         ))}
-        <span
-          style={{
-            position: 'absolute',
-            right: 0,
-            fontSize: '8px',
-            color: 'rgba(255,255,255,0.3)',
-          }}
-        >
+        <span style={{
+          position: 'absolute',
+          right: 0,
+          fontSize: '8px',
+          color: 'rgba(44,24,16,0.4)',
+          fontFamily: '"Source Sans 3", sans-serif',
+        }}>
           12a
         </span>
-      </div>
-    </div>
-  );
-}
-
-// Focus score ring
-function FocusRing({ score }: { score: number }) {
-  const circumference = 2 * Math.PI * 28;
-  const strokeDashoffset = circumference - (score / 100) * circumference;
-  const color = score >= 80 ? '#4ade80' : score >= 50 ? '#fbbf24' : '#f87171';
-
-  return (
-    <div style={{ position: 'relative', width: '72px', height: '72px' }}>
-      <svg width="72" height="72" style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx="36" cy="36" r="28" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="6" />
-        <circle
-          cx="36"
-          cy="36"
-          r="28"
-          fill="none"
-          stroke={color}
-          strokeWidth="6"
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-          style={{ transition: 'stroke-dashoffset 0.5s ease' }}
-        />
-      </svg>
-      <div
-        style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          textAlign: 'center',
-        }}
-      >
-        <div style={{ fontSize: '18px', fontWeight: '700', color }}>{score}</div>
-        <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Focus</div>
       </div>
     </div>
   );
@@ -464,241 +522,6 @@ const animationStyles = `
     50% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.5); }
   }
 `;
-
-const s = {
-  container: {
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    fontSize: '14px',
-    color: '#fff',
-  },
-  pill: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '6px 12px',
-    background: 'rgba(0, 0, 0, 0.85)',
-    backdropFilter: 'blur(8px)',
-    borderRadius: '9999px',
-    fontSize: '13px',
-    fontWeight: '500',
-    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-    cursor: 'pointer',
-    transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-  },
-  nudge: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    padding: '10px 12px',
-    borderRadius: '10px',
-    marginBottom: '12px',
-    position: 'relative' as const,
-    animation: 'yt-detox-shake 0.3s ease',
-  },
-  nudgeIcon: { flexShrink: 0 },
-  nudgeText: { flex: 1, fontSize: '12px', lineHeight: '1.3' },
-  nudgeClose: {
-    position: 'absolute' as const,
-    top: '4px',
-    right: '4px',
-    background: 'none',
-    border: 'none',
-    color: 'rgba(255,255,255,0.5)',
-    cursor: 'pointer',
-    padding: '2px',
-    transition: 'color 0.2s ease',
-  },
-  card: {
-    background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.97) 0%, rgba(30, 41, 59, 0.97) 100%)',
-    backdropFilter: 'blur(16px)',
-    borderRadius: '16px',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    overflow: 'hidden',
-    width: '100%',
-    transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '12px 16px',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-  },
-  headerLeft: { display: 'flex', alignItems: 'center', gap: '8px' },
-  statusDot: {
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%',
-    background: '#22c55e',
-    animation: 'pulse 2s infinite',
-  },
-  headerTitle: { fontSize: '13px', fontWeight: '600', color: 'rgba(255, 255, 255, 0.9)' },
-  headerButtons: { display: 'flex', gap: '4px' },
-  iconBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '28px',
-    height: '28px',
-    background: 'transparent',
-    border: 'none',
-    borderRadius: '8px',
-    color: 'rgba(255, 255, 255, 0.6)',
-    cursor: 'pointer',
-  },
-  body: { padding: '16px' },
-  heroRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' },
-  timerSection: { flex: 1 },
-  timerValue: {
-    fontSize: '32px',
-    fontWeight: '700',
-    color: '#fff',
-    fontVariantNumeric: 'tabular-nums',
-    letterSpacing: '-1px',
-  },
-  timerLabel: {
-    fontSize: '10px',
-    color: 'rgba(255, 255, 255, 0.5)',
-    textTransform: 'uppercase' as const,
-    letterSpacing: '1px',
-  },
-  streakBadge: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    alignItems: 'center',
-    padding: '8px 12px',
-    background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.2) 0%, rgba(245, 158, 11, 0.2) 100%)',
-    borderRadius: '12px',
-    border: '1px solid rgba(251, 191, 36, 0.3)',
-  },
-  streakNumber: { fontSize: '20px', fontWeight: '700', color: '#fbbf24' },
-  streakLabel: {
-    fontSize: '9px',
-    color: 'rgba(251, 191, 36, 0.8)',
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.5px',
-  },
-  statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '16px' },
-  statCard: {
-    padding: '10px 6px',
-    background: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: '10px',
-    textAlign: 'center' as const,
-  },
-  statIcon: { display: 'flex', justifyContent: 'center', marginBottom: '4px' },
-  statValue: { fontSize: '18px', fontWeight: '700', color: '#fff' },
-  statLabel: {
-    fontSize: '8px',
-    color: 'rgba(255, 255, 255, 0.5)',
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.5px',
-  },
-  levelBar: {
-    marginBottom: '16px',
-    padding: '12px',
-    background: 'linear-gradient(135deg, rgba(147, 51, 234, 0.15) 0%, rgba(79, 70, 229, 0.15) 100%)',
-    borderRadius: '12px',
-    border: '1px solid rgba(147, 51, 234, 0.2)',
-  },
-  levelHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' },
-  levelInfo: { display: 'flex', alignItems: 'center', gap: '8px' },
-  levelBadge: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '28px',
-    height: '28px',
-    background: 'linear-gradient(135deg, #a855f7 0%, #6366f1 100%)',
-    borderRadius: '8px',
-    fontSize: '14px',
-    fontWeight: '700',
-  },
-  levelText: { fontSize: '12px', color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
-  levelXp: { fontSize: '10px', color: 'rgba(255,255,255,0.5)' },
-  levelProgress: { height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' },
-  levelFill: {
-    height: '100%',
-    background: 'linear-gradient(90deg, #a855f7 0%, #6366f1 100%)',
-    borderRadius: '3px',
-    transition: 'width 0.5s',
-  },
-  weeklySection: { marginBottom: '16px', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px' },
-  weeklyHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' },
-  weeklyTitle: { fontSize: '11px', color: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', gap: '6px' },
-  weeklyTrend: { fontSize: '10px', color: '#4ade80', display: 'flex', alignItems: 'center', gap: '4px' },
-  progressSection: { marginBottom: '16px' },
-  progressHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' },
-  progressLabel: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    fontSize: '11px',
-    color: 'rgba(255, 255, 255, 0.7)',
-  },
-  progressValue: { fontSize: '11px', fontWeight: '500' },
-  progressBar: { height: '8px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '4px', overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: '4px', transition: 'width 0.5s ease' },
-  overLimit: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '6px',
-    fontSize: '11px',
-    color: '#f87171',
-    marginTop: '8px',
-  },
-  achievementRow: { display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' as const },
-  achievementBadge: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-    padding: '4px 8px',
-    background: 'rgba(255,255,255,0.05)',
-    borderRadius: '6px',
-    fontSize: '10px',
-    color: 'rgba(255,255,255,0.7)',
-  },
-  nowWatching: { marginBottom: '12px', padding: '10px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '10px' },
-  nowWatchingHeader: { display: 'flex', alignItems: 'flex-start', gap: '8px' },
-  nowWatchingLabel: { fontSize: '9px', color: 'rgba(255, 255, 255, 0.5)' },
-  nowWatchingTitle: {
-    fontSize: '12px',
-    color: 'rgba(255, 255, 255, 0.9)',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap' as const,
-  },
-  nowWatchingTime: { fontSize: '10px', color: 'rgba(255, 255, 255, 0.4)', marginTop: '2px' },
-  prompt: {
-    padding: '12px',
-    background: 'linear-gradient(135deg, rgba(147, 51, 234, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%)',
-    borderRadius: '12px',
-    border: '1px solid rgba(147, 51, 234, 0.3)',
-  },
-  promptText: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    fontSize: '12px',
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginBottom: '10px',
-  },
-  ratingBtns: { display: 'flex', gap: '6px' },
-  ratingBtn: {
-    flex: 1,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '4px',
-    padding: '8px 4px',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '11px',
-    fontWeight: '500',
-    cursor: 'pointer',
-  },
-};
 
 export default function Widget(): JSX.Element {
   const [state, setState] = useState<WidgetState>({
@@ -817,6 +640,28 @@ export default function Widget(): JSX.Element {
         }));
       }
     });
+  }, []);
+
+  // Listen for storage changes (e.g. sign-in from settings page)
+  useEffect(() => {
+    if (!chrome.storage?.onChanged) return;
+    const listener = (changes: Record<string, chrome.storage.StorageChange>) => {
+      if (changes.settings?.newValue?.backend) {
+        setState((p) => ({
+          ...p,
+          syncEnabled: changes.settings.newValue.backend.enabled || false,
+        }));
+      }
+      if (changes.lastSyncResult?.newValue) {
+        setState((p) => ({
+          ...p,
+          lastSyncResult: changes.lastSyncResult.newValue,
+          lastSyncTime: changes.lastSyncResult.newValue.timestamp || p.lastSyncTime,
+        }));
+      }
+    };
+    chrome.storage.onChanged.addListener(listener);
+    return () => chrome.storage.onChanged.removeListener(listener);
   }, []);
 
   // Periodically update drift and streak
@@ -996,7 +841,7 @@ export default function Widget(): JSX.Element {
         activeNudge: {
           id: `break_${Math.floor(state.sessionDuration / breakInterval)}`,
           type: 'break_reminder',
-          message: `${formatMinutes(Math.floor(state.sessionDuration / 60))} session — time for a quick break?`,
+          message: `${formatMinutes(Math.floor(state.sessionDuration / 60))} session -- time for a quick break?`,
           icon: 'Coffee',
           color: '#60a5fa',
           dismissible: true,
@@ -1013,7 +858,7 @@ export default function Widget(): JSX.Element {
         activeNudge: {
           id: 'bedtime_warning',
           type: 'bedtime',
-          message: 'Getting late — screens before bed affect sleep quality',
+          message: 'Getting late -- screens before bed affect sleep quality',
           icon: 'Moon',
           color: '#a78bfa',
           dismissible: true,
@@ -1121,93 +966,145 @@ export default function Widget(): JSX.Element {
   );
   const levelInfo = getLevelInfo(state.xp);
 
-  const getProgressColor = () => {
-    if (isOverGoal) return 'linear-gradient(90deg, #ef4444 0%, #f87171 100%)';
-    if (isNearGoal) return 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)';
-    return 'linear-gradient(90deg, #3b82f6 0%, #06b6d4 100%)';
-  };
-
-  const getProgressTextColor = () => (isOverGoal ? '#f87171' : isNearGoal ? '#fbbf24' : 'rgba(255,255,255,0.7)');
-
-  // Compact bar (default state)
+  // ──────────────────────────────────────────────
+  // COMPACT BAR (collapsed=false means bar view)
+  // ──────────────────────────────────────────────
   if (!state.collapsed) {
     return (
       <div style={{
         pointerEvents: 'auto',
         display: 'inline-flex',
         alignItems: 'center',
-        gap: '12px',
-        padding: '6px 16px',
-        background: 'rgba(0, 0, 0, 0.85)',
-        backdropFilter: 'blur(12px)',
-        borderRadius: '0 0 12px 12px',
+        gap: '0px',
+        padding: '0 12px',
+        background: 'linear-gradient(180deg, #1a2744 0%, #0a1628 100%)',
+        border: '1px solid rgba(212, 165, 116, 0.3)',
+        borderTop: 'none',
+        borderBottom: '2px solid #b8956a',
+        borderRadius: '0 0 10px 10px',
+        height: '36px',
         fontSize: '13px',
         fontWeight: 500,
-        color: '#fff',
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4)',
+        color: '#f5e6c8',
+        fontFamily: '"Source Sans 3", -apple-system, BlinkMacSystemFont, sans-serif',
+        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(212,165,116,0.1)',
         cursor: 'default',
         userSelect: 'none' as const,
       }}>
-        {/* Session timer */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Icons.Clock />
-          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTime(state.sessionDuration)}</span>
+        {/* Section 1: Session Timer */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '0 8px' }}>
+          <span style={{
+            fontVariantNumeric: 'tabular-nums',
+            fontFamily: '"Source Sans 3", monospace',
+            color: '#5eead4',
+            fontSize: '13px',
+            fontWeight: 600,
+            letterSpacing: '0.5px',
+          }}>
+            {formatTime(state.sessionDuration)}
+          </span>
         </div>
 
-        <span style={{ width: '1px', height: '14px', background: 'rgba(255,255,255,0.2)' }} />
+        {/* Gold divider */}
+        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '36px' }}>|</span>
 
-        {/* Daily progress */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Icons.Target />
-          <span style={{ color: getProgressTextColor() }}>
-            {formatMinutes(state.todayMinutes)}/{formatMinutes(state.dailyGoal)}
-          </span>
-          <div style={{
-            width: '40px', height: '4px',
-            background: 'rgba(255,255,255,0.15)',
-            borderRadius: '2px', overflow: 'hidden',
-          }}>
+        {/* Section 2: Daily Progress */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '0 8px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
             <div style={{
-              height: '100%', width: `${progressPercent}%`,
-              background: getProgressColor(),
+              width: '40px',
+              height: '4px',
+              background: 'rgba(212,165,116,0.15)',
               borderRadius: '2px',
-            }} />
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%',
+                width: `${progressPercent}%`,
+                background: isOverGoal
+                  ? 'linear-gradient(90deg, #991b1b, #dc2626)'
+                  : 'linear-gradient(90deg, #b8956a, #d4a574)',
+                borderRadius: '2px',
+                transition: 'width 0.5s ease',
+              }} />
+            </div>
+            <span style={{
+              fontSize: '8px',
+              color: 'rgba(212,165,116,0.5)',
+              fontFamily: '"Source Sans 3", sans-serif',
+              lineHeight: 1,
+              whiteSpace: 'nowrap' as const,
+            }}>
+              {state.todayMinutes}m / {state.dailyGoal}m
+            </span>
           </div>
         </div>
 
-        <span style={{ width: '1px', height: '14px', background: 'rgba(255,255,255,0.2)' }} />
+        {/* Gold divider */}
+        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '36px' }}>|</span>
 
-        {/* Videos */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'rgba(255,255,255,0.7)' }}>
-          <Icons.Video />
-          <span>{state.videosWatched}</span>
+        {/* Section 3: Video Count with ship icon */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '0 8px' }}>
+          <span
+            style={{ display: 'inline-flex', color: '#f5e6c8', opacity: 0.7 }}
+            dangerouslySetInnerHTML={{ __html: shipIconSvg(0, 12) }}
+          />
+          <span style={{ color: '#f5e6c8', fontSize: '13px' }}>{state.videosWatched}</span>
         </div>
 
-        {/* Streak */}
-        {state.streak > 0 && (
-          <>
-            <span style={{ width: '1px', height: '14px', background: 'rgba(255,255,255,0.2)' }} />
-            <span style={{ color: '#fbbf24' }}>🔥{state.streak}</span>
-          </>
-        )}
+        {/* Gold divider */}
+        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '36px' }}>|</span>
 
-        {/* Focus score */}
-        <span style={{ width: '1px', height: '14px', background: 'rgba(255,255,255,0.2)' }} />
-        <span style={{
-          fontSize: '12px', fontWeight: 700,
-          color: focusScore >= 80 ? '#4ade80' : focusScore >= 50 ? '#fbbf24' : '#f87171',
-        }}>
-          {focusScore}
-        </span>
+        {/* Section 4: Focus Score with compass rose */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '0 8px' }}>
+          <span
+            style={{ display: 'inline-flex', color: '#5eead4' }}
+            dangerouslySetInnerHTML={{ __html: compassRoseSvg(focusScore, 16) }}
+          />
+          <span style={{
+            color: '#5eead4',
+            fontSize: '13px',
+            fontWeight: 700,
+            fontFamily: '"Source Sans 3", monospace',
+          }}>
+            {focusScore}
+          </span>
+        </div>
+
+        {/* Gold divider */}
+        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '36px' }}>|</span>
+
+        {/* Section 5: Streak with lighthouse */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '0 8px' }}>
+          <span
+            style={{ display: 'inline-flex', color: state.streak > 0 ? '#d4a574' : 'rgba(245,230,200,0.3)' }}
+            dangerouslySetInnerHTML={{ __html: lighthouseSvg(14) }}
+          />
+          <span style={{
+            color: state.streak > 0 ? '#d4a574' : 'rgba(245,230,200,0.3)',
+            fontSize: '13px',
+            fontWeight: state.streak > 0 ? 600 : 400,
+          }}>
+            {state.streak}
+          </span>
+        </div>
+
+        {/* Gold divider */}
+        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '36px' }}>|</span>
 
         {/* Expand button */}
         <button
           onClick={() => setState((p) => ({ ...p, collapsed: true }))}
           style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)',
-            cursor: 'pointer', padding: '2px', marginLeft: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'none',
+            border: 'none',
+            color: '#d4a574',
+            cursor: 'pointer',
+            padding: '2px 4px',
+            marginLeft: '2px',
           }}
         >
           <Icons.ChevronDown />
@@ -1216,54 +1113,161 @@ export default function Widget(): JSX.Element {
     );
   }
 
-  // Expanded panel
+  // ──────────────────────────────────────────────
+  // EXPANDED PANEL — Captain's Log
+  // ──────────────────────────────────────────────
+  const driftStatus = getDriftStatusText(state.drift.level);
+  const driftColor = getDriftColor(state.drift.level);
+
   return (
-    <div style={{ ...s.container, pointerEvents: 'auto', width: '340px' }}>
-      <div style={s.card}>
-        {/* Header */}
-        <div style={s.header}>
+    <div style={{
+      pointerEvents: 'auto',
+      width: '340px',
+      fontFamily: '"Source Sans 3", -apple-system, BlinkMacSystemFont, sans-serif',
+      fontSize: '14px',
+      color: '#2c1810',
+    }}>
+      {/* Compact bar at top (same as collapsed but with up chevron) */}
+      <div style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0px',
+        padding: '0 12px',
+        background: 'linear-gradient(180deg, #1a2744 0%, #0a1628 100%)',
+        border: '1px solid rgba(212, 165, 116, 0.3)',
+        borderTop: 'none',
+        borderBottom: 'none',
+        borderRadius: '0 0 0 0',
+        height: '36px',
+        fontSize: '13px',
+        fontWeight: 500,
+        color: '#f5e6c8',
+        width: '100%',
+        boxSizing: 'border-box' as const,
+        boxShadow: 'inset 0 1px 0 rgba(212,165,116,0.1)',
+        cursor: 'default',
+        userSelect: 'none' as const,
+      }}>
+        <span style={{
+          fontVariantNumeric: 'tabular-nums',
+          fontFamily: '"Source Sans 3", monospace',
+          color: '#5eead4',
+          fontSize: '13px',
+          fontWeight: 600,
+          flex: 1,
+        }}>
+          {formatTime(state.sessionDuration)}
+        </span>
+        <span style={{ color: 'rgba(212,165,116,0.5)', fontSize: '12px', marginRight: '8px' }}>
+          {focusScore} pts
+        </span>
+        <button
+          onClick={() => setState((p) => ({ ...p, collapsed: false }))}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'none',
+            border: 'none',
+            color: '#d4a574',
+            cursor: 'pointer',
+            padding: '2px',
+          }}
+        >
+          <Icons.ChevronUp />
+        </button>
+      </div>
+
+      {/* Captain's Log panel */}
+      <div style={{
+        background: `linear-gradient(135deg, #f5e6c8 0%, #e8d5b7 50%, #d4c5a0 100%)`,
+        backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(44,24,16,0.015) 2px, rgba(44,24,16,0.015) 4px), linear-gradient(135deg, #f5e6c8 0%, #e8d5b7 50%, #d4c5a0 100%)`,
+        border: '2px solid #d4a574',
+        boxShadow: 'inset 0 0 0 1px #b8956a, 0 8px 32px rgba(0, 0, 0, 0.3)',
+        borderRadius: '0 0 12px 12px',
+        maxHeight: '70vh',
+        overflowY: 'auto' as const,
+        overflowX: 'hidden' as const,
+      }}>
+        {/* Header — Navy bar */}
+        <div style={{
+          background: '#0a1628',
+          padding: '12px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
           <div
-            style={{ ...s.headerLeft, cursor: 'pointer' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
             onClick={() => setState((p) => ({ ...p, showSyncStatus: !p.showSyncStatus }))}
             title="Click to see sync status"
           >
-            <div style={s.statusDot} />
-            <span style={s.headerTitle}>YouTube Detox</span>
+            {/* Sync status dot */}
+            <div style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: state.syncEnabled && state.lastSyncTime ? '#22c55e' : '#d4a574',
+              animation: state.syncEnabled && state.lastSyncTime ? 'yt-detox-pulse 2s infinite' : undefined,
+              boxShadow: state.syncEnabled && state.lastSyncTime
+                ? '0 0 6px rgba(34,197,94,0.5)'
+                : '0 0 4px rgba(212,165,116,0.3)',
+            }} />
+            <span style={{
+              fontFamily: '"Playfair Display", serif',
+              fontStyle: 'italic',
+              fontSize: '15px',
+              fontWeight: 600,
+              color: '#f5e6c8',
+              letterSpacing: '0.5px',
+            }}>
+              Captain's Log
+            </span>
             {state.syncEnabled && (
-              <span style={{ marginLeft: '4px', opacity: 0.5 }}>
+              <span style={{ marginLeft: '2px', opacity: 0.5, color: '#f5e6c8' }}>
                 {state.lastSyncTime ? <Icons.Cloud /> : <Icons.CloudOff />}
               </span>
             )}
           </div>
-          <div style={s.headerButtons}>
-            <button style={s.iconBtn} onClick={() => setState((p) => ({ ...p, collapsed: false }))}>
-              <Icons.ChevronUp />
-            </button>
-          </div>
+          <button
+            onClick={() => setState((p) => ({ ...p, collapsed: false }))}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '28px',
+              height: '28px',
+              background: 'transparent',
+              border: 'none',
+              borderRadius: '6px',
+              color: '#d4a574',
+              cursor: 'pointer',
+            }}
+          >
+            <Icons.ChevronUp />
+          </button>
         </div>
 
         {/* Sync Status Popup */}
         {state.showSyncStatus && (
-          <div
-            style={{
-              padding: '10px 16px',
-              background: 'rgba(0,0,0,0.3)',
-              borderBottom: '1px solid rgba(255,255,255,0.1)',
-              fontSize: '11px',
-            }}
-          >
+          <div style={{
+            padding: '10px 16px',
+            background: '#0a1628',
+            borderBottom: '1px solid rgba(212,165,116,0.2)',
+            fontSize: '11px',
+          }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ color: 'rgba(255,255,255,0.6)' }}>Cloud Sync</span>
+              <span style={{ color: 'rgba(245,230,200,0.6)' }}>Cloud Sync</span>
               {state.syncEnabled ? (
                 <span style={{ color: '#4ade80', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <Icons.Check /> Enabled
                 </span>
               ) : (
-                <span style={{ color: 'rgba(255,255,255,0.4)' }}>Disabled</span>
+                <span style={{ color: 'rgba(245,230,200,0.4)' }}>Disabled</span>
               )}
             </div>
             {state.syncEnabled && state.lastSyncTime && (
-              <div style={{ marginTop: '6px', color: 'rgba(255,255,255,0.5)' }}>
+              <div style={{ marginTop: '6px', color: 'rgba(245,230,200,0.5)' }}>
                 Last synced:{' '}
                 {(() => {
                   const diff = Date.now() - state.lastSyncTime;
@@ -1275,7 +1279,7 @@ export default function Widget(): JSX.Element {
               </div>
             )}
             {state.syncEnabled && !state.lastSyncTime && (
-              <div style={{ marginTop: '6px', color: 'rgba(255,255,255,0.4)' }}>Not synced yet — sign in to sync</div>
+              <div style={{ marginTop: '6px', color: 'rgba(245,230,200,0.4)' }}>Waiting for first sync...</div>
             )}
 
             {/* Sync Debug Panel */}
@@ -1285,7 +1289,7 @@ export default function Widget(): JSX.Element {
                   style={{
                     marginTop: '8px',
                     cursor: 'pointer',
-                    color: 'rgba(255,255,255,0.5)',
+                    color: 'rgba(245,230,200,0.5)',
                     fontSize: '10px',
                     userSelect: 'none',
                   }}
@@ -1294,12 +1298,16 @@ export default function Widget(): JSX.Element {
                   {state.syncDebugExpanded ? '[-]' : '[+]'} Debug
                 </div>
                 {state.syncDebugExpanded && (
-                  <div style={{ marginTop: '6px', fontSize: '10px', color: 'rgba(255,255,255,0.5)' }}>
+                  <div style={{
+                    marginTop: '6px',
+                    fontSize: '10px',
+                    color: 'rgba(245,230,200,0.5)',
+                    fontFamily: '"Source Sans 3", monospace',
+                  }}>
                     <button
                       onClick={() => {
                         safeSendMessageWithCallback('SYNC_NOW', undefined, (res: any) => {
                           if (res && !res.error) {
-                            // Refresh lastSyncResult from storage after sync
                             chrome.storage.local.get(['lastSyncResult', 'syncState'], (data) => {
                               setState((p) => ({
                                 ...p,
@@ -1312,13 +1320,14 @@ export default function Widget(): JSX.Element {
                       }}
                       style={{
                         padding: '3px 8px',
-                        background: 'rgba(59,130,246,0.3)',
-                        border: '1px solid rgba(59,130,246,0.5)',
+                        background: 'rgba(212,165,116,0.2)',
+                        border: '1px solid rgba(212,165,116,0.4)',
                         borderRadius: '4px',
-                        color: '#93c5fd',
+                        color: '#d4a574',
                         fontSize: '10px',
                         cursor: 'pointer',
                         marginBottom: '6px',
+                        fontFamily: '"Source Sans 3", monospace',
                       }}
                     >
                       Sync Now
@@ -1338,7 +1347,7 @@ export default function Widget(): JSX.Element {
                             {state.lastSyncResult.syncedCounts && (
                               <span>
                                 {' '}
-                                —{' '}
+                                --{' '}
                                 {Object.entries(state.lastSyncResult.syncedCounts)
                                   .filter(([, v]) => v > 0)
                                   .map(([k, v]) => `${k}: ${v}`)
@@ -1353,7 +1362,7 @@ export default function Widget(): JSX.Element {
                               hour: '2-digit',
                               minute: '2-digit',
                             })}
-                            {state.lastSyncResult.error && <span> — {state.lastSyncResult.error.slice(0, 80)}</span>}
+                            {state.lastSyncResult.error && <span> -- {state.lastSyncResult.error.slice(0, 80)}</span>}
                           </span>
                         )}
                       </div>
@@ -1417,447 +1426,792 @@ export default function Widget(): JSX.Element {
           </div>
         )}
 
-        {state.collapsed && (
-          <div style={s.body}>
-            {/* Hero Row: Timer + Focus Score */}
-            <div style={s.heroRow}>
-              <div style={s.timerSection}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                  <div style={s.timerValue}>{formatTime(state.sessionDuration)}</div>
-                  {state.sessionBackgroundSeconds >= 60 && (
-                    <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', fontWeight: '400' }}>
-                      +{Math.floor(state.sessionBackgroundSeconds / 60)}m bg
-                    </span>
-                  )}
-                </div>
-                <div style={s.timerLabel}>Watch Time</div>
-              </div>
-              <FocusRing score={focusScore} />
-              {state.streak > 0 && (
-                <div style={s.streakBadge}>
-                  <div style={s.streakNumber}>🔥 {state.streak}</div>
-                  <div style={s.streakLabel}>Day Streak</div>
-                </div>
-              )}
-            </div>
+        {/* ═══ Body Content ═══ */}
+        <div style={{ padding: '16px' }}>
 
-            {/* Active Nudge */}
-            {state.activeNudge && (
-              <div
-                style={{
-                  ...s.nudge,
-                  background: `linear-gradient(135deg, ${state.activeNudge.color}20 0%, ${state.activeNudge.color}10 100%)`,
-                  border: `1px solid ${state.activeNudge.color}40`,
-                }}
-              >
-                <div style={{ ...s.nudgeIcon, color: state.activeNudge.color }}>
-                  {state.activeNudge.icon === 'AlertCircle' && <Icons.AlertCircle />}
-                  {state.activeNudge.icon === 'Coffee' && <Icons.Coffee />}
-                  {state.activeNudge.icon === 'Moon' && <Icons.Moon />}
-                  {state.activeNudge.icon === 'Lightbulb' && <Icons.Lightbulb />}
-                </div>
-                <div style={s.nudgeText}>{state.activeNudge.message}</div>
-                {state.activeNudge.dismissible && (
-                  <button style={s.nudgeClose} onClick={() => dismissNudge(state.activeNudge!.id)}>
-                    <Icons.X />
-                  </button>
+          {/* ─── HERO SECTION ─── */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '16px',
+          }}>
+            {/* Time in coordinate format */}
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                <span style={{
+                  fontSize: '32px',
+                  fontWeight: 700,
+                  color: '#2c1810',
+                  fontFamily: '"Source Sans 3", monospace',
+                  fontVariantNumeric: 'tabular-nums',
+                  letterSpacing: '-1px',
+                  lineHeight: 1,
+                }}>
+                  {formatTimeCoordinate(state.sessionDuration)}
+                </span>
+                {state.sessionBackgroundSeconds >= 60 && (
+                  <span style={{ fontSize: '11px', color: 'rgba(44,24,16,0.35)', fontWeight: 400 }}>
+                    +{Math.floor(state.sessionBackgroundSeconds / 60)}m bg
+                  </span>
                 )}
               </div>
-            )}
+              <div style={{
+                fontSize: '10px',
+                color: 'rgba(44,24,16,0.5)',
+                textTransform: 'uppercase' as const,
+                letterSpacing: '1px',
+                marginTop: '2px',
+              }}>
+                Watch Time
+              </div>
+            </div>
 
-            {/* Tier Upgrade Prompt */}
-            {state.showUpgradePrompt && state.challengeProgress && (
+            {/* Compass Rose */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
               <div
-                style={{
-                  padding: '12px',
-                  background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(79, 70, 229, 0.15) 100%)',
-                  borderRadius: '12px',
-                  marginBottom: '12px',
-                  border: '1px solid rgba(168, 85, 247, 0.3)',
-                  animation: 'yt-detox-pulse 2s ease-in-out infinite',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '24px' }}>🏆</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '13px', fontWeight: '600', color: '#a78bfa' }}>Challenge Unlocked!</div>
-                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)' }}>
-                      {state.challengeProgress.daysUnderGoal} days under goal — ready for the next level?
-                    </div>
-                  </div>
+                style={{ color: '#2c1810', display: 'inline-flex' }}
+                dangerouslySetInnerHTML={{ __html: compassRoseSvg(focusScore, 56) }}
+              />
+              <span style={{
+                fontSize: '9px',
+                color: 'rgba(44,24,16,0.5)',
+                textTransform: 'uppercase' as const,
+                letterSpacing: '0.5px',
+              }}>
+                Focus: {focusScore}
+              </span>
+            </div>
+
+            {/* Streak badge */}
+            {state.streak > 0 && (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                padding: '8px 10px',
+                background: 'linear-gradient(135deg, rgba(212,165,116,0.25) 0%, rgba(184,149,106,0.25) 100%)',
+                borderRadius: '10px',
+                border: '1px solid rgba(212,165,116,0.4)',
+                marginLeft: '8px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span
+                    style={{ color: '#d4a574', display: 'inline-flex' }}
+                    dangerouslySetInnerHTML={{ __html: lighthouseSvg(16) }}
+                  />
+                  <span style={{
+                    fontSize: '20px',
+                    fontWeight: 700,
+                    color: '#b8956a',
+                    fontFamily: '"Playfair Display", serif',
+                  }}>
+                    {state.streak}
+                  </span>
                 </div>
-                <div
+                <span style={{
+                  fontSize: '8px',
+                  color: 'rgba(184,149,106,0.8)',
+                  textTransform: 'uppercase' as const,
+                  letterSpacing: '0.5px',
+                }}>
+                  Day Streak
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* ─── ACTIVE NUDGE ─── */}
+          {state.activeNudge && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '10px 12px',
+              borderRadius: '10px',
+              marginBottom: '12px',
+              position: 'relative' as const,
+              animation: 'yt-detox-shake 0.3s ease',
+              background: 'linear-gradient(135deg, #f5e6c8 0%, #e8d5b7 100%)',
+              border: `1px solid ${state.activeNudge.color}60`,
+              boxShadow: `0 2px 8px ${state.activeNudge.color}20`,
+            }}>
+              <div style={{ flexShrink: 0, color: state.activeNudge.color }}>
+                {state.activeNudge.icon === 'AlertCircle' && <Icons.AlertCircle />}
+                {state.activeNudge.icon === 'Coffee' && <Icons.Coffee />}
+                {state.activeNudge.icon === 'Moon' && <Icons.Moon />}
+                {state.activeNudge.icon === 'Lightbulb' && <Icons.Lightbulb />}
+              </div>
+              <div style={{ flex: 1, fontSize: '12px', lineHeight: '1.3', color: '#2c1810' }}>
+                {state.activeNudge.message}
+              </div>
+              {state.activeNudge.dismissible && (
+                <button
+                  onClick={() => dismissNudge(state.activeNudge!.id)}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    marginBottom: '10px',
+                    position: 'absolute' as const,
+                    top: '4px',
+                    right: '4px',
+                    background: 'none',
+                    border: 'none',
+                    color: 'rgba(44,24,16,0.4)',
+                    cursor: 'pointer',
+                    padding: '2px',
                   }}
                 >
-                  <div
-                    style={{
-                      padding: '6px 12px',
-                      background: 'rgba(255,255,255,0.1)',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                    }}
-                  >
-                    {TIER_CONFIG[state.challengeProgress.currentTier]?.icon}{' '}
-                    {TIER_CONFIG[state.challengeProgress.currentTier]?.label}
+                  <Icons.X />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ─── TIER UPGRADE PROMPT ─── */}
+          {state.showUpgradePrompt && state.challengeProgress && (
+            <div style={{
+              padding: '14px',
+              background: 'linear-gradient(135deg, rgba(212,165,116,0.2) 0%, rgba(184,149,106,0.2) 100%)',
+              borderRadius: '10px',
+              marginBottom: '14px',
+              border: '2px solid #d4a574',
+              animation: 'yt-detox-pulse 2s ease-in-out infinite',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                <span
+                  style={{ color: '#b8956a', display: 'inline-flex' }}
+                  dangerouslySetInnerHTML={{ __html: shipsWheelSvg(28) }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    color: '#2c1810',
+                    fontFamily: '"Playfair Display", serif',
+                  }}>
+                    Promotion Available!
                   </div>
-                  <span style={{ color: 'rgba(255,255,255,0.5)' }}>→</span>
-                  <div
-                    style={{
-                      padding: '6px 12px',
-                      background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.3) 0%, rgba(79, 70, 229, 0.3) 100%)',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      fontWeight: '600',
-                      border: '1px solid rgba(168, 85, 247, 0.5)',
-                    }}
-                  >
+                  <div style={{ fontSize: '11px', color: 'rgba(44,24,16,0.6)' }}>
+                    {state.challengeProgress.daysUnderGoal} days under goal -- ready to advance to{' '}
                     {(() => {
                       const nextIndex = TIER_ORDER.indexOf(state.challengeProgress.currentTier) + 1;
                       const nextTier = TIER_ORDER[nextIndex];
-                      return nextTier ? `${TIER_CONFIG[nextTier]?.icon} ${TIER_CONFIG[nextTier]?.label}` : '💎 Max';
+                      return nextTier ? NAUTICAL_RANKS[nextTier] : 'Admiral';
                     })()}
+                    ?
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    onClick={handleUpgradeTier}
-                    style={{
-                      flex: 1,
-                      padding: '8px 12px',
-                      background: 'linear-gradient(135deg, #a855f7 0%, #6366f1 100%)',
-                      border: 'none',
-                      borderRadius: '8px',
-                      color: 'white',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Accept Challenge +100 XP
-                  </button>
-                  <button
-                    onClick={dismissUpgradePrompt}
-                    style={{
-                      padding: '8px 12px',
-                      background: 'rgba(255,255,255,0.1)',
-                      border: 'none',
-                      borderRadius: '8px',
-                      color: 'rgba(255,255,255,0.6)',
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Later
-                  </button>
+              </div>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                marginBottom: '10px',
+              }}>
+                <div style={{
+                  padding: '6px 12px',
+                  background: 'rgba(44,24,16,0.08)',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  color: '#2c1810',
+                }}>
+                  {TIER_CONFIG[state.challengeProgress.currentTier]?.icon}{' '}
+                  {NAUTICAL_RANKS[state.challengeProgress.currentTier]}
+                </div>
+                <span style={{ color: 'rgba(44,24,16,0.4)', fontSize: '16px' }}>&rarr;</span>
+                <div style={{
+                  padding: '6px 12px',
+                  background: 'linear-gradient(135deg, rgba(212,165,116,0.3) 0%, rgba(184,149,106,0.4) 100%)',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  border: '1px solid #d4a574',
+                  color: '#2c1810',
+                }}>
+                  {(() => {
+                    const nextIndex = TIER_ORDER.indexOf(state.challengeProgress.currentTier) + 1;
+                    const nextTier = TIER_ORDER[nextIndex];
+                    return nextTier ? `${TIER_CONFIG[nextTier]?.icon} ${NAUTICAL_RANKS[nextTier]}` : 'Admiral';
+                  })()}
                 </div>
               </div>
-            )}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={handleUpgradeTier}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    background: 'linear-gradient(135deg, #b8956a 0%, #d4a574 100%)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: '#fff',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontFamily: '"Source Sans 3", sans-serif',
+                    boxShadow: '0 2px 8px rgba(184,149,106,0.4)',
+                  }}
+                >
+                  Accept Commission +100 Doubloons
+                </button>
+                <button
+                  onClick={dismissUpgradePrompt}
+                  style={{
+                    padding: '8px 12px',
+                    background: 'rgba(44,24,16,0.08)',
+                    border: '1px solid rgba(44,24,16,0.15)',
+                    borderRadius: '8px',
+                    color: 'rgba(44,24,16,0.5)',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    fontFamily: '"Source Sans 3", sans-serif',
+                  }}
+                >
+                  Later
+                </button>
+              </div>
+            </div>
+          )}
 
-            {/* Level Progress */}
-            <div style={s.levelBar}>
-              <div style={s.levelHeader}>
-                <div style={s.levelInfo}>
-                  <div style={s.levelBadge}>{levelInfo.level}</div>
-                  <div>
-                    <div style={s.levelText}>Level {levelInfo.level}</div>
-                    <div style={s.levelXp}>
-                      {levelInfo.currentXp} / {levelInfo.nextLevelXp} XP
-                    </div>
-                  </div>
-                </div>
-                <Icons.Trophy />
+          {/* ─── STATS GRID (2x2) ─── */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            gap: '8px',
+            marginBottom: '14px',
+          }}>
+            {/* Ships Spotted (videos) */}
+            <div style={{
+              padding: '10px 8px',
+              background: 'rgba(255,255,255,0.4)',
+              borderRadius: '10px',
+              border: '1px solid rgba(44,24,16,0.08)',
+              textAlign: 'center' as const,
+            }}>
+              <div style={{
+                display: 'flex', justifyContent: 'center', marginBottom: '4px', color: '#2c1810',
+              }}>
+                <span dangerouslySetInnerHTML={{ __html: shipIconSvg(0, 20) }} />
               </div>
-              <div style={s.levelProgress}>
-                <div style={{ ...s.levelFill, width: `${levelInfo.progress}%` }} />
+              <div style={{ fontSize: '20px', fontWeight: 700, color: '#2c1810', fontFamily: '"Playfair Display", serif' }}>
+                {state.videosWatched}
+              </div>
+              <div style={{
+                fontSize: '8px', color: 'rgba(44,24,16,0.5)',
+                textTransform: 'uppercase' as const, letterSpacing: '0.5px',
+              }}>
+                Ships Spotted
               </div>
             </div>
 
-            {/* Stats Grid */}
-            <div style={s.statsGrid}>
-              <div style={s.statCard}>
-                <div style={{ ...s.statIcon, color: '#60a5fa' }}>
-                  <Icons.Video />
-                </div>
-                <div style={s.statValue}>{state.videosWatched}</div>
-                <div style={s.statLabel}>Videos</div>
+            {/* Open Ports (tabs) */}
+            <div style={{
+              padding: '10px 8px',
+              background: 'rgba(255,255,255,0.4)',
+              borderRadius: '10px',
+              border: '1px solid rgba(44,24,16,0.08)',
+              textAlign: 'center' as const,
+            }}>
+              <div style={{
+                display: 'flex', justifyContent: 'center', marginBottom: '4px', color: '#2c1810',
+              }}>
+                <span dangerouslySetInnerHTML={{ __html: anchorSvg(20) }} />
               </div>
-              <div style={s.statCard}>
-                <div style={{ ...s.statIcon, color: '#a78bfa' }}>
-                  <Icons.Layers />
-                </div>
-                <div style={s.statValue}>{state.youtubeTabs}</div>
-                <div style={s.statLabel}>Tabs</div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: '#2c1810', fontFamily: '"Playfair Display", serif' }}>
+                {state.youtubeTabs}
               </div>
-              <div style={s.statCard}>
-                <div style={{ ...s.statIcon, color: '#4ade80' }}>
-                  <Icons.ThumbsUp />
-                </div>
-                <div style={s.statValue}>{state.productiveCount}</div>
-                <div style={s.statLabel}>Good</div>
-              </div>
-              <div style={s.statCard}>
-                <div style={{ ...s.statIcon, color: '#f87171' }}>
-                  <Icons.ThumbsDown />
-                </div>
-                <div style={s.statValue}>{state.unproductiveCount}</div>
-                <div style={s.statLabel}>Wasted</div>
+              <div style={{
+                fontSize: '8px', color: 'rgba(44,24,16,0.5)',
+                textTransform: 'uppercase' as const, letterSpacing: '0.5px',
+              }}>
+                Open Ports
               </div>
             </div>
 
-            {/* Drift Meter 🌊 */}
-            <div
-              style={{
-                padding: '12px',
-                background:
-                  state.drift.level === 'critical'
-                    ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.15) 100%)'
-                    : state.drift.level === 'high'
-                      ? 'linear-gradient(135deg, rgba(251, 146, 60, 0.15) 0%, rgba(234, 88, 12, 0.15) 100%)'
-                      : state.drift.level === 'medium'
-                        ? 'linear-gradient(135deg, rgba(250, 204, 21, 0.15) 0%, rgba(202, 138, 4, 0.15) 100%)'
-                        : 'linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(22, 163, 74, 0.15) 100%)',
-                borderRadius: '12px',
-                marginBottom: '16px',
-                border: `1px solid ${
-                  state.drift.level === 'critical'
-                    ? 'rgba(239, 68, 68, 0.3)'
-                    : state.drift.level === 'high'
-                      ? 'rgba(251, 146, 60, 0.3)'
-                      : state.drift.level === 'medium'
-                        ? 'rgba(250, 204, 21, 0.3)'
-                        : 'rgba(34, 197, 94, 0.3)'
-                }`,
-                animation: state.drift.level === 'critical' ? 'yt-detox-glow 2s ease-in-out infinite' : undefined,
-                transition: 'background 0.5s ease, border-color 0.5s ease',
-              }}
-            >
-              <div
-                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontSize: '12px',
-                    color: 'rgba(255,255,255,0.9)',
-                  }}
-                >
-                  <Icons.Waves />
-                  <span style={{ fontWeight: '600' }}>Drift</span>
-                </div>
-                <span
-                  style={{
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    color:
-                      state.drift.level === 'critical'
-                        ? '#f87171'
-                        : state.drift.level === 'high'
-                          ? '#fb923c'
-                          : state.drift.level === 'medium'
-                            ? '#fbbf24'
-                            : '#4ade80',
-                  }}
-                >
+            {/* Fair Winds (productive) */}
+            <div style={{
+              padding: '10px 8px',
+              background: 'rgba(255,255,255,0.4)',
+              borderRadius: '10px',
+              border: '1px solid rgba(13,148,136,0.15)',
+              textAlign: 'center' as const,
+            }}>
+              <div style={{
+                display: 'flex', justifyContent: 'center', marginBottom: '4px', color: '#0d9488',
+              }}>
+                <Icons.ThumbsUp />
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: '#0d9488', fontFamily: '"Playfair Display", serif' }}>
+                {state.productiveCount}
+              </div>
+              <div style={{
+                fontSize: '8px', color: 'rgba(13,148,136,0.7)',
+                textTransform: 'uppercase' as const, letterSpacing: '0.5px',
+              }}>
+                Fair Winds
+              </div>
+            </div>
+
+            {/* Sirens' Call (unproductive) */}
+            <div style={{
+              padding: '10px 8px',
+              background: 'rgba(255,255,255,0.4)',
+              borderRadius: '10px',
+              border: '1px solid rgba(153,27,27,0.15)',
+              textAlign: 'center' as const,
+            }}>
+              <div style={{
+                display: 'flex', justifyContent: 'center', marginBottom: '4px', color: '#991b1b',
+              }}>
+                <Icons.ThumbsDown />
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: '#991b1b', fontFamily: '"Playfair Display", serif' }}>
+                {state.unproductiveCount}
+              </div>
+              <div style={{
+                fontSize: '8px', color: 'rgba(153,27,27,0.7)',
+                textTransform: 'uppercase' as const, letterSpacing: '0.5px',
+              }}>
+                Sirens' Call
+              </div>
+            </div>
+          </div>
+
+          {/* ─── DRIFT METER — "Current & Tides" ─── */}
+          <div style={{
+            borderRadius: '10px',
+            marginBottom: '14px',
+            overflow: 'hidden',
+            border: '1px solid rgba(44,24,16,0.1)',
+            animation: state.drift.level === 'critical' ? 'yt-detox-glow 2s ease-in-out infinite' : undefined,
+            transition: 'border-color 0.5s ease',
+          }}>
+            {/* Ocean scene gradient */}
+            <div style={{
+              padding: '12px 14px',
+              background:
+                state.drift.level === 'critical'
+                  ? 'linear-gradient(180deg, #1a1a2e 0%, #4a1010 100%)'
+                  : state.drift.level === 'high'
+                    ? 'linear-gradient(180deg, #1a2744 0%, #78350f 100%)'
+                    : state.drift.level === 'medium'
+                      ? 'linear-gradient(180deg, #1a2744 0%, #7c6830 100%)'
+                      : 'linear-gradient(180deg, #0a2e3d 0%, #0d4040 100%)',
+              transition: 'background 0.8s ease',
+            }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '8px',
+              }}>
+                <span style={{
+                  fontSize: '11px',
+                  color: 'rgba(245,230,200,0.7)',
+                  fontFamily: '"Playfair Display", serif',
+                  fontStyle: 'italic',
+                }}>
+                  Current & Tides
+                </span>
+                <span style={{
+                  fontSize: '20px',
+                  fontWeight: 700,
+                  color: driftColor,
+                  fontFamily: '"Source Sans 3", monospace',
+                }}>
                   {Math.round(state.drift.drift * 100)}%
                 </span>
               </div>
-              <div
-                style={{
-                  height: '6px',
-                  background: 'rgba(255,255,255,0.1)',
-                  borderRadius: '3px',
-                  overflow: 'hidden',
-                }}
-              >
-                <div
-                  style={{
-                    height: '100%',
-                    width: `${state.drift.drift * 100}%`,
-                    background:
-                      state.drift.level === 'critical'
-                        ? 'linear-gradient(90deg, #f87171 0%, #ef4444 100%)'
-                        : state.drift.level === 'high'
-                          ? 'linear-gradient(90deg, #fb923c 0%, #f97316 100%)'
-                          : state.drift.level === 'medium'
-                            ? 'linear-gradient(90deg, #fbbf24 0%, #f59e0b 100%)'
-                            : 'linear-gradient(90deg, #4ade80 0%, #22c55e 100%)',
-                    borderRadius: '3px',
-                    transition: 'width 0.5s ease, background 0.3s ease',
-                  }}
-                />
+
+              {/* Ship icon centered */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                marginBottom: '4px',
+                color: '#f5e6c8',
+              }}>
+                <span dangerouslySetInnerHTML={{ __html: shipIconSvg(state.drift.drift, 48) }} />
               </div>
-              <div
-                style={{
-                  fontSize: '10px',
-                  color: 'rgba(255,255,255,0.5)',
-                  marginTop: '6px',
-                  textAlign: 'center',
-                }}
-              >
-                {state.drift.level === 'low' && "You're staying focused 🎯"}
-                {state.drift.level === 'medium' && 'Starting to drift... 🌊'}
-                {state.drift.level === 'high' && 'Drifting away from your goals ⚠️'}
-                {state.drift.level === 'critical' && 'High drift — friction active 🔴'}
+
+              {/* Wave decoration */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'center',
+                color: 'rgba(245,230,200,0.4)',
+                marginBottom: '6px',
+              }}>
+                <span dangerouslySetInnerHTML={{ __html: waveSvg(280) }} />
+              </div>
+
+              {/* Status text */}
+              <div style={{
+                textAlign: 'center' as const,
+                fontSize: '12px',
+                fontWeight: 600,
+                color: driftStatus.color,
+                animation: state.drift.level === 'critical' ? 'yt-detox-pulse 1.5s ease-in-out infinite' : undefined,
+                fontFamily: '"Playfair Display", serif',
+                fontStyle: 'italic',
+              }}>
+                {driftStatus.text}
               </div>
             </div>
+          </div>
 
-            {/* Productive Alternative Suggestion */}
-            {state.suggestedUrl && state.drift.level !== 'low' && (
-              <div
-                style={{
-                  padding: '12px',
-                  background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(22, 163, 74, 0.15) 100%)',
-                  borderRadius: '12px',
-                  marginBottom: '16px',
-                  border: '1px solid rgba(34, 197, 94, 0.3)',
-                  animation: 'yt-detox-wave 2s ease-in-out infinite',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                  <div style={{ color: '#4ade80' }}>
-                    <Icons.Sparkles />
+          {/* ─── Productive Alternative Suggestion ─── */}
+          {state.suggestedUrl && state.drift.level !== 'low' && (
+            <div style={{
+              padding: '12px',
+              background: 'rgba(13,148,136,0.08)',
+              borderRadius: '10px',
+              marginBottom: '14px',
+              border: '1px solid rgba(13,148,136,0.2)',
+              animation: 'yt-detox-wave 2s ease-in-out infinite',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <div style={{ color: '#0d9488' }}>
+                  <Icons.Sparkles />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '11px', color: 'rgba(44,24,16,0.5)' }}>
+                    Chart a better course?
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>
-                      How about something productive?
-                    </div>
-                    <div style={{ fontSize: '13px', fontWeight: '600', color: '#fff' }}>{state.suggestedUrl.title}</div>
-                  </div>
-                  <button
-                    onClick={() => dismissSuggestion()}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'rgba(255,255,255,0.4)',
-                      cursor: 'pointer',
-                      padding: '4px',
-                    }}
-                  >
-                    <Icons.X />
-                  </button>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#2c1810' }}>{state.suggestedUrl.title}</div>
                 </div>
                 <button
-                  onClick={() => openSuggestion(state.suggestedUrl!.url)}
+                  onClick={() => dismissSuggestion()}
                   style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    background: 'rgba(34, 197, 94, 0.2)',
-                    border: '1px solid rgba(34, 197, 94, 0.4)',
-                    borderRadius: '8px',
-                    color: '#4ade80',
-                    fontSize: '12px',
-                    fontWeight: '600',
+                    background: 'none',
+                    border: 'none',
+                    color: 'rgba(44,24,16,0.3)',
                     cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
+                    padding: '4px',
                   }}
                 >
-                  Open Instead <Icons.ExternalLink />
+                  <Icons.X />
                 </button>
               </div>
-            )}
+              <button
+                onClick={() => openSuggestion(state.suggestedUrl!.url)}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'rgba(13,148,136,0.15)',
+                  border: '1px solid rgba(13,148,136,0.3)',
+                  borderRadius: '8px',
+                  color: '#0d9488',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  fontFamily: '"Source Sans 3", sans-serif',
+                }}
+              >
+                Set Sail <Icons.ExternalLink />
+              </button>
+            </div>
+          )}
 
-            {/* 24h Day Cycle */}
-            {state.hourlyData.some((v) => v > 0) && (
-              <div style={s.weeklySection}>
-                <div style={s.weeklyHeader}>
-                  <div style={s.weeklyTitle}>
-                    <Icons.Clock /> Today
+          {/* ─── LEVEL BAR — "Rank & Doubloons" ─── */}
+          <div style={{
+            marginBottom: '14px',
+            padding: '12px',
+            background: 'linear-gradient(135deg, rgba(212,165,116,0.12) 0%, rgba(184,149,106,0.12) 100%)',
+            borderRadius: '10px',
+            border: '1px solid rgba(212,165,116,0.25)',
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '8px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {/* Gold circle level badge */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '28px',
+                  height: '28px',
+                  background: 'linear-gradient(135deg, #d4a574 0%, #b8956a 100%)',
+                  borderRadius: '50%',
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  color: '#fff',
+                  boxShadow: '0 2px 6px rgba(184,149,106,0.4)',
+                  fontFamily: '"Playfair Display", serif',
+                }}>
+                  {levelInfo.level}
+                </div>
+                <div>
+                  <div style={{
+                    fontSize: '12px',
+                    color: '#2c1810',
+                    fontWeight: 600,
+                    fontFamily: '"Playfair Display", serif',
+                  }}>
+                    {state.challengeProgress
+                      ? NAUTICAL_RANKS[state.challengeProgress.currentTier]
+                      : `Rank ${levelInfo.level}`}
                   </div>
-                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)' }}>
-                    {formatMinutes(state.hourlyData.reduce((a, b) => a + b, 0))} total
+                  <div style={{ fontSize: '10px', color: 'rgba(44,24,16,0.5)' }}>
+                    {levelInfo.currentXp} / {levelInfo.nextLevelXp} Doubloons
                   </div>
                 </div>
-                <DayCycleChart data={state.hourlyData} />
               </div>
-            )}
+              <span style={{ color: '#b8956a' }}>
+                <span dangerouslySetInnerHTML={{ __html: shipsWheelSvg(20) }} />
+              </span>
+            </div>
+            {/* Gold gradient progress bar */}
+            <div style={{
+              height: '6px',
+              background: 'rgba(44,24,16,0.08)',
+              borderRadius: '3px',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%',
+                width: `${levelInfo.progress}%`,
+                background: 'linear-gradient(90deg, #b8956a 0%, #d4a574 100%)',
+                borderRadius: '3px',
+                transition: 'width 0.5s',
+              }} />
+            </div>
+          </div>
 
-            {/* Daily Progress */}
-            <div style={s.progressSection}>
-              <div style={s.progressHeader}>
-                <div style={s.progressLabel}>
-                  <Icons.Target /> Daily Goal
-                </div>
-                <span style={{ ...s.progressValue, color: getProgressTextColor() }}>
-                  {formatMinutes(state.todayMinutes)} / {formatMinutes(state.dailyGoal)}
-                  {state.todayBackgroundMinutes > 0 && (
-                    <span
-                      style={{
-                        fontSize: '10px',
-                        color: 'rgba(255,255,255,0.35)',
-                        marginLeft: '4px',
-                        fontWeight: '400',
-                      }}
-                    >
-                      (+{formatMinutes(state.todayBackgroundMinutes)} bg)
-                    </span>
-                  )}
+          {/* ─── 24H CHART — "Ship's Log" ─── */}
+          {state.hourlyData.some((v) => v > 0) && (
+            <div style={{
+              marginBottom: '14px',
+              padding: '12px',
+              background: 'rgba(255,255,255,0.3)',
+              borderRadius: '10px',
+              border: '1px solid rgba(44,24,16,0.06)',
+            }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '8px',
+              }}>
+                <span style={{
+                  fontSize: '11px',
+                  color: 'rgba(44,24,16,0.6)',
+                  fontFamily: '"Playfair Display", serif',
+                  fontStyle: 'italic',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}>
+                  <Icons.Clock /> Ship's Log
+                </span>
+                <span style={{ fontSize: '10px', color: 'rgba(44,24,16,0.4)' }}>
+                  {formatMinutes(state.hourlyData.reduce((a, b) => a + b, 0))} total
                 </span>
               </div>
-              <div style={s.progressBar}>
-                <div style={{ ...s.progressFill, width: `${progressPercent}%`, background: getProgressColor() }} />
+              <ShipsLogChart data={state.hourlyData} />
+            </div>
+          )}
+
+          {/* ─── DAILY PROGRESS ─── */}
+          <div style={{ marginBottom: '14px' }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '8px',
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '11px',
+                color: 'rgba(44,24,16,0.6)',
+              }}>
+                <Icons.Target /> Daily Rations
               </div>
-              {state.todayBackgroundMinutes > 0 && !isOverGoal && (
-                <div
-                  style={{
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 500,
+                color: isOverGoal ? '#991b1b' : isNearGoal ? '#f59e0b' : 'rgba(44,24,16,0.6)',
+              }}>
+                {formatMinutes(state.todayMinutes)} / {formatMinutes(state.dailyGoal)}
+                {state.todayBackgroundMinutes > 0 && (
+                  <span style={{
                     fontSize: '10px',
-                    color: 'rgba(255,255,255,0.35)',
-                    marginTop: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                  }}
-                >
-                  🎧 +{formatMinutes(state.todayBackgroundMinutes)} background
+                    color: 'rgba(44,24,16,0.35)',
+                    marginLeft: '4px',
+                    fontWeight: 400,
+                  }}>
+                    (+{formatMinutes(state.todayBackgroundMinutes)} bg)
+                  </span>
+                )}
+              </span>
+            </div>
+            <div style={{
+              height: '8px',
+              background: 'rgba(44,24,16,0.08)',
+              borderRadius: '4px',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%',
+                width: `${progressPercent}%`,
+                background: isOverGoal
+                  ? 'linear-gradient(90deg, #991b1b 0%, #dc2626 100%)'
+                  : isNearGoal
+                    ? 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)'
+                    : 'linear-gradient(90deg, #b8956a 0%, #d4a574 100%)',
+                borderRadius: '4px',
+                transition: 'width 0.5s ease',
+              }} />
+            </div>
+            {state.todayBackgroundMinutes > 0 && !isOverGoal && (
+              <div style={{
+                fontSize: '10px',
+                color: 'rgba(44,24,16,0.35)',
+                marginTop: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}>
+                +{formatMinutes(state.todayBackgroundMinutes)} background
+              </div>
+            )}
+            {isOverGoal && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                fontSize: '11px',
+                color: '#991b1b',
+                marginTop: '8px',
+              }}>
+                <Icons.Flame /> Over by {formatMinutes(state.todayMinutes - state.dailyGoal)}
+              </div>
+            )}
+          </div>
+
+          {/* ─── ACHIEVEMENTS — "Maritime Medals" ─── */}
+          {state.achievements.length > 0 && (
+            <div style={{
+              display: 'flex',
+              gap: '8px',
+              marginBottom: '14px',
+              flexWrap: 'wrap' as const,
+            }}>
+              {state.achievements.slice(0, 3).map((a, i) => (
+                <div key={i} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.5)',
+                  border: i === 0
+                    ? '2px solid #d4a574'  // gold
+                    : i === 1
+                      ? '2px solid #94a3b8' // silver
+                      : '2px solid #b87333', // bronze
+                  fontSize: '12px',
+                  boxShadow: i === 0
+                    ? '0 0 8px rgba(212,165,116,0.3)'
+                    : '0 1px 4px rgba(0,0,0,0.1)',
+                  textAlign: 'center' as const,
+                  lineHeight: 1.2,
+                  overflow: 'hidden',
+                  padding: '4px',
+                }}>
+                  <span style={{ fontSize: '10px' }}>{a}</span>
                 </div>
-              )}
-              {isOverGoal && (
-                <div style={s.overLimit}>
-                  <Icons.Flame /> Over by {formatMinutes(state.todayMinutes - state.dailyGoal)}
+              ))}
+              {state.achievements.length > 3 && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '50%',
+                  background: 'rgba(44,24,16,0.06)',
+                  border: '1px dashed rgba(44,24,16,0.15)',
+                  fontSize: '10px',
+                  color: 'rgba(44,24,16,0.4)',
+                }}>
+                  +{state.achievements.length - 3}
                 </div>
               )}
             </div>
+          )}
 
-            {/* Achievements */}
-            {state.achievements.length > 0 && (
-              <div style={s.achievementRow}>
-                {state.achievements.slice(0, 3).map((a, i) => (
-                  <div key={i} style={s.achievementBadge}>
-                    {a}
+          {/* ─── NOW WATCHING — "Ship's Current Position" ─── */}
+          {state.videoTitle && (
+            <div style={{
+              marginBottom: '12px',
+              padding: '10px 12px',
+              background: 'rgba(255,255,255,0.45)',
+              borderRadius: '10px',
+              border: '1px solid rgba(44,24,16,0.08)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                <div style={{
+                  color: '#b8956a',
+                  flexShrink: 0,
+                  marginTop: '2px',
+                }}>
+                  <span dangerouslySetInnerHTML={{ __html: compassRoseSvg(50, 18) }} />
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{
+                    fontSize: '9px',
+                    color: 'rgba(44,24,16,0.4)',
+                    textTransform: 'uppercase' as const,
+                    letterSpacing: '0.5px',
+                    fontFamily: '"Playfair Display", serif',
+                    fontStyle: 'italic',
+                  }}>
+                    Ship's Current Position
                   </div>
-                ))}
-              </div>
-            )}
-
-            {/* Current Video */}
-            {state.videoTitle && (
-              <div style={s.nowWatching}>
-                <div style={s.nowWatchingHeader}>
-                  <div style={{ color: '#facc15', flexShrink: 0 }}>
-                    <Icons.Zap />
+                  <div style={{
+                    fontSize: '12px',
+                    color: '#2c1810',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap' as const,
+                    fontWeight: 500,
+                  }}>
+                    {state.videoTitle}
                   </div>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={s.nowWatchingLabel}>Now watching</div>
-                    <div style={s.nowWatchingTitle}>{state.videoTitle}</div>
-                    <div style={s.nowWatchingTime}>{formatTime(state.currentVideoSeconds)} watched</div>
+                  <div style={{
+                    fontSize: '10px',
+                    color: 'rgba(44,24,16,0.4)',
+                    marginTop: '2px',
+                    fontFamily: '"Source Sans 3", monospace',
+                  }}>
+                    {formatTime(state.currentVideoSeconds)} watched
                   </div>
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Productivity prompt now shows as full-screen friction overlay */}
+          {/* Rope border decoration at bottom */}
+          <div style={{
+            marginTop: '4px',
+            opacity: 0.5,
+            color: '#b8956a',
+          }}>
+            <span dangerouslySetInnerHTML={{ __html: ropeBorderSvg() }} />
           </div>
-        )}
+
+          {/* Productivity prompt now shows as full-screen friction overlay */}
+        </div>
       </div>
     </div>
   );

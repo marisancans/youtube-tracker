@@ -616,9 +616,12 @@ async def sync_all(
 
         # === Productive URLs (Upsert with soft delete handling) ===
         for url_data in data.productiveUrls:
-            # Check if exists (including soft deleted)
+            # Check if exists (including soft deleted) — use first() since duplicates may exist
             existing = await db.execute(
-                select(ProductiveUrl).where(ProductiveUrl.user_id == user.id, ProductiveUrl.ext_id == url_data.id)
+                select(ProductiveUrl)
+                .where(ProductiveUrl.user_id == user.id, ProductiveUrl.ext_id == url_data.id)
+                .order_by(ProductiveUrl.deleted_at.is_(None).desc())
+                .limit(1)
             )
             existing_url = existing.scalar_one_or_none()
 

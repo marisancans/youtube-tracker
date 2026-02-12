@@ -765,7 +765,7 @@ function _trackScroll(): void {
   if (!state.currentBrowserSession) return;
 
   const now = Date.now();
-  const scrollY = window.scrollY;
+  const scrollY = Math.round(window.scrollY);
   const delta = Math.abs(scrollY - state.lastScrollY);
   const timeDelta = now - state.lastScrollTime;
 

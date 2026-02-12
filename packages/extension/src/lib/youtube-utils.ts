@@ -531,7 +531,7 @@ let lastScrollTime = 0;
  * Get current scroll information
  */
 export function getScrollInfo(): ScrollInfo {
-  const scrollY = window.scrollY;
+  const scrollY = Math.round(window.scrollY);
   const viewportHeight = window.innerHeight;
   const pageHeight = document.documentElement.scrollHeight;
   const scrollableHeight = pageHeight - viewportHeight;

@@ -13,6 +13,7 @@ const buttonVariants = cva(
         secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
         ghost: 'hover:bg-accent hover:text-accent-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
+        nautical: 'bg-gradient-to-r from-gold-dark to-gold text-ink font-display font-semibold hover:from-gold hover:to-gold/90 border border-gold-dark/50 shadow-md',
       },
       size: {
         default: 'h-10 px-4 py-2',

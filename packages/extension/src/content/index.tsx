@@ -85,12 +85,30 @@ function mountWidget(): void {
 
   const styles = document.createElement('style');
   styles.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,700&family=Source+Sans+3:wght@300;400;500;600;700&display=swap');
+
     :host {
       all: initial;
       display: block;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 14px;
       color: #fff;
+
+      /* Nautical color tokens */
+      --parchment: #f5e6c8;
+      --parchment-dark: #e8d5b7;
+      --parchment-darker: #d4c5a0;
+      --ink: #2c1810;
+      --ink-light: #4a3728;
+      --navy: #0a1628;
+      --navy-light: #1a2744;
+      --teal: #0d9488;
+      --teal-light: #5eead4;
+      --gold: #d4a574;
+      --gold-dark: #b8956a;
+      --storm-red: #991b1b;
+      --storm-gray: #334155;
+      --seafoam: #a7f3d0;
     }
 
     * {
@@ -126,10 +144,38 @@ function mountWidget(): void {
       50% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.5); }
     }
 
-    /* Scrollbar styling */
+    @keyframes ship-rock {
+      0%, 100% { transform: rotate(0deg); }
+      25% { transform: rotate(var(--rock-intensity, 3deg)); }
+      75% { transform: rotate(calc(var(--rock-intensity, 3deg) * -1)); }
+    }
+
+    @keyframes compass-needle {
+      0%, 100% { transform: rotate(var(--needle-rotation, 0deg)); }
+      5% { transform: rotate(calc(var(--needle-rotation, 0deg) + 2deg)); }
+      10% { transform: rotate(calc(var(--needle-rotation, 0deg) - 1deg)); }
+      15% { transform: rotate(var(--needle-rotation, 0deg)); }
+    }
+
+    @keyframes fog-drift {
+      0% { opacity: 0.3; transform: translateX(-5%); }
+      50% { opacity: 0.5; transform: translateX(5%); }
+      100% { opacity: 0.3; transform: translateX(-5%); }
+    }
+
+    @keyframes beacon-rotate {
+      0% { opacity: 0.2; }
+      25% { opacity: 0.8; }
+      50% { opacity: 0.2; }
+      75% { opacity: 0.8; }
+      100% { opacity: 0.2; }
+    }
+
+    /* Scrollbar styling — gold nautical */
     ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+    ::-webkit-scrollbar-track { background: rgba(10, 22, 40, 0.3); }
+    ::-webkit-scrollbar-thumb { background: #d4a574; border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: #b8956a; }
   `;
   shadow.appendChild(styles);
 

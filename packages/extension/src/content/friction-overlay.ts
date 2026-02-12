@@ -1,5 +1,5 @@
 /**
- * Drift Rating Overlay
+ * Drift Rating Overlay — Nautical Cartography Edition
  *
  * Overlay layered on top of the video player that pauses the video
  * and forces the user to rate on a 1-5 drift scale before continuing.
@@ -15,48 +15,76 @@ const OVERLAY_ID = 'yt-detox-friction-overlay';
 
 let resolveRating: ((rating: number) => void) | null = null;
 
+/* ── Inline SVG icons (stroke-based, ~24px) ────────────────────────── */
+
+const OVERLAY_ICONS: Record<number, string> = {
+  1: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="21"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></svg>`,
+  2: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 20 L10 20 L10 14 L22 14"/><path d="M10 14 L16 6 L10 8 L10 14"/></svg>`,
+  3: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="1"/><line x1="12" y1="3" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="3" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="21" y2="12"/></svg>`,
+  4: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12 Q5 8, 8 12 Q11 16, 14 12 Q17 8, 20 12 Q23 16, 26 12"/><path d="M2 16 Q5 12, 8 16 Q11 20, 14 16 Q17 12, 20 16"/></svg>`,
+  5: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="5"/><path d="M8 14 L6 22 L12 19 L18 22 L16 14"/><circle cx="10" cy="7" r="1" fill="currentColor"/><circle cx="14" cy="7" r="1" fill="currentColor"/></svg>`,
+};
+
+/* ── Floating ship icon for the card header ────────────────────────── */
+
+const HEADER_SHIP_SVG = `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#8b5e3c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20 L10 20 L10 14 L22 14"/><path d="M10 14 L16 4 L10 7 L10 14"/><path d="M2 22 Q6 18, 12 22 Q18 18, 22 22"/></svg>`;
+
+/* ── Drift levels ──────────────────────────────────────────────────── */
+
 const DRIFT_LEVELS = [
   {
     value: 1,
-    icon: '\u2693',
     label: 'Anchored',
     desc: 'Focused & productive',
-    color: '#22c55e',
-    bg: 'rgba(34,197,94,0.15)',
+    color: '#0d9488',
   },
   {
     value: 2,
-    icon: '\u26f5',
     label: 'Steady',
     desc: 'Mostly on course',
     color: '#3b82f6',
-    bg: 'rgba(59,130,246,0.15)',
   },
   {
     value: 3,
-    icon: '\u{1F32A}\uFE0F',
     label: 'Drifting',
     desc: 'Losing focus a bit',
     color: '#f59e0b',
-    bg: 'rgba(245,158,11,0.15)',
   },
   {
     value: 4,
-    icon: '\u{1F30A}',
     label: 'Adrift',
     desc: 'Pretty far off course',
     color: '#f97316',
-    bg: 'rgba(249,115,22,0.15)',
   },
   {
     value: 5,
-    icon: '\u{1F480}',
     label: 'Lost at Sea',
     desc: 'Total time sink',
-    color: '#ef4444',
-    bg: 'rgba(239,68,68,0.15)',
+    color: '#991b1b',
   },
 ];
+
+/* ── Helpers ────────────────────────────────────────────────────────── */
+
+/**
+ * Mix a hex color at a given opacity with the parchment base (#f5e6c8).
+ * Returns a solid hex-ish CSS color string for use in gradients.
+ */
+function parchmentTint(hexColor: string, amount: number): string {
+  // Parse the level color
+  const r = parseInt(hexColor.slice(1, 3), 16);
+  const g = parseInt(hexColor.slice(3, 5), 16);
+  const b = parseInt(hexColor.slice(5, 7), 16);
+  // Parchment base
+  const pr = 0xf5,
+    pg = 0xe6,
+    pb = 0xc8;
+  // Blend
+  const mr = Math.round(pr * (1 - amount) + r * amount);
+  const mg = Math.round(pg * (1 - amount) + g * amount);
+  const mb = Math.round(pb * (1 - amount) + b * amount);
+  return `rgb(${mr}, ${mg}, ${mb})`;
+}
 
 function getPlayerElement(): HTMLElement | null {
   return (
@@ -80,6 +108,8 @@ function removeOverlay(): void {
     setTimeout(() => overlay.remove(), 300);
   }
 }
+
+/* ── Main export ────────────────────────────────────────────────────── */
 
 /**
  * Show the drift rating overlay on top of the video player.
@@ -108,7 +138,15 @@ export function showFrictionOverlay(videoTitle: string): Promise<number> {
 
     const truncTitle = videoTitle.length > 70 ? videoTitle.slice(0, 70) + '...' : videoTitle;
 
-    // Inject keyframes
+    // ── Font loading ──────────────────────────────────────────────
+    if (!document.getElementById('yt-detox-friction-fonts')) {
+      const fontStyle = document.createElement('style');
+      fontStyle.id = 'yt-detox-friction-fonts';
+      fontStyle.textContent = `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap');`;
+      document.head.appendChild(fontStyle);
+    }
+
+    // ── Keyframes ─────────────────────────────────────────────────
     if (!document.getElementById('yt-detox-friction-styles')) {
       const style = document.createElement('style');
       style.id = 'yt-detox-friction-styles';
@@ -132,6 +170,7 @@ export function showFrictionOverlay(videoTitle: string): Promise<number> {
       document.head.appendChild(style);
     }
 
+    // ── Overlay (backdrop) ────────────────────────────────────────
     const overlay = document.createElement('div');
     overlay.id = OVERLAY_ID;
     overlay.style.cssText = `
@@ -141,24 +180,29 @@ export function showFrictionOverlay(videoTitle: string): Promise<number> {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(2, 6, 23, 0.88);
-      backdrop-filter: blur(16px) saturate(1.2);
-      -webkit-backdrop-filter: blur(16px) saturate(1.2);
+      background: linear-gradient(180deg, rgba(10, 22, 40, 0.92) 0%, rgba(26, 39, 68, 0.88) 50%, rgba(10, 22, 40, 0.95) 100%);
+      backdrop-filter: blur(12px) saturate(1.1);
+      -webkit-backdrop-filter: blur(12px) saturate(1.1);
       border-radius: 12px;
       opacity: 0;
       transition: opacity 0.4s ease;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     `;
 
-    const buttonsHtml = DRIFT_LEVELS.map(
-      (lvl) => `
+    // ── Buttons ───────────────────────────────────────────────────
+    const buttonsHtml = DRIFT_LEVELS.map((lvl) => {
+      const tintLight = parchmentTint(lvl.color, 0.1);
+      const tintDark = parchmentTint(lvl.color, 0.18);
+      const borderColor = lvl.color + '4D'; // 30% opacity hex
+
+      return `
       <button data-rating="${lvl.value}" style="
         width: 100%;
         padding: 12px 16px;
-        background: ${lvl.bg};
-        border: 1px solid ${lvl.color}33;
+        background: linear-gradient(135deg, ${tintLight} 0%, ${tintDark} 100%);
+        border: 1px solid ${borderColor};
         border-radius: 12px;
-        color: #fff;
+        color: #2c1810;
         font-size: 14px;
         font-weight: 500;
         cursor: pointer;
@@ -168,45 +212,44 @@ export function showFrictionOverlay(videoTitle: string): Promise<number> {
         gap: 12px;
         text-align: left;
       ">
-        <span style="font-size: 24px; flex-shrink: 0; width: 32px; text-align: center;">${lvl.icon}</span>
+        <span style="flex-shrink: 0; width: 32px; text-align: center; color: ${lvl.color}; display: flex; align-items: center; justify-content: center;">${OVERLAY_ICONS[lvl.value]}</span>
         <div style="flex: 1; min-width: 0;">
           <div style="font-weight: 700; color: ${lvl.color};">${lvl.label}</div>
-          <div style="font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 1px;">${lvl.desc}</div>
+          <div style="font-size: 11px; color: #6b5545; margin-top: 1px;">${lvl.desc}</div>
         </div>
       </button>
-    `,
-    ).join('');
+    `;
+    }).join('');
 
+    // ── Card ──────────────────────────────────────────────────────
     overlay.innerHTML = `
       <div id="yt-detox-friction-card" style="
         max-width: 380px;
         width: 88%;
         padding: 28px 24px;
-        background: linear-gradient(145deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.95) 50%, rgba(15, 23, 42, 0.95) 100%);
-        border-radius: 20px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        box-shadow:
-          0 0 60px rgba(59, 130, 246, 0.08),
-          0 20px 50px rgba(0, 0, 0, 0.4),
-          inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        background: linear-gradient(145deg, #f5e6c8 0%, #e8d5b7 50%, #d4c5a0 100%);
+        border-radius: 16px;
+        border: 2px solid #d4a574;
+        box-shadow: inset 0 0 0 1px #b8956a, 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 40px rgba(212, 165, 116, 0.1);
         text-align: center;
         animation: yt-detox-fadein 0.4s ease;
       ">
         <div style="
-          font-size: 32px;
           margin-bottom: 6px;
           animation: yt-detox-float 3s ease-in-out infinite;
-        ">\u{1F30A}</div>
+          display: inline-block;
+        ">${HEADER_SHIP_SVG}</div>
         <div style="
           font-size: 18px;
           font-weight: 700;
-          color: #fff;
+          color: #2c1810;
           margin-bottom: 4px;
           letter-spacing: -0.3px;
+          font-family: 'Playfair Display', Georgia, serif;
         ">How far did you drift?</div>
         <div style="
           font-size: 12px;
-          color: rgba(255, 255, 255, 0.4);
+          color: #6b5545;
           margin-bottom: 20px;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -220,25 +263,26 @@ export function showFrictionOverlay(videoTitle: string): Promise<number> {
         <div style="
           margin-top: 16px;
           font-size: 10px;
-          color: rgba(255, 255, 255, 0.2);
-          letter-spacing: 0.5px;
-        ">RATE TO CONTINUE WATCHING</div>
+          color: #9a8474;
+          letter-spacing: 1.5px;
+          font-variant: small-caps;
+        ">LOG YOUR POSITION TO CONTINUE</div>
       </div>
     `;
 
-    // Button interactions
+    // ── Button interactions ───────────────────────────────────────
     overlay.querySelectorAll('button[data-rating]').forEach((btn) => {
       const button = btn as HTMLButtonElement;
       const level = DRIFT_LEVELS.find((l) => l.value === parseInt(button.dataset.rating!, 10));
 
       button.addEventListener('mouseenter', () => {
         button.style.transform = 'scale(1.02) translateX(4px)';
-        button.style.borderColor = level?.color || '#fff';
-        button.style.boxShadow = `0 4px 20px ${level?.color}22`;
+        button.style.borderColor = '#d4a574';
+        button.style.boxShadow = `0 4px 20px rgba(212, 165, 116, 0.25)`;
       });
       button.addEventListener('mouseleave', () => {
         button.style.transform = 'scale(1)';
-        button.style.borderColor = `${level?.color}33`;
+        button.style.borderColor = `${level?.color}4D`;
         button.style.boxShadow = 'none';
       });
       button.addEventListener('click', () => {
@@ -251,7 +295,7 @@ export function showFrictionOverlay(videoTitle: string): Promise<number> {
       });
     });
 
-    // Backdrop click = shake card
+    // ── Backdrop click = shake card ──────────────────────────────
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) {
         const card = document.getElementById('yt-detox-friction-card');

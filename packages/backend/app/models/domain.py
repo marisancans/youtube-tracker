@@ -1,7 +1,19 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -446,4 +458,7 @@ class ProductiveUrl(Base):
 
     user: Mapped["User"] = relationship(back_populates="productive_urls")
 
-    __table_args__ = (Index("idx_productive_url_user", "user_id", "deleted_at"),)
+    __table_args__ = (
+        Index("idx_productive_url_user", "user_id", "deleted_at"),
+        UniqueConstraint("user_id", "ext_id", name="uq_productive_url_user_ext"),
+    )
