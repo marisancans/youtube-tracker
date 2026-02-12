@@ -485,6 +485,7 @@ export type MessageType =
   // Drift
   | 'GET_DRIFT'
   | 'GET_DRIFT_EFFECTS'
+  | 'GET_DRIFT_HISTORY'
   | 'DRIFT_UPDATED'
   // Challenge
   | 'GET_CHALLENGE_PROGRESS'

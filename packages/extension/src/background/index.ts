@@ -25,7 +25,9 @@ import {
   getDriftLevel,
   getDriftEffectsAsync,
   getDriftState,
+  getDriftSnapshots,
   initDrift,
+  initDriftHistory,
   startDriftCalculation,
 } from './drift';
 
@@ -312,6 +314,9 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
             history: driftState.history,
           };
           break;
+        case 'GET_DRIFT_HISTORY':
+          response = getDriftSnapshots();
+          break;
         case 'GET_DRIFT_EFFECTS':
           response = await getDriftEffectsAsync(getDriftState().current);
           break;
@@ -437,6 +442,7 @@ async function initialize(): Promise<void> {
   // Initialize modules
   await initAuth();
   await initDrift();
+  await initDriftHistory();
   await initPhase();
   await initTabs();
 

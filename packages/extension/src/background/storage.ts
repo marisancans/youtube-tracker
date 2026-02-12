@@ -44,6 +44,14 @@ export interface DriftState {
   lastCalculated: number;
 }
 
+export interface DriftSnapshot {
+  timestamp: number;
+  drift: number;
+  level: 'low' | 'medium' | 'high' | 'critical';
+  videosThisHour: number;
+  productiveThisHour: number;
+}
+
 // ===== Auth State =====
 
 export interface GoogleUser {

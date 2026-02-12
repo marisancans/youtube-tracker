@@ -3,7 +3,7 @@
  * Progressive friction coefficient calculation
  */
 
-import { getStorage, getTodayKey, type DriftState, type GoalMode, type ChallengeTier } from './storage';
+import { getStorage, getTodayKey, type DriftState, type DriftSnapshot, type GoalMode, type ChallengeTier } from './storage';
 import { CHALLENGE_TIERS } from './challenge';
 
 // ===== Drift State =====
@@ -13,6 +13,44 @@ let driftState: DriftState = {
   history: [],
   lastCalculated: 0,
 };
+
+// ===== Drift History (30-min snapshots) =====
+
+let driftSnapshots: DriftSnapshot[] = [];
+let lastSnapshotTime = 0;
+
+export async function initDriftHistory(): Promise<void> {
+  const result = await chrome.storage.local.get('driftHistory');
+  driftSnapshots = result.driftHistory || [];
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  driftSnapshots = driftSnapshots.filter((s) => s.timestamp > cutoff);
+}
+
+export function getDriftSnapshots(): DriftSnapshot[] {
+  return driftSnapshots;
+}
+
+async function recordDriftSnapshot(drift: number, level: 'low' | 'medium' | 'high' | 'critical'): Promise<void> {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const stats = await chrome.storage.local.get('dailyStats');
+  const today = new Date().toISOString().split('T')[0];
+  const todayStats = stats.dailyStats?.[today];
+
+  const snapshot: DriftSnapshot = {
+    timestamp: Date.now(),
+    drift,
+    level,
+    videosThisHour: todayStats?.videoCount || 0,
+    productiveThisHour: todayStats?.productiveVideos || 0,
+  };
+
+  driftSnapshots.push(snapshot);
+  driftSnapshots = driftSnapshots.filter((s) => s.timestamp > cutoff);
+  if (driftSnapshots.length > 48) {
+    driftSnapshots = driftSnapshots.slice(-48);
+  }
+  await chrome.storage.local.set({ driftHistory: driftSnapshots });
+}
 
 // ===== Drift Factors =====
 
@@ -270,6 +308,13 @@ export function startDriftCalculation(intervalMs: number = 30000): void {
     const { drift, factors } = await calculateDrift();
     const effects = await getDriftEffectsAsync(drift);
     console.log('[YT Detox] Drift calculated:', drift.toFixed(2), 'factors:', factors);
+
+    // Record 30-minute drift snapshot
+    const now = Date.now();
+    if (now - lastSnapshotTime >= 30 * 60 * 1000) {
+      lastSnapshotTime = now;
+      await recordDriftSnapshot(drift, getDriftLevel(drift));
+    }
 
     // Broadcast drift update to content scripts
     chrome.tabs.query({ url: ['*://*.youtube.com/*', '*://youtu.be/*'] }, (tabs) => {
