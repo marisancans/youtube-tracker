@@ -13,10 +13,11 @@ import {
   shipIconSvg,
   anchorSvg,
   lighthouseSvg,
-  waveSvg,
   shipsWheelSvg,
   ropeBorderSvg,
 } from '../../components/nautical/nautical-svg-strings';
+import PirateMap from '../map/PirateMap';
+import type { DriftSnapshot } from '../../background/storage';
 
 interface Nudge {
   id: string;
@@ -120,6 +121,8 @@ interface WidgetState {
   dbCounts: Record<string, number> | null;
   pendingCounts: Record<string, number> | null;
   syncDebugExpanded: boolean;
+  // Drift history for mini-map
+  driftHistory: DriftSnapshot[];
 }
 
 function formatTime(seconds: number): string {
@@ -137,13 +140,6 @@ function formatMinutes(minutes: number): string {
     return m > 0 ? `${h}h ${m}m` : `${h}h`;
   }
   return `${minutes}m`;
-}
-
-// Format time in nautical coordinate style: 14'23"
-function formatTimeCoordinate(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}'${s.toString().padStart(2, '0')}"`;
 }
 
 // Calculate focus score (0-100)
@@ -186,24 +182,6 @@ function compute24hData(
   return data.map((s) => Math.round(s / 60));
 }
 
-// Drift level color mapping
-function getDriftColor(level: DriftData['level']): string {
-  switch (level) {
-    case 'low': return '#0d9488';
-    case 'medium': return '#f59e0b';
-    case 'high': return '#f97316';
-    case 'critical': return '#991b1b';
-  }
-}
-
-function getDriftStatusText(level: DriftData['level']): { text: string; color: string } {
-  switch (level) {
-    case 'low': return { text: 'Calm Seas', color: '#0d9488' };
-    case 'medium': return { text: 'Choppy Waters', color: '#f59e0b' };
-    case 'high': return { text: 'Rough Seas', color: '#f97316' };
-    case 'critical': return { text: 'STORM', color: '#991b1b' };
-  }
-}
 
 // Icons as SVG components (restyled for nautical theme)
 const Icons = {
@@ -388,119 +366,6 @@ const Icons = {
   ),
 };
 
-// Nautical 24h Ship's Log chart
-function ShipsLogChart({ data }: { data: number[] }) {
-  const max = Math.max(...data, 1);
-  const currentHour = new Date().getHours();
-  const labels = [
-    { hour: 0, text: '12a' },
-    { hour: 6, text: '6a' },
-    { hour: 12, text: '12p' },
-    { hour: 18, text: '6p' },
-  ];
-
-  return (
-    <div style={{ width: '100%' }}>
-      {/* Faint map-grid lines */}
-      <div style={{
-        position: 'relative',
-        height: '48px',
-        backgroundImage: 'linear-gradient(to right, rgba(44,24,16,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(44,24,16,0.06) 1px, transparent 1px)',
-        backgroundSize: `${100 / 24}% 12px`,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', height: '100%', gap: '1px', position: 'relative', zIndex: 1 }}>
-          {data.map((minutes, hour) => {
-            const isCurrentHour = hour === currentHour;
-            const barHeight = minutes > 0 ? Math.max(10, (minutes / max) * 100) : 4;
-            return (
-              <div
-                key={hour}
-                title={`${hour}:00 -- ${minutes}m`}
-                style={{
-                  flex: 1,
-                  position: 'relative',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'flex-end',
-                  height: '100%',
-                }}
-              >
-                {/* Gold dot marker for current hour */}
-                {isCurrentHour && minutes > 0 && (
-                  <div style={{
-                    width: '4px',
-                    height: '4px',
-                    borderRadius: '50%',
-                    background: '#d4a574',
-                    marginBottom: '2px',
-                    boxShadow: '0 0 4px rgba(212,165,116,0.6)',
-                  }} />
-                )}
-                {/* Mast bar */}
-                <div style={{
-                  width: minutes > 0 ? '3px' : '1px',
-                  height: `${barHeight}%`,
-                  minHeight: minutes > 0 ? '4px' : '1px',
-                  background: isCurrentHour
-                    ? '#d4a574'
-                    : minutes > 0
-                      ? 'rgba(26,39,68,0.6)'
-                      : 'rgba(44,24,16,0.08)',
-                  borderRadius: '1px 1px 0 0',
-                  transition: 'height 0.5s ease',
-                  position: 'relative',
-                }} >
-                  {/* Flag-like top for bars with data */}
-                  {minutes > 0 && (
-                    <div style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: '3px',
-                      width: '5px',
-                      height: '4px',
-                      background: isCurrentHour
-                        ? 'rgba(212,165,116,0.8)'
-                        : 'rgba(26,39,68,0.3)',
-                      clipPath: 'polygon(0 0, 100% 25%, 0 100%)',
-                    }} />
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      <div style={{ position: 'relative', height: '14px', marginTop: '2px' }}>
-        {labels.map(({ hour, text }) => (
-          <span
-            key={hour}
-            style={{
-              position: 'absolute',
-              left: `${(hour / 24) * 100}%`,
-              fontSize: '8px',
-              color: 'rgba(44,24,16,0.4)',
-              fontFamily: '"Source Sans 3", sans-serif',
-              transform: hour === 0 ? 'none' : 'translateX(-50%)',
-            }}
-          >
-            {text}
-          </span>
-        ))}
-        <span style={{
-          position: 'absolute',
-          right: 0,
-          fontSize: '8px',
-          color: 'rgba(44,24,16,0.4)',
-          fontFamily: '"Source Sans 3", sans-serif',
-        }}>
-          12a
-        </span>
-      </div>
-    </div>
-  );
-}
-
 // Keyframes for animations (injected via style element)
 const animationStyles = `
   @keyframes yt-detox-pulse {
@@ -573,6 +438,7 @@ export default function Widget(): JSX.Element {
     dbCounts: null,
     pendingCounts: null,
     syncDebugExpanded: false,
+    driftHistory: [],
   });
 
   // Inject animation styles once
@@ -638,6 +504,12 @@ export default function Widget(): JSX.Element {
             effects: response.effects,
           },
         }));
+      }
+    });
+    // Load drift history for mini-map
+    safeSendMessageWithCallback('GET_DRIFT_HISTORY', undefined, (response: any) => {
+      if (Array.isArray(response)) {
+        setState((p) => ({ ...p, driftHistory: response }));
       }
     });
   }, []);
@@ -706,6 +578,12 @@ export default function Widget(): JSX.Element {
             result.settings?.backend?.enabled !== undefined ? result.settings.backend.enabled : p.syncEnabled,
           lastSyncResult: result.lastSyncResult || p.lastSyncResult,
         }));
+      });
+      // Update drift history
+      safeSendMessageWithCallback('GET_DRIFT_HISTORY', undefined, (response: any) => {
+        if (Array.isArray(response)) {
+          setState((p) => ({ ...p, driftHistory: response }));
+        }
       });
     }, 10000); // Update every 10 seconds
     return () => clearInterval(updateInterval);
@@ -1116,8 +994,6 @@ export default function Widget(): JSX.Element {
   // ──────────────────────────────────────────────
   // EXPANDED PANEL — Captain's Log
   // ──────────────────────────────────────────────
-  const driftStatus = getDriftStatusText(state.drift.level);
-  const driftColor = getDriftColor(state.drift.level);
 
   return (
     <div style={{
@@ -1448,7 +1324,7 @@ export default function Widget(): JSX.Element {
                   letterSpacing: '-1px',
                   lineHeight: 1,
                 }}>
-                  {formatTimeCoordinate(state.sessionDuration)}
+                  {formatTime(state.sessionDuration)}
                 </span>
                 {state.sessionBackgroundSeconds >= 60 && (
                   <span style={{ fontSize: '11px', color: 'rgba(44,24,16,0.35)', fontWeight: 400 }}>
@@ -1590,11 +1466,11 @@ export default function Widget(): JSX.Element {
                     Promotion Available!
                   </div>
                   <div style={{ fontSize: '11px', color: 'rgba(44,24,16,0.6)' }}>
-                    {state.challengeProgress.daysUnderGoal} days under goal -- ready to advance to{' '}
+                    {state.challengeProgress.daysUnderGoal} days under goal — ready to advance to{' '}
                     {(() => {
                       const nextIndex = TIER_ORDER.indexOf(state.challengeProgress.currentTier) + 1;
                       const nextTier = TIER_ORDER[nextIndex];
-                      return nextTier ? NAUTICAL_RANKS[nextTier] : 'Admiral';
+                      return nextTier ? NAUTICAL_RANKS[nextTier] : 'Ascetic';
                     })()}
                     ?
                   </div>
@@ -1630,7 +1506,7 @@ export default function Widget(): JSX.Element {
                   {(() => {
                     const nextIndex = TIER_ORDER.indexOf(state.challengeProgress.currentTier) + 1;
                     const nextTier = TIER_ORDER[nextIndex];
-                    return nextTier ? `${TIER_CONFIG[nextTier]?.icon} ${NAUTICAL_RANKS[nextTier]}` : 'Admiral';
+                    return nextTier ? `${TIER_CONFIG[nextTier]?.icon} ${NAUTICAL_RANKS[nextTier]}` : 'Ascetic';
                   })()}
                 </div>
               </div>
@@ -1651,7 +1527,7 @@ export default function Widget(): JSX.Element {
                     boxShadow: '0 2px 8px rgba(184,149,106,0.4)',
                   }}
                 >
-                  Accept Commission +100 Doubloons
+                  Level Up +100 XP
                 </button>
                 <button
                   onClick={dismissUpgradePrompt}
@@ -1699,7 +1575,7 @@ export default function Widget(): JSX.Element {
                 fontSize: '8px', color: 'rgba(44,24,16,0.5)',
                 textTransform: 'uppercase' as const, letterSpacing: '0.5px',
               }}>
-                Ships Spotted
+                Videos
               </div>
             </div>
 
@@ -1723,7 +1599,7 @@ export default function Widget(): JSX.Element {
                 fontSize: '8px', color: 'rgba(44,24,16,0.5)',
                 textTransform: 'uppercase' as const, letterSpacing: '0.5px',
               }}>
-                Open Ports
+                Open Tabs
               </div>
             </div>
 
@@ -1747,7 +1623,7 @@ export default function Widget(): JSX.Element {
                 fontSize: '8px', color: 'rgba(13,148,136,0.7)',
                 textTransform: 'uppercase' as const, letterSpacing: '0.5px',
               }}>
-                Fair Winds
+                Productive
               </div>
             </div>
 
@@ -1771,90 +1647,20 @@ export default function Widget(): JSX.Element {
                 fontSize: '8px', color: 'rgba(153,27,27,0.7)',
                 textTransform: 'uppercase' as const, letterSpacing: '0.5px',
               }}>
-                Sirens' Call
+                Unproductive
               </div>
             </div>
           </div>
 
-          {/* ─── DRIFT METER — "Current & Tides" ─── */}
-          <div style={{
-            borderRadius: '10px',
-            marginBottom: '14px',
-            overflow: 'hidden',
-            border: '1px solid rgba(44,24,16,0.1)',
-            animation: state.drift.level === 'critical' ? 'yt-detox-glow 2s ease-in-out infinite' : undefined,
-            transition: 'border-color 0.5s ease',
-          }}>
-            {/* Ocean scene gradient */}
-            <div style={{
-              padding: '12px 14px',
-              background:
-                state.drift.level === 'critical'
-                  ? 'linear-gradient(180deg, #1a1a2e 0%, #4a1010 100%)'
-                  : state.drift.level === 'high'
-                    ? 'linear-gradient(180deg, #1a2744 0%, #78350f 100%)'
-                    : state.drift.level === 'medium'
-                      ? 'linear-gradient(180deg, #1a2744 0%, #7c6830 100%)'
-                      : 'linear-gradient(180deg, #0a2e3d 0%, #0d4040 100%)',
-              transition: 'background 0.8s ease',
-            }}>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '8px',
-              }}>
-                <span style={{
-                  fontSize: '11px',
-                  color: 'rgba(245,230,200,0.7)',
-                  fontFamily: '"Playfair Display", serif',
-                  fontStyle: 'italic',
-                }}>
-                  Current & Tides
-                </span>
-                <span style={{
-                  fontSize: '20px',
-                  fontWeight: 700,
-                  color: driftColor,
-                  fontFamily: '"Source Sans 3", monospace',
-                }}>
-                  {Math.round(state.drift.drift * 100)}%
-                </span>
-              </div>
-
-              {/* Ship icon centered */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'center',
-                marginBottom: '4px',
-                color: '#f5e6c8',
-              }}>
-                <span dangerouslySetInnerHTML={{ __html: shipIconSvg(state.drift.drift, 48) }} />
-              </div>
-
-              {/* Wave decoration */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'center',
-                color: 'rgba(245,230,200,0.4)',
-                marginBottom: '6px',
-              }}>
-                <span dangerouslySetInnerHTML={{ __html: waveSvg(280) }} />
-              </div>
-
-              {/* Status text */}
-              <div style={{
-                textAlign: 'center' as const,
-                fontSize: '12px',
-                fontWeight: 600,
-                color: driftStatus.color,
-                animation: state.drift.level === 'critical' ? 'yt-detox-pulse 1.5s ease-in-out infinite' : undefined,
-                fontFamily: '"Playfair Display", serif',
-                fontStyle: 'italic',
-              }}>
-                {driftStatus.text}
-              </div>
-            </div>
+          {/* ─── MINI MAP ─── */}
+          <div style={{ marginBottom: '14px' }}>
+            <PirateMap
+              mode="mini"
+              driftHistory={state.driftHistory}
+              currentDrift={state.drift.drift}
+              currentLevel={state.drift.level}
+              streak={state.streak}
+            />
           </div>
 
           {/* ─── Productive Alternative Suggestion ─── */}
@@ -1909,7 +1715,7 @@ export default function Widget(): JSX.Element {
                   fontFamily: '"Source Sans 3", sans-serif',
                 }}
               >
-                Set Sail <Icons.ExternalLink />
+                Open <Icons.ExternalLink />
               </button>
             </div>
           )}
@@ -1955,10 +1761,10 @@ export default function Widget(): JSX.Element {
                   }}>
                     {state.challengeProgress
                       ? NAUTICAL_RANKS[state.challengeProgress.currentTier]
-                      : `Rank ${levelInfo.level}`}
+                      : `Level ${levelInfo.level}`}
                   </div>
                   <div style={{ fontSize: '10px', color: 'rgba(44,24,16,0.5)' }}>
-                    {levelInfo.currentXp} / {levelInfo.nextLevelXp} Doubloons
+                    {levelInfo.currentXp} / {levelInfo.nextLevelXp} XP
                   </div>
                 </div>
               </div>
@@ -1983,40 +1789,6 @@ export default function Widget(): JSX.Element {
             </div>
           </div>
 
-          {/* ─── 24H CHART — "Ship's Log" ─── */}
-          {state.hourlyData.some((v) => v > 0) && (
-            <div style={{
-              marginBottom: '14px',
-              padding: '12px',
-              background: 'rgba(255,255,255,0.3)',
-              borderRadius: '10px',
-              border: '1px solid rgba(44,24,16,0.06)',
-            }}>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '8px',
-              }}>
-                <span style={{
-                  fontSize: '11px',
-                  color: 'rgba(44,24,16,0.6)',
-                  fontFamily: '"Playfair Display", serif',
-                  fontStyle: 'italic',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}>
-                  <Icons.Clock /> Ship's Log
-                </span>
-                <span style={{ fontSize: '10px', color: 'rgba(44,24,16,0.4)' }}>
-                  {formatMinutes(state.hourlyData.reduce((a, b) => a + b, 0))} total
-                </span>
-              </div>
-              <ShipsLogChart data={state.hourlyData} />
-            </div>
-          )}
-
           {/* ─── DAILY PROGRESS ─── */}
           <div style={{ marginBottom: '14px' }}>
             <div style={{
@@ -2032,7 +1804,7 @@ export default function Widget(): JSX.Element {
                 fontSize: '11px',
                 color: 'rgba(44,24,16,0.6)',
               }}>
-                <Icons.Target /> Daily Rations
+                <Icons.Target /> Daily Goal
               </div>
               <span style={{
                 fontSize: '11px',
@@ -2176,7 +1948,7 @@ export default function Widget(): JSX.Element {
                     fontFamily: '"Playfair Display", serif',
                     fontStyle: 'italic',
                   }}>
-                    Ship's Current Position
+                    Now Watching
                   </div>
                   <div style={{
                     fontSize: '12px',
