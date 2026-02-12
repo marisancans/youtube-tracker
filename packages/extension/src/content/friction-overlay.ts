@@ -287,6 +287,13 @@ export function showFrictionOverlay(videoTitle: string): Promise<number> {
       });
       button.addEventListener('click', () => {
         const rating = parseInt(button.dataset.rating!, 10);
+        // Play ship's bell
+        try {
+          const bellUrl = chrome.runtime.getURL('src/assets/audio/ship-bell.mp3');
+          const bell = new Audio(bellUrl);
+          bell.volume = 0.3;
+          bell.play().catch(() => {});
+        } catch {}
         removeOverlay();
         if (resolveRating) {
           resolveRating(rating);
