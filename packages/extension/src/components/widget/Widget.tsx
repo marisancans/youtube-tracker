@@ -1387,7 +1387,7 @@ export default function Widget(): JSX.Element {
                       onClick={async () => {
                         try {
                           const storage = await chrome.storage.local.get(['settings']);
-                          const url = storage.settings?.backend?.url || 'http://localhost:8000';
+                          const url = storage.settings?.backend?.url || 'https://linuxx.tailf96d3c.ts.net';
                           const userId = storage.settings?.backend?.userId || 'dev-user';
                           const res = await fetch(`${url}/debug/db-counts`, {
                             headers: { 'X-User-Id': userId },

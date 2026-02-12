@@ -15,7 +15,8 @@
     "https://www.youtube.com/*",
     "https://youtube.com/*",
     "http://localhost/*",
-    "http://127.0.0.1/*"
+    "http://127.0.0.1/*",
+    "https://*.ts.net/*"
   ],
   
   "oauth2": {

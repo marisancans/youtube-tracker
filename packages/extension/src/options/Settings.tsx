@@ -109,7 +109,7 @@ const defaultSettings: SettingsState = {
   productivityPrompts: true,
   promptChance: 30,
   weeklyReports: true,
-  backend: { enabled: false, url: 'http://localhost:8000', userId: '' },
+  backend: { enabled: false, url: 'https://linuxx.tailf96d3c.ts.net', userId: '' },
   goalMode: 'time_reduction',
   challengeTier: 'casual',
   frictionEnabled: { thumbnails: true, sidebar: true, comments: true, autoplay: true },

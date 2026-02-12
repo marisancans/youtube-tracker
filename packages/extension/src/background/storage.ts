@@ -117,7 +117,7 @@ export const DEFAULT_SETTINGS: Settings = {
   blockedChannels: [],
   backend: {
     enabled: false,
-    url: 'http://localhost:8000',
+    url: 'https://linuxx.tailf96d3c.ts.net',
     userId: null,
     lastSync: null,
   },
