@@ -18,7 +18,18 @@
     "http://127.0.0.1/*",
     "https://*.ts.net/*"
   ],
-  
+
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/assets/audio/ambient-ocean.mp3",
+        "src/assets/audio/ship-bell.mp3",
+        "src/assets/audio/ui-click.mp3"
+      ],
+      "matches": ["*://*.youtube.com/*", "*://youtu.be/*"]
+    }
+  ],
+
   "oauth2": {
     "client_id": "1007098689527-o37u9pf5794h8fadhd7v5v5fdd72hk3s.apps.googleusercontent.com",
     "scopes": [
