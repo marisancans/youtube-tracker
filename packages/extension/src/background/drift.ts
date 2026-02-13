@@ -1,58 +1,28 @@
 /**
- * Drift System 🌊
- * Progressive friction coefficient calculation
+ * Drift System V2 - 4-Axis Weighted Decay Engine
+ * Replaces the old single-value calendar-day drift with
+ * timePressure, contentQuality, behaviorPattern, and circadian axes.
  */
 
-import { getStorage, getTodayKey, type DriftState, type DriftSnapshot, type GoalMode, type ChallengeTier } from './storage';
-import { CHALLENGE_TIERS } from './challenge';
+import type {
+  DriftStateV2,
+  DriftAxisState,
+  DriftSample,
+  SeaState,
+  DriftEffectsV2,
+  DriftWeights,
+} from '@yt-detox/shared';
+import {
+  getStorage,
+  type DriftState,
+  type DriftSnapshot,
+  emptyDriftStateV2,
+  DEFAULT_DRIFT_WEIGHTS,
+  DRIFT_SATURATION,
+  DRIFT_HALF_LIVES,
+} from './storage';
 
-// ===== Drift State =====
-
-let driftState: DriftState = {
-  current: 0,
-  history: [],
-  lastCalculated: 0,
-};
-
-// ===== Drift History (30-min snapshots) =====
-
-let driftSnapshots: DriftSnapshot[] = [];
-let lastSnapshotTime = 0;
-
-export async function initDriftHistory(): Promise<void> {
-  const result = await chrome.storage.local.get('driftHistory');
-  driftSnapshots = result.driftHistory || [];
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-  driftSnapshots = driftSnapshots.filter((s) => s.timestamp > cutoff);
-}
-
-export function getDriftSnapshots(): DriftSnapshot[] {
-  return driftSnapshots;
-}
-
-async function recordDriftSnapshot(drift: number, level: 'low' | 'medium' | 'high' | 'critical'): Promise<void> {
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-  const stats = await chrome.storage.local.get('dailyStats');
-  const today = new Date().toISOString().split('T')[0];
-  const todayStats = stats.dailyStats?.[today];
-
-  const snapshot: DriftSnapshot = {
-    timestamp: Date.now(),
-    drift,
-    level,
-    videosThisHour: todayStats?.videoCount || 0,
-    productiveThisHour: todayStats?.productiveVideos || 0,
-  };
-
-  driftSnapshots.push(snapshot);
-  driftSnapshots = driftSnapshots.filter((s) => s.timestamp > cutoff);
-  if (driftSnapshots.length > 48) {
-    driftSnapshots = driftSnapshots.slice(-48);
-  }
-  await chrome.storage.local.set({ driftHistory: driftSnapshots });
-}
-
-// ===== Drift Factors =====
+// ===== Legacy type re-exports for backward compatibility =====
 
 export interface DriftFactors {
   timeRatio: number;
@@ -63,8 +33,6 @@ export interface DriftFactors {
   productiveDiscount: number;
   breakDiscount: number;
 }
-
-// ===== Drift Effects =====
 
 export interface DriftEffects {
   thumbnailBlur: number;
@@ -77,205 +45,201 @@ export interface DriftEffects {
 
 export type DriftLevel = 'low' | 'medium' | 'high' | 'critical';
 
-// ===== Calculate Drift =====
+// ===== Decay Math Helpers =====
 
-export async function calculateDrift(): Promise<{ drift: number; factors: DriftFactors }> {
-  const storage = await getStorage();
-  const settings = storage.settings;
-  const todayKey = getTodayKey();
-  const todayStats = storage.dailyStats[todayKey];
+function decayWeight(sample: DriftSample, now: number, halfLife: number): number {
+  const elapsed = now - sample.timestamp;
+  return sample.weight * Math.pow(2, -(elapsed / halfLife));
+}
 
-  // Get goal based on challenge tier (stored in settings or default to casual)
-  const challengeTier = ((settings as any).challengeTier as ChallengeTier) || 'casual';
-  const goalMinutes = CHALLENGE_TIERS[challengeTier]?.goalMinutes || 60;
-
-  // If no data yet, drift is 0
-  if (!todayStats) {
-    return {
-      drift: 0,
-      factors: {
-        timeRatio: 0,
-        unproductiveRatio: 0,
-        recommendationRatio: 0,
-        bingeBonus: 0,
-        lateNightBonus: 0,
-        productiveDiscount: 0,
-        breakDiscount: 0,
-      },
-    };
+function computeAxisValue(axis: DriftAxisState, now: number, saturation: number): number {
+  let sum = 0;
+  for (const s of axis.samples) {
+    sum += decayWeight(s, now, axis.halfLife);
   }
+  return Math.min(Math.max(sum / saturation, 0), 1);
+}
 
-  const todayMinutes = Math.floor((todayStats.totalSeconds || 0) / 60);
-  const totalRated =
-    (todayStats.productiveVideos || 0) + (todayStats.unproductiveVideos || 0) + (todayStats.neutralVideos || 0);
-  const totalVideos = todayStats.videoCount || 0;
+function gcSamples(axis: DriftAxisState, now: number): DriftSample[] {
+  const maxAge = axis.halfLife * 3;
+  return axis.samples.filter(s => (now - s.timestamp) < maxAge);
+}
 
-  // Calculate factors
-  const factors: DriftFactors = {
-    // Base: time spent relative to goal
-    timeRatio: Math.min(todayMinutes / goalMinutes, 1.5), // Cap at 1.5
+function computeCircadian(bedtimeHour: number): number {
+  const now = new Date();
+  const currentHour = now.getHours() + now.getMinutes() / 60;
+  let hoursUntil = bedtimeHour - currentHour;
+  if (hoursUntil < -12) hoursUntil += 24;
+  if (hoursUntil > 12) hoursUntil -= 24;
+  if (hoursUntil > 4) return 0;
+  if (hoursUntil > 2) return 0.2;
+  if (hoursUntil > 0) return 0.5;
+  return 1.0;
+}
 
-    // Unproductive video ratio (0-0.3 contribution)
-    unproductiveRatio: totalRated > 0 ? ((todayStats.unproductiveVideos || 0) / totalRated) * 0.3 : 0,
+function getSeaState(composite: number): SeaState {
+  if (composite < 0.25) return 'calm';
+  if (composite < 0.50) return 'choppy';
+  if (composite < 0.75) return 'rough';
+  return 'storm';
+}
 
-    // Recommendation clicks vs total (0-0.2 contribution)
-    recommendationRatio: totalVideos > 0 ? ((todayStats.recommendationClicks || 0) / totalVideos) * 0.2 : 0,
+// ===== Module-Level State =====
 
-    // Binge bonus: current session over 60 minutes
-    bingeBonus: 0, // Will be set from current session
+let driftV2: DriftStateV2 = emptyDriftStateV2();
 
-    // Late night (23:00 - 06:00)
-    lateNightBonus: (() => {
-      const hour = new Date().getHours();
-      return hour >= 23 || hour < 6 ? 0.15 : 0;
-    })(),
+// Legacy state (derived from V2 for backward compat)
+let driftState: DriftState = {
+  current: 0,
+  history: [],
+  lastCalculated: 0,
+};
 
-    // Productive video discount (negative, reduces drift)
-    productiveDiscount: totalRated > 0 ? -((todayStats.productiveVideos || 0) / totalRated) * 0.2 : 0,
+// Drift history (30-min snapshots)
+let driftSnapshots: DriftSnapshot[] = [];
+let lastSnapshotTime = 0;
 
-    // Break discount (if took breaks recently)
-    breakDiscount: 0, // TODO: track breaks taken
+// ===== Drift History =====
+
+export async function initDriftHistory(): Promise<void> {
+  const result = await chrome.storage.local.get('driftHistory');
+  driftSnapshots = result.driftHistory || [];
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  driftSnapshots = driftSnapshots.filter((s) => s.timestamp > cutoff);
+}
+
+export function getDriftSnapshots(): DriftSnapshot[] {
+  return driftSnapshots;
+}
+
+async function recordDriftSnapshot(drift: number, level: SeaState): Promise<void> {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const stats = await chrome.storage.local.get('dailyStats');
+  const today = new Date().toISOString().split('T')[0];
+  const todayStats = stats.dailyStats?.[today];
+
+  // Map SeaState to legacy level for the snapshot
+  const legacyLevel: 'low' | 'medium' | 'high' | 'critical' =
+    level === 'calm' ? 'low'
+    : level === 'choppy' ? 'medium'
+    : level === 'rough' ? 'high'
+    : 'critical';
+
+  const snapshot: DriftSnapshot = {
+    timestamp: Date.now(),
+    drift,
+    level: legacyLevel,
+    videosThisHour: todayStats?.videoCount || 0,
+    productiveThisHour: todayStats?.productiveVideos || 0,
   };
 
-  // Check for binge session (current session > 60 min)
-  const browserSessions = storage.browserSessions || [];
-  const activeSessions = browserSessions.filter((s) => !s.endedAt);
-  if (activeSessions.length > 0) {
-    const currentSession = activeSessions[activeSessions.length - 1];
-    const sessionMinutes = (currentSession.totalDurationSeconds || 0) / 60;
-    if (sessionMinutes > 60) {
-      factors.bingeBonus = 0.2;
-    } else if (sessionMinutes > 30) {
-      factors.bingeBonus = 0.1;
-    }
+  driftSnapshots.push(snapshot);
+  driftSnapshots = driftSnapshots.filter((s) => s.timestamp > cutoff);
+  if (driftSnapshots.length > 48) {
+    driftSnapshots = driftSnapshots.slice(-48);
   }
+  await chrome.storage.local.set({ driftHistory: driftSnapshots });
+}
 
-  // Calculate final drift
-  let drift =
-    factors.timeRatio * 0.6 + // Time is 60% of drift
-    factors.unproductiveRatio +
-    factors.recommendationRatio +
-    factors.bingeBonus +
-    factors.lateNightBonus +
-    factors.productiveDiscount +
-    factors.breakDiscount;
+// ===== V2 Exported Functions =====
 
-  // Apply mode modifiers
-  const goalMode = ((settings as any).goalMode as GoalMode) || 'time_reduction';
-  if (goalMode === 'strict') {
-    drift *= 1.5; // 50% faster drift in strict mode
-  } else if (goalMode === 'music') {
-    // In music mode, check if current content is music (via storage flag)
-    const musicData = await chrome.storage.local.get('currentContentIsMusic');
-    if (musicData.currentContentIsMusic) {
-      drift *= 0.3; // Heavy discount for music content
-    } else {
-      drift *= 0.9; // Small discount even when not music
-    }
-  } else if (goalMode === 'cold_turkey') {
-    // Cold turkey: hard block threshold at 0.3
-    // Once you hit 0.3, it jumps to 1.0 (max friction)
-    if (drift >= 0.3) {
-      drift = 1.0;
-    }
-  }
+export function addDriftSample(
+  axis: 'timePressure' | 'contentQuality' | 'behaviorPattern',
+  weight: number,
+): void {
+  driftV2.axes[axis].samples.push({ timestamp: Date.now(), weight });
+}
 
-  // Clamp to 0-1
-  drift = Math.max(0, Math.min(1, drift));
+export async function calculateDriftV2(): Promise<DriftStateV2> {
+  // Read storage for weights and bedtime
+  const storage = await getStorage();
+  const weights: DriftWeights = storage.settings.driftWeights || DEFAULT_DRIFT_WEIGHTS;
+  const bedtimeHour: number = (storage.settings as any).bedtimeHour ?? 23;
+  const now = Date.now();
 
-  // Update state
-  driftState.current = drift;
-  driftState.lastCalculated = Date.now();
+  // GC old samples
+  driftV2.axes.timePressure.samples = gcSamples(driftV2.axes.timePressure, now);
+  driftV2.axes.contentQuality.samples = gcSamples(driftV2.axes.contentQuality, now);
+  driftV2.axes.behaviorPattern.samples = gcSamples(driftV2.axes.behaviorPattern, now);
 
-  // Add to history (keep hourly snapshots)
+  // Compute each axis
+  driftV2.axes.timePressure.value = computeAxisValue(driftV2.axes.timePressure, now, DRIFT_SATURATION.timePressure);
+  driftV2.axes.contentQuality.value = computeAxisValue(driftV2.axes.contentQuality, now, DRIFT_SATURATION.contentQuality);
+  driftV2.axes.behaviorPattern.value = computeAxisValue(driftV2.axes.behaviorPattern, now, DRIFT_SATURATION.behaviorPattern);
+  driftV2.axes.circadian = computeCircadian(bedtimeHour);
+
+  // Composite
+  driftV2.composite =
+    driftV2.axes.timePressure.value * weights.timePressure +
+    driftV2.axes.contentQuality.value * weights.contentQuality +
+    driftV2.axes.behaviorPattern.value * weights.behaviorPattern +
+    driftV2.axes.circadian * weights.circadian;
+  driftV2.composite = Math.min(Math.max(driftV2.composite, 0), 1);
+  driftV2.level = getSeaState(driftV2.composite);
+  driftV2.lastCalculated = now;
+
+  // Update legacy state
+  driftState.current = driftV2.composite;
+  driftState.lastCalculated = now;
   const lastSnapshot = driftState.history[driftState.history.length - 1];
   const hourAgo = Date.now() - 60 * 60 * 1000;
   if (!lastSnapshot || lastSnapshot.timestamp < hourAgo) {
-    driftState.history.push({ timestamp: Date.now(), value: drift });
-    // Keep only last 24 hours
+    driftState.history.push({ timestamp: now, value: driftV2.composite });
     driftState.history = driftState.history.filter((h) => h.timestamp > Date.now() - 24 * 60 * 60 * 1000);
   }
 
-  // Persist drift state
-  await chrome.storage.local.set({ driftState });
+  // Persist
+  await chrome.storage.local.set({ driftV2State: driftV2, driftState });
 
-  return { drift, factors };
+  return driftV2;
 }
 
-// ===== Get Drift Level =====
-
-export function getDriftLevel(drift: number): DriftLevel {
-  if (drift < 0.3) return 'low';
-  if (drift < 0.5) return 'medium';
-  if (drift < 0.7) return 'high';
-  return 'critical';
+export function getDriftV2State(): DriftStateV2 {
+  return driftV2;
 }
 
-// ===== Friction Settings =====
+// ===== Legacy Compatibility Wrappers =====
 
-interface FrictionEnabled {
-  thumbnails: boolean;
-  sidebar: boolean;
-  comments: boolean;
-  player: boolean;
-  autoplay: boolean;
-}
-
-const DEFAULT_FRICTION: FrictionEnabled = {
-  thumbnails: true,
-  sidebar: true,
-  comments: true,
-  player: false,
-  autoplay: true,
-};
-
-// ===== Get Drift Effects =====
-
-export async function getDriftEffectsAsync(drift: number): Promise<DriftEffects> {
-  // Get friction settings from storage
-  const data = await chrome.storage.local.get('settings');
-  const frictionEnabled: FrictionEnabled = data.settings?.frictionEnabled || DEFAULT_FRICTION;
-
-  return calculateDriftEffects(drift, frictionEnabled);
-}
-
-export function getDriftEffects(drift: number): DriftEffects {
-  // Sync version uses defaults - async version should be preferred
-  return calculateDriftEffects(drift, DEFAULT_FRICTION);
-}
-
-function calculateDriftEffects(drift: number, friction: FrictionEnabled): DriftEffects {
+export async function calculateDrift(): Promise<{ drift: number; factors: Record<string, number> }> {
+  const state = await calculateDriftV2();
   return {
-    thumbnailBlur: friction.thumbnails ? (drift < 0.5 ? 0 : drift < 0.7 ? 2 : drift < 0.9 ? 4 : 8) : 0,
-    thumbnailGrayscale: friction.thumbnails
-      ? drift < 0.3
-        ? 0
-        : drift < 0.5
-          ? 20
-          : drift < 0.7
-            ? 30
-            : drift < 0.9
-              ? 60
-              : 100
-      : 0,
-    commentsReduction: friction.comments
-      ? drift < 0.3
-        ? 0
-        : drift < 0.5
-          ? 10
-          : drift < 0.7
-            ? 20
-            : drift < 0.9
-              ? 50
-              : 100
-      : 0,
-    sidebarReduction: friction.sidebar ? (drift < 0.3 ? 0 : drift < 0.5 ? 50 : drift < 0.7 ? 75 : 100) : 0,
-    autoplayDelay: friction.autoplay ? (drift < 0.3 ? 5 : drift < 0.5 ? 15 : drift < 0.7 ? 30 : 999) : 5,
-    showTextOnly: friction.thumbnails && drift >= 0.9,
+    drift: state.composite,
+    factors: {
+      timeRatio: state.axes.timePressure.value,
+      unproductiveRatio: state.axes.contentQuality.value,
+      recommendationRatio: state.axes.behaviorPattern.value,
+      lateNightBonus: state.axes.circadian,
+      productiveDiscount: 0,
+      bingeBonus: 0,
+      breakDiscount: 0,
+    },
   };
 }
 
-// ===== Get Current Drift State =====
+export function getDriftLevel(drift: number): SeaState {
+  return getSeaState(drift);
+}
+
+export function getDriftEffects(drift: number): DriftEffectsV2 {
+  const level = getSeaState(drift);
+  const base = { seaState: level, showTextOnly: false };
+  switch (level) {
+    case 'calm':
+      return { ...base, thumbnailBlur: 0, thumbnailGrayscale: 0, commentsReduction: 0, sidebarReduction: 0, autoplayDelay: 5 };
+    case 'choppy':
+      return { ...base, thumbnailBlur: 0, thumbnailGrayscale: 20, commentsReduction: 10, sidebarReduction: 50, autoplayDelay: 15 };
+    case 'rough':
+      return { ...base, thumbnailBlur: 2, thumbnailGrayscale: 30, commentsReduction: 20, sidebarReduction: 75, autoplayDelay: 30 };
+    case 'storm':
+      return { ...base, thumbnailBlur: 6, thumbnailGrayscale: 80, commentsReduction: 75, sidebarReduction: 100, autoplayDelay: 999, showTextOnly: drift >= 0.9 };
+  }
+}
+
+export async function getDriftEffectsAsync(drift: number): Promise<DriftEffectsV2> {
+  return getDriftEffects(drift);
+}
+
+// ===== State Accessors =====
 
 export function getDriftState(): DriftState {
   return driftState;
@@ -285,14 +249,29 @@ export function getCurrentDrift(): number {
   return driftState.current;
 }
 
-// ===== Initialize Drift =====
+// ===== Initialization =====
 
 export async function initDrift(): Promise<void> {
-  const data = await chrome.storage.local.get('driftState');
-  if (data.driftState) {
-    driftState = data.driftState;
-    console.log('[YT Detox] Restored drift state:', driftState.current.toFixed(2));
+  const stored = await chrome.storage.local.get(['driftV2State']);
+  if (stored.driftV2State) {
+    driftV2 = stored.driftV2State;
+    // Restore half-lives (not persisted)
+    driftV2.axes.timePressure.halfLife = DRIFT_HALF_LIVES.timePressure;
+    driftV2.axes.contentQuality.halfLife = DRIFT_HALF_LIVES.contentQuality;
+    driftV2.axes.behaviorPattern.halfLife = DRIFT_HALF_LIVES.behaviorPattern;
   }
+
+  // Sync legacy state
+  driftState.current = driftV2.composite;
+  driftState.lastCalculated = driftV2.lastCalculated;
+
+  // Also try restoring legacy history
+  const legacyData = await chrome.storage.local.get('driftState');
+  if (legacyData.driftState?.history) {
+    driftState.history = legacyData.driftState.history;
+  }
+
+  console.log('[YT Detox] Drift V2 initialized, composite:', driftV2.composite);
 }
 
 // ===== Periodic Drift Calculation =====
@@ -305,27 +284,51 @@ export function startDriftCalculation(intervalMs: number = 30000): void {
   }
 
   driftInterval = setInterval(async () => {
-    const { drift, factors } = await calculateDrift();
-    const effects = await getDriftEffectsAsync(drift);
-    console.log('[YT Detox] Drift calculated:', drift.toFixed(2), 'factors:', factors);
+    // Add time pressure sample from live session if data is fresh
+    const stored = await chrome.storage.local.get(['liveSession', 'liveSessionUpdatedAt']);
+    if (stored.liveSession && stored.liveSessionUpdatedAt) {
+      const age = Date.now() - stored.liveSessionUpdatedAt;
+      if (age < 60000 && stored.liveSession.activeDurationSeconds > 0) {
+        addDriftSample('timePressure', intervalMs / 1000 / 60);
+      }
+    }
+
+    const state = await calculateDriftV2();
+    const effects = getDriftEffects(state.composite);
+    console.log('[YT Detox] Drift V2 calculated:', state.composite.toFixed(2), 'level:', state.level);
 
     // Record 30-minute drift snapshot
     const now = Date.now();
     if (now - lastSnapshotTime >= 30 * 60 * 1000) {
       lastSnapshotTime = now;
-      await recordDriftSnapshot(drift, getDriftLevel(drift));
+      await recordDriftSnapshot(state.composite, state.level);
     }
 
     // Broadcast drift update to content scripts
     chrome.tabs.query({ url: ['*://*.youtube.com/*', '*://youtu.be/*'] }, (tabs) => {
       for (const tab of tabs) {
         if (tab.id) {
+          // V2 message
+          chrome.tabs
+            .sendMessage(tab.id, {
+              type: 'DRIFT_V2_UPDATED',
+              data: {
+                drift: state.composite,
+                level: state.level,
+                effects,
+                axes: state.axes,
+              },
+            })
+            .catch(() => {
+              // Tab might not have content script loaded
+            });
+          // Legacy message for backward compat
           chrome.tabs
             .sendMessage(tab.id, {
               type: 'DRIFT_UPDATED',
               data: {
-                drift,
-                level: getDriftLevel(drift),
+                drift: state.composite,
+                level: getDriftLevel(state.composite),
                 effects,
               },
             })
