@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { mergeLiveStats } from '@/lib/live-stats-merger';
 import { Switch } from '@/components/ui/switch';
 import {
   Loader2,
@@ -45,6 +46,13 @@ interface DriftData {
   history: Array<{ timestamp: number; value: number }>;
 }
 
+interface DriftWeights {
+  timePressure: number;
+  contentQuality: number;
+  behaviorPattern: number;
+  circadian: number;
+}
+
 interface SettingsState {
   trackingEnabled: boolean;
   dailyGoalMinutes: number;
@@ -65,6 +73,8 @@ interface SettingsState {
     autoplay: boolean;
   };
   whitelistedChannels: string[];
+  bedtimeHour: number;
+  driftWeights: DriftWeights;
   devFeatures: {
     driftEffects: boolean;
     frictionOverlay: boolean;
@@ -114,6 +124,13 @@ const GOAL_MODES: Record<GoalMode, { icon: JSX.Element; label: string; desc: str
   },
 };
 
+const DEFAULT_DRIFT_WEIGHTS: DriftWeights = {
+  timePressure: 0.40,
+  contentQuality: 0.25,
+  behaviorPattern: 0.20,
+  circadian: 0.15,
+};
+
 const defaultSettings: SettingsState = {
   trackingEnabled: true,
   dailyGoalMinutes: 60,
@@ -125,6 +142,8 @@ const defaultSettings: SettingsState = {
   challengeTier: 'casual',
   frictionEnabled: { thumbnails: true, sidebar: true, comments: true, autoplay: true },
   whitelistedChannels: [],
+  bedtimeHour: 23,
+  driftWeights: { ...DEFAULT_DRIFT_WEIGHTS },
   devFeatures: { driftEffects: false, frictionOverlay: false, musicDetection: false, nudges: false, syncDebug: false },
 };
 
@@ -262,6 +281,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'settings'>('dashboard');
   const [showWeekly, setShowWeekly] = useState(false);
+  const [showWeights, setShowWeights] = useState(false);
 
   const fetchBackendHealth = useCallback(async () => {
     try {
@@ -306,7 +326,16 @@ export default function Settings() {
         setSettings({ ...defaultSettings, ...data.settings });
       }
       if (data.dailyStats) {
-        setDailyStats(data.dailyStats);
+        const stats = { ...data.dailyStats };
+        // Merge live session into today's stats
+        const tk = new Date().toISOString().split('T')[0];
+        const merged = mergeLiveStats(stats[tk], {
+          liveSession: data.liveSession,
+          liveTemporal: data.liveTemporal,
+          liveSessionUpdatedAt: data.liveSessionUpdatedAt,
+        });
+        if (merged) stats[tk] = merged;
+        setDailyStats(stats);
       }
       if (data.xp) setXp(data.xp);
 
@@ -341,6 +370,16 @@ export default function Settings() {
 
   useEffect(() => {
     fetchData();
+
+    // React to storage changes instead of one-shot load
+    const WATCH_KEYS = new Set(['dailyStats', 'liveSession', 'liveTemporal', 'liveSessionUpdatedAt', 'settings', 'xp', 'lastSyncResult']);
+    const onChanged = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (Object.keys(changes).some((k) => WATCH_KEYS.has(k))) {
+        fetchData();
+      }
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => chrome.storage.onChanged.removeListener(onChanged);
   }, [fetchData]);
 
   // ===== Computed Data =====
@@ -521,11 +560,11 @@ export default function Settings() {
               Dashboard
             </button>
             <button
-              onClick={() => { window.location.hash = '#map'; }}
+              onClick={() => { window.location.hash = '#dashboard'; }}
               className="px-5 py-2.5 text-sm font-display font-medium rounded-t-lg transition-all border-b-2 bg-navy-light text-parchment-dark border-transparent hover:text-parchment hover:bg-navy-light/80 flex items-center gap-2"
             >
               <Spyglass size={14} />
-              Captain's Map
+              Dashboard
             </button>
             <button
               onClick={() => setActiveTab('settings')}
@@ -776,6 +815,135 @@ export default function Settings() {
                   ),
                 )}
               </div>
+            </div>
+
+            {/* Rope separator */}
+            <div className="flex justify-center">
+              <WaveDecoration width={300} className="text-gold-dark" />
+            </div>
+
+            {/* Bedtime */}
+            <div className="bg-parchment rounded-2xl p-6 shadow-sm rope-border">
+              <h2 className="font-display text-ink text-lg font-semibold mb-1">Bedtime</h2>
+              <p className="text-sm text-ink-light font-body mb-4">
+                When should YouTube get harder to use?
+              </p>
+              <select
+                value={settings.bedtimeHour ?? 23}
+                onChange={(e) => setSettings((p) => ({ ...p, bedtimeHour: Number(e.target.value) }))}
+                className="bg-parchment-dark/30 border border-gold/30 rounded-lg px-4 py-2 font-body text-ink"
+              >
+                {Array.from({ length: 24 }, (_, i) => (
+                  <option key={i} value={i}>{`${i.toString().padStart(2, '0')}:00`}</option>
+                ))}
+              </select>
+              <p className="text-xs text-ink-light mt-2 font-body">
+                Wind-down starts 2h before. Full circadian penalty at bedtime.
+              </p>
+            </div>
+
+            {/* Advanced: Drift Weights (collapsible) */}
+            <div className="bg-parchment rounded-2xl shadow-sm rope-border overflow-hidden">
+              <button
+                onClick={() => setShowWeights(!showWeights)}
+                className="w-full px-6 py-4 flex items-center justify-between hover:bg-parchment-dark/30 transition-colors"
+              >
+                <div>
+                  <span className="font-display text-ink text-lg font-semibold">Advanced: Drift Weights</span>
+                  <p className="text-sm text-ink-light font-body mt-0.5">Fine-tune how drift is calculated</p>
+                </div>
+                {showWeights ? (
+                  <ChevronUp className="w-5 h-5 text-ink-light" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-ink-light" />
+                )}
+              </button>
+
+              {showWeights && (
+                <div className="px-6 pb-6 border-t border-gold/20 pt-4 space-y-5">
+                  {([
+                    { key: 'timePressure' as const, label: 'Time Pressure', desc: 'How much time spent affects drift' },
+                    { key: 'contentQuality' as const, label: 'Content Quality', desc: 'Impact of video quality ratings' },
+                    { key: 'behaviorPattern' as const, label: 'Behavior Pattern', desc: 'Binge-watching and rapid switching' },
+                    { key: 'circadian' as const, label: 'Circadian', desc: 'Late-night usage penalty' },
+                  ]).map(({ key, label, desc }) => (
+                    <div key={key}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div>
+                          <span className="font-display font-medium text-ink text-sm">{label}</span>
+                          <p className="text-xs text-ink-light font-body">{desc}</p>
+                        </div>
+                        <span className="font-mono text-sm text-ink tabular-nums">
+                          {((settings.driftWeights ?? DEFAULT_DRIFT_WEIGHTS)[key] * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={Math.round((settings.driftWeights ?? DEFAULT_DRIFT_WEIGHTS)[key] * 100)}
+                        onChange={(e) => {
+                          const newVal = Number(e.target.value) / 100;
+                          setSettings((prev) => {
+                            const oldWeights = prev.driftWeights ?? { ...DEFAULT_DRIFT_WEIGHTS };
+                            const oldVal = oldWeights[key];
+                            const othersSum = 1.0 - oldVal;
+                            const newOthersSum = 1.0 - newVal;
+
+                            const updated = { ...oldWeights };
+                            updated[key] = newVal;
+
+                            const otherKeys = (['timePressure', 'contentQuality', 'behaviorPattern', 'circadian'] as const).filter(
+                              (k) => k !== key,
+                            );
+
+                            if (othersSum > 0.001 && newOthersSum > 0.001) {
+                              // Redistribute proportionally
+                              for (const ok of otherKeys) {
+                                updated[ok] = (oldWeights[ok] / othersSum) * newOthersSum;
+                              }
+                            } else if (newOthersSum > 0.001) {
+                              // Others were all zero, distribute evenly
+                              const share = newOthersSum / otherKeys.length;
+                              for (const ok of otherKeys) {
+                                updated[ok] = share;
+                              }
+                            } else {
+                              // New value is 1.0, zero out others
+                              for (const ok of otherKeys) {
+                                updated[ok] = 0;
+                              }
+                            }
+
+                            return { ...prev, driftWeights: updated };
+                          });
+                        }}
+                        className="w-full h-2 rounded-full appearance-none cursor-pointer accent-gold bg-parchment-darker/50
+                          [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
+                          [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-gold [&::-webkit-slider-thumb]:shadow-md
+                          [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-gold-dark"
+                      />
+                    </div>
+                  ))}
+
+                  <div className="flex items-center justify-between pt-2 border-t border-gold/15">
+                    <span className="text-xs text-ink-light font-mono">
+                      Sum: {((settings.driftWeights ?? DEFAULT_DRIFT_WEIGHTS).timePressure +
+                        (settings.driftWeights ?? DEFAULT_DRIFT_WEIGHTS).contentQuality +
+                        (settings.driftWeights ?? DEFAULT_DRIFT_WEIGHTS).behaviorPattern +
+                        (settings.driftWeights ?? DEFAULT_DRIFT_WEIGHTS).circadian).toFixed(2)}
+                    </span>
+                    <button
+                      onClick={() =>
+                        setSettings((p) => ({ ...p, driftWeights: { ...DEFAULT_DRIFT_WEIGHTS } }))
+                      }
+                      className="px-3 py-1.5 text-xs font-display font-medium rounded-lg bg-parchment-dark/50 text-ink hover:bg-parchment-darker/50 transition-colors border border-gold/20"
+                    >
+                      Reset to defaults
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Rope separator */}

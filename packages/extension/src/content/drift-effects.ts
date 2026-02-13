@@ -1,3 +1,4 @@
+import type { SeaState } from '@yt-detox/shared';
 import { safeSendMessageWithCallback } from '../lib/messaging';
 
 /**
@@ -12,6 +13,11 @@ import { safeSendMessageWithCallback } from '../lib/messaging';
  * that intensify with the user's drift — creating an immersive "sea state".
  */
 
+/**
+ * Local alias — accepts both the legacy DriftEffects shape (without seaState)
+ * and the new DriftEffectsV2 shape (with seaState).  The seaState field is
+ * optional so that callers using the old GET_DRIFT_EFFECTS path still work.
+ */
 interface DriftEffects {
   thumbnailBlur: number;
   thumbnailGrayscale: number;
@@ -19,13 +25,12 @@ interface DriftEffects {
   sidebarReduction: number;
   autoplayDelay: number;
   showTextOnly: boolean;
+  seaState?: SeaState;
 }
 
 // ---------------------------------------------------------------------------
 // Sea State Detection
 // ---------------------------------------------------------------------------
-
-type SeaState = 'calm' | 'choppy' | 'rough' | 'storm';
 
 function getSeaState(effects: DriftEffects): SeaState {
   const intensity = (effects.thumbnailGrayscale / 100 + effects.thumbnailBlur / 20) / 2;
@@ -276,7 +281,9 @@ function ensureCompassWatermark(): HTMLDivElement {
 // ---------------------------------------------------------------------------
 
 function updateAtmosphere(effects: DriftEffects): void {
-  const state = getSeaState(effects);
+  // Prefer the authoritative seaState from the v2 drift engine when available;
+  // fall back to the locally-computed value for legacy callers.
+  const state: SeaState = effects.seaState ?? getSeaState(effects);
   const config = getAtmosphereConfig(state);
 
   // Determine whether drift is essentially zero (perfectly calm with no effects).
@@ -660,6 +667,13 @@ export function initDriftEffects(): void {
 
   // Listen for drift updates
   chrome.runtime.onMessage.addListener((message) => {
+    // V2 drift engine — carries seaState directly in effects
+    if (message.type === 'DRIFT_V2_UPDATED' && message.data?.effects) {
+      applyDriftEffects(message.data.effects);
+      return;
+    }
+
+    // Legacy fallback
     if (message.type === 'DRIFT_UPDATED' && message.effects) {
       applyDriftEffects(message.effects);
     }
