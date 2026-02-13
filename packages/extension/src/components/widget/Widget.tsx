@@ -874,7 +874,6 @@ export default function Widget(): JSX.Element {
   const seaState = driftV2?.level || 'calm';
   const compositeVal = driftV2?.composite || 0;
   const driftPercent = Math.round(compositeVal * 100);
-  const barMinutes = Math.floor(state.sessionDuration / 60);
 
   // Sea-state dependent ship rocking config
   const rockConfig: Record<string, { angle: string; period: string; bobAmount?: string }> = {
@@ -970,7 +969,7 @@ export default function Widget(): JSX.Element {
             fontWeight: 500,
             whiteSpace: 'nowrap' as const,
           }}>
-            {barMinutes}m
+            {formatTime(state.sessionDuration)}
           </span>
           <span style={{ color: 'rgba(212,165,116,0.4)', fontSize: '10px' }}>&middot;</span>
           <span style={{
@@ -1102,7 +1101,7 @@ export default function Widget(): JSX.Element {
           zIndex: 1,
           whiteSpace: 'nowrap' as const,
         }}>
-          {barMinutes}m &middot; {state.videosWatched} videos &middot;{' '}
+          {formatTime(state.sessionDuration)} &middot; {state.videosWatched} videos &middot;{' '}
           <span style={{ color: driftColor[seaState] || '#5eead4', fontWeight: 700 }}>{driftPercent}%</span>
         </span>
         {driftV2 && (
