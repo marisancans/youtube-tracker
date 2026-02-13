@@ -910,10 +910,8 @@ export default function Widget(): JSX.Element {
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          padding: '0 4px',
           position: 'relative' as const,
           zIndex: 1,
-          transform: 'scale(0.5)',
         }}>
           <DramaticShip seaState={seaState} composite={compositeVal} />
         </div>
@@ -1031,8 +1029,6 @@ export default function Widget(): JSX.Element {
           display: 'inline-flex',
           position: 'relative' as const,
           zIndex: 1,
-          marginRight: '4px',
-          transform: 'scale(0.5)',
         }}>
           <DramaticShip seaState={seaState} composite={compositeVal} />
         </div>

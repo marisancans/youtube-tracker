@@ -25,7 +25,8 @@
         "src/assets/audio/ambient-ocean.mp3",
         "src/assets/audio/ship-bell.mp3",
         "src/assets/audio/rating-bell.mp3",
-        "src/assets/audio/ui-click.mp3"
+        "src/assets/audio/ui-click.mp3",
+        "src/assets/ship-icon.png"
       ],
       "matches": ["*://*.youtube.com/*", "*://youtu.be/*"]
     }

@@ -1,436 +1,255 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import type { SeaState } from '@yt-detox/shared';
 
-interface DramaticShipProps {
+/**
+ * DramaticShip — PNG ship sprite with organic, independent motion.
+ *
+ * The ship does NOT rock in sync with waves. It has its own animation
+ * timeline that is deliberately offset from wave scrolling speed,
+ * creating the illusion of a vessel fighting the sea.
+ *
+ * Motion layers (applied via nested divs, each with its own animation):
+ *   1. Heave  — slow vertical bob (different period than waves)
+ *   2. Roll   — side-to-side tilt (counter-phased to heave)
+ *   3. Surge  — slight horizontal drift
+ *   4. Lurch  — occasional sharp corrections (rough/storm only)
+ */
+
+interface Props {
   seaState: SeaState;
   composite: number;
 }
 
-// Inject dramatic ship keyframes
-const SHIP_KEYFRAMES_ID = 'yt-detox-dramatic-ship-keyframes';
+const KF_ID = 'yt-detox-ship-v2';
 
-function injectShipKeyframes(): void {
-  if (document.getElementById(SHIP_KEYFRAMES_ID)) return;
-
-  const style = document.createElement('style');
-  style.id = SHIP_KEYFRAMES_ID;
-  style.textContent = `
-    /* Calm - Gentle sway like a ship at anchor */
-    @keyframes yt-ship-calm-rock {
-      0%, 100% { transform: rotate(-2deg) translateY(0px); }
-      25% { transform: rotate(1.5deg) translateY(-2px); }
-      50% { transform: rotate(2deg) translateY(0px); }
-      75% { transform: rotate(-1.5deg) translateY(-2px); }
+function injectKeyframes(): void {
+  if (document.getElementById(KF_ID)) return;
+  const s = document.createElement('style');
+  s.id = KF_ID;
+  s.textContent = `
+    /* ── Heave (vertical bob) — asymmetric, organic ── */
+    @keyframes yt-ship2-heave-calm {
+      0%, 100% { transform: translateY(0); }
+      30%  { transform: translateY(-2px); }
+      65%  { transform: translateY(1px); }
+    }
+    @keyframes yt-ship2-heave-choppy {
+      0%, 100% { transform: translateY(2px); }
+      20%  { transform: translateY(-4px); }
+      55%  { transform: translateY(3px); }
+      80%  { transform: translateY(-2px); }
+    }
+    @keyframes yt-ship2-heave-rough {
+      0%, 100% { transform: translateY(5px); }
+      15%  { transform: translateY(-8px); }
+      35%  { transform: translateY(6px); }
+      55%  { transform: translateY(-6px); }
+      75%  { transform: translateY(4px); }
+      90%  { transform: translateY(-3px); }
+    }
+    @keyframes yt-ship2-heave-storm {
+      0%   { transform: translateY(8px); }
+      10%  { transform: translateY(-14px); }
+      22%  { transform: translateY(10px); }
+      38%  { transform: translateY(-12px); }
+      50%  { transform: translateY(9px); }
+      65%  { transform: translateY(-15px); }
+      78%  { transform: translateY(11px); }
+      90%  { transform: translateY(-10px); }
+      100% { transform: translateY(8px); }
     }
 
-    /* Choppy - Active sailing, responding to waves */
-    @keyframes yt-ship-choppy-rock {
-      0%, 100% { transform: rotate(-5deg) translateY(2px); }
-      15% { transform: rotate(6deg) translateY(-4px); }
-      30% { transform: rotate(-4deg) translateY(0px); }
-      50% { transform: rotate(7deg) translateY(-5px); }
-      70% { transform: rotate(-6deg) translateY(2px); }
-      85% { transform: rotate(5deg) translateY(-3px); }
+    /* ── Roll (rotation) — deliberately different period than heave ── */
+    @keyframes yt-ship2-roll-calm {
+      0%, 100% { transform: rotate(0deg); }
+      40%  { transform: rotate(1.5deg); }
+      70%  { transform: rotate(-1deg); }
+    }
+    @keyframes yt-ship2-roll-choppy {
+      0%, 100% { transform: rotate(-3deg); }
+      25%  { transform: rotate(4deg); }
+      60%  { transform: rotate(-5deg); }
+      85%  { transform: rotate(3deg); }
+    }
+    @keyframes yt-ship2-roll-rough {
+      0%, 100% { transform: rotate(-8deg); }
+      18%  { transform: rotate(12deg); }
+      35%  { transform: rotate(-10deg); }
+      55%  { transform: rotate(14deg); }
+      72%  { transform: rotate(-12deg); }
+      88%  { transform: rotate(9deg); }
+    }
+    @keyframes yt-ship2-roll-storm {
+      0%   { transform: rotate(-18deg); }
+      12%  { transform: rotate(24deg); }
+      25%  { transform: rotate(-20deg); }
+      40%  { transform: rotate(28deg); }
+      55%  { transform: rotate(-22deg); }
+      68%  { transform: rotate(25deg); }
+      82%  { transform: rotate(-24deg); }
+      92%  { transform: rotate(20deg); }
+      100% { transform: rotate(-18deg); }
     }
 
-    /* Rough - Heavy seas, dramatic tilts */
-    @keyframes yt-ship-rough-rock {
-      0%, 100% { transform: rotate(-12deg) translateY(6px) translateX(-3px); }
-      12% { transform: rotate(15deg) translateY(-8px) translateX(4px); }
-      25% { transform: rotate(-10deg) translateY(4px) translateX(-2px); }
-      40% { transform: rotate(18deg) translateY(-10px) translateX(5px); }
-      55% { transform: rotate(-14deg) translateY(7px) translateX(-4px); }
-      70% { transform: rotate(16deg) translateY(-9px) translateX(3px); }
-      85% { transform: rotate(-11deg) translateY(5px) translateX(-3px); }
+    /* ── Surge (horizontal drift) ── */
+    @keyframes yt-ship2-surge-calm {
+      0%, 100% { transform: translateX(0); }
+      50%  { transform: translateX(1px); }
+    }
+    @keyframes yt-ship2-surge-choppy {
+      0%, 100% { transform: translateX(0); }
+      30%  { transform: translateX(2px); }
+      70%  { transform: translateX(-2px); }
+    }
+    @keyframes yt-ship2-surge-rough {
+      0%, 100% { transform: translateX(-3px); }
+      25%  { transform: translateX(4px); }
+      55%  { transform: translateX(-5px); }
+      80%  { transform: translateX(3px); }
+    }
+    @keyframes yt-ship2-surge-storm {
+      0%   { transform: translateX(-6px); }
+      15%  { transform: translateX(8px); }
+      35%  { transform: translateX(-10px); }
+      50%  { transform: translateX(7px); }
+      70%  { transform: translateX(-9px); }
+      85%  { transform: translateX(6px); }
+      100% { transform: translateX(-6px); }
     }
 
-    /* Storm - Violent heaving, ship fighting for survival */
-    @keyframes yt-ship-storm-rock {
-      0% { transform: rotate(-22deg) translateY(12px) translateX(-8px) scale(0.98); }
-      8% { transform: rotate(28deg) translateY(-15px) translateX(10px) scale(1.02); }
-      18% { transform: rotate(-25deg) translateY(10px) translateX(-6px) scale(0.99); }
-      28% { transform: rotate(30deg) translateY(-18px) translateX(12px) scale(1.03); }
-      40% { transform: rotate(-20deg) translateY(14px) translateX(-9px) scale(0.97); }
-      52% { transform: rotate(26deg) translateY(-16px) translateX(11px) scale(1.02); }
-      65% { transform: rotate(-28deg) translateY(13px) translateX(-7px) scale(0.98); }
-      78% { transform: rotate(24deg) translateY(-14px) translateX(9px) scale(1.01); }
-      90% { transform: rotate(-23deg) translateY(11px) translateX(-8px) scale(0.99); }
-      100% { transform: rotate(-22deg) translateY(12px) translateX(-8px) scale(0.98); }
-    }
-
-    /* Sail flutter */
-    @keyframes yt-ship-sail-flutter {
-      0%, 100% { transform: scaleX(1); }
-      50% { transform: scaleX(0.95); }
-    }
-
-    /* Splash particles */
-    @keyframes yt-ship-splash {
-      0% { transform: translate(0, 0) scale(0); opacity: 0; }
-      20% { transform: translate(var(--splash-x, 20px), var(--splash-y, -30px)) scale(1); opacity: 0.8; }
-      100% { transform: translate(calc(var(--splash-x, 20px) * 1.5), calc(var(--splash-y, -30px) * 1.2)) scale(0.3); opacity: 0; }
-    }
-
-    /* Spray mist */
-    @keyframes yt-ship-spray {
-      0% { transform: translateX(0) scale(0.5); opacity: 0; }
-      30% { opacity: 0.6; }
-      100% { transform: translateX(60px) scale(1.5); opacity: 0; }
-    }
-
-    /* Lightning pulse on ship */
-    @keyframes yt-ship-lightning-pulse {
-      0%, 100% { filter: brightness(1) drop-shadow(0 0 0px rgba(255,255,255,0)); }
-      10% { filter: brightness(1.8) drop-shadow(0 0 20px rgba(255,255,255,0.9)); }
-      20% { filter: brightness(1) drop-shadow(0 0 0px rgba(255,255,255,0)); }
-      35% { filter: brightness(1) drop-shadow(0 0 0px rgba(255,255,255,0)); }
-      40% { filter: brightness(1.6) drop-shadow(0 0 15px rgba(255,255,255,0.7)); }
-      50% { filter: brightness(1) drop-shadow(0 0 0px rgba(255,255,255,0)); }
-    }
-
-    /* Glow pulse for storm */
-    @keyframes yt-ship-storm-glow {
-      0%, 100% { filter: drop-shadow(0 4px 12px rgba(30, 41, 59, 0.6)); }
-      50% { filter: drop-shadow(0 6px 20px rgba(30, 41, 59, 0.8)); }
+    /* ── Lightning illumination ── */
+    @keyframes yt-ship2-flash {
+      0%, 100% { filter: brightness(1) drop-shadow(0 0 0 transparent); }
+      8%   { filter: brightness(2) drop-shadow(0 0 12px rgba(245, 230, 200, 0.8)); }
+      18%  { filter: brightness(1) drop-shadow(0 0 0 transparent); }
+      38%  { filter: brightness(1.5) drop-shadow(0 0 8px rgba(245, 230, 200, 0.5)); }
+      48%  { filter: brightness(1) drop-shadow(0 0 0 transparent); }
     }
   `;
-  document.head.appendChild(style);
+  document.head.appendChild(s);
 }
 
-// Seeded random for consistent particle positions
-function seededRandom(seed: number): number {
-  const x = Math.sin(seed * 9301 + 49297) * 49297;
-  return x - Math.floor(x);
+// ── Configs ─────────────────────────────────────────────────────────────────
+
+interface MotionCfg {
+  heave: string;   // keyframe name
+  heaveDur: string; // period — deliberately NOT matching wave scroll speed
+  roll: string;
+  rollDur: string;  // different period than heave for organic feel
+  surge: string;
+  surgeDur: string;
+  brightness: number;
+  dropShadow: string;
 }
 
-export default function DramaticShip({ seaState, composite }: DramaticShipProps): JSX.Element {
-  const [lightningActive, setLightningActive] = useState(false);
+const MOTION: Record<SeaState, MotionCfg> = {
+  calm: {
+    heave: 'yt-ship2-heave-calm',   heaveDur: '5.5s',
+    roll:  'yt-ship2-roll-calm',    rollDur: '7s',
+    surge: 'yt-ship2-surge-calm',   surgeDur: '9s',
+    brightness: 1.1,
+    dropShadow: '0 2px 8px rgba(26, 15, 10, 0.3)',
+  },
+  choppy: {
+    heave: 'yt-ship2-heave-choppy', heaveDur: '3.2s',
+    roll:  'yt-ship2-roll-choppy',  rollDur: '4.5s',
+    surge: 'yt-ship2-surge-choppy', surgeDur: '6s',
+    brightness: 1,
+    dropShadow: '0 3px 12px rgba(26, 15, 10, 0.4)',
+  },
+  rough: {
+    heave: 'yt-ship2-heave-rough',  heaveDur: '2s',
+    roll:  'yt-ship2-roll-rough',   rollDur: '2.8s',
+    surge: 'yt-ship2-surge-rough',  surgeDur: '3.5s',
+    brightness: 0.9,
+    dropShadow: '0 4px 16px rgba(26, 15, 10, 0.5)',
+  },
+  storm: {
+    heave: 'yt-ship2-heave-storm',  heaveDur: '1.3s',
+    roll:  'yt-ship2-roll-storm',   rollDur: '1.8s',
+    surge: 'yt-ship2-surge-storm',  surgeDur: '2.2s',
+    brightness: 0.75,
+    dropShadow: '0 6px 24px rgba(26, 15, 10, 0.7)',
+  },
+};
 
+// ── Component ───────────────────────────────────────────────────────────────
+
+export default function DramaticShip({ seaState }: Props): JSX.Element {
+  const [lightningHit, setLightningHit] = useState(false);
+
+  useEffect(() => { injectKeyframes(); }, []);
+
+  // Lightning illumination (storm only)
   useEffect(() => {
-    injectShipKeyframes();
-  }, []);
-
-  // Lightning effect for storm
-  useEffect(() => {
-    if (seaState !== 'storm') {
-      setLightningActive(false);
-      return;
-    }
-
-    let timeout: number;
-    let cancelled = false;
-
-    const scheduleFlash = () => {
-      const delay = 2000 + Math.random() * 4000; // 2-6 seconds
-      timeout = window.setTimeout(() => {
-        if (cancelled) return;
-        setLightningActive(true);
-        window.setTimeout(() => {
-          if (!cancelled) setLightningActive(false);
-        }, 800);
-        scheduleFlash();
-      }, delay);
+    if (seaState !== 'storm') { setLightningHit(false); return; }
+    let t: number, dead = false;
+    const go = () => {
+      t = window.setTimeout(() => {
+        if (dead) return;
+        setLightningHit(true);
+        window.setTimeout(() => { if (!dead) setLightningHit(false); }, 700);
+        go();
+      }, 2500 + Math.random() * 4500);
     };
-
-    scheduleFlash();
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timeout);
-    };
+    go();
+    return () => { dead = true; clearTimeout(t); };
   }, [seaState]);
 
-  // Animation config by sea state
-  const shipConfig = {
-    calm: {
-      animation: 'yt-ship-calm-rock 6s ease-in-out infinite',
-      scale: 1,
-      brightness: 1.1,
-      showSplashes: false,
-      splashCount: 0,
-      showSpray: false,
-      sprayCount: 0,
-      shadowIntensity: 0.2,
-    },
-    choppy: {
-      animation: 'yt-ship-choppy-rock 3.5s ease-in-out infinite',
-      scale: 1,
-      brightness: 1,
-      showSplashes: true,
-      splashCount: 2,
-      showSpray: true,
-      sprayCount: 1,
-      shadowIntensity: 0.35,
-    },
-    rough: {
-      animation: 'yt-ship-rough-rock 2s ease-in-out infinite',
-      scale: 1.02,
-      brightness: 0.9,
-      showSplashes: true,
-      splashCount: 4,
-      showSpray: true,
-      sprayCount: 2,
-      shadowIntensity: 0.5,
-    },
-    storm: {
-      animation: 'yt-ship-storm-rock 1.2s ease-in-out infinite',
-      scale: 1.05,
-      brightness: 0.75,
-      showSplashes: true,
-      splashCount: 8,
-      showSpray: true,
-      sprayCount: 4,
-      shadowIntensity: 0.7,
-    },
-  };
+  const m = MOTION[seaState] || MOTION.calm;
 
-  const config = shipConfig[seaState] || shipConfig.calm;
+  const shipUrl = useMemo(() => {
+    try { return chrome.runtime.getURL('src/assets/ship-icon.png'); }
+    catch { return ''; }
+  }, []);
 
-  // Generate splash particles
-  const splashes = config.showSplashes ? Array.from({ length: config.splashCount || 0 }, (_, i) => {
-    const r1 = seededRandom(i + 100);
-    const r2 = seededRandom(i + 200);
-    const r3 = seededRandom(i + 300);
-
-    return {
-      id: i,
-      x: (r1 * 40 - 20).toFixed(1),
-      y: -(r2 * 40 + 20).toFixed(1),
-      size: (3 + r3 * 6).toFixed(1),
-      delay: (r1 * 1.5).toFixed(2),
-      duration: (0.8 + r2 * 0.6).toFixed(2),
-    };
-  }) : [];
-
-  // Generate spray mist
-  const sprays = config.showSpray ? Array.from({ length: config.sprayCount || 0 }, (_, i) => {
-    const r1 = seededRandom(i + 400);
-    const r2 = seededRandom(i + 500);
-
-    return {
-      id: i,
-      delay: (r1 * 2).toFixed(2),
-      duration: (1.2 + r2 * 0.8).toFixed(2),
-      opacity: (0.3 + r2 * 0.3).toFixed(2),
-    };
-  }) : [];
-
+  // Three nested divs — each with its own keyframe and period.
+  // Because the periods are all different primes-ish ratios,
+  // the combined motion never repeats exactly, giving organic feel.
   return (
     <div style={{
       position: 'relative',
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
-      width: '120px',
-      height: '120px',
+      width: '64px',
+      height: '64px',
+      zIndex: 1,
     }}>
-      {/* Atmospheric glow behind ship */}
-      {seaState === 'storm' && (
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: '140px',
-          height: '140px',
-          background: 'radial-gradient(circle, rgba(71, 85, 105, 0.4) 0%, transparent 70%)',
-          animation: 'yt-ship-storm-glow 3s ease-in-out infinite',
-          pointerEvents: 'none',
-        }} />
-      )}
-
-      {/* Main ship container with rocking animation */}
+      {/* Layer 1: Surge (horizontal drift) */}
       <div style={{
-        position: 'relative',
-        animation: config.animation,
-        transformOrigin: 'center 80%',
-        filter: `brightness(${config.brightness})`,
-        transform: `scale(${config.scale})`,
-        ...(lightningActive && { animation: `${config.animation}, yt-ship-lightning-pulse 800ms ease-out` }),
+        animation: `${m.surge} ${m.surgeDur} ease-in-out infinite`,
       }}>
-        {/* Ship SVG */}
-        <svg
-          width="100"
-          height="100"
-          viewBox="0 0 100 100"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          style={{
-            filter: `drop-shadow(0 ${4 + composite * 8}px ${12 + composite * 12}px rgba(0, 0, 0, ${config.shadowIntensity}))`,
-          }}
-        >
-          {/* Hull shadow in water */}
-          <ellipse
-            cx="50"
-            cy="88"
-            rx="30"
-            ry="6"
-            fill="rgba(30, 41, 59, 0.3)"
-            style={{ opacity: 0.3 + composite * 0.4 }}
-          />
-
-          {/* Hull - dark wood */}
-          <path
-            d="M25 65 Q20 70, 22 80 L78 80 Q80 70, 75 65 L70 60 L30 60 Z"
-            fill="#2c1810"
-            stroke="#1a0f0a"
-            strokeWidth="1.5"
-          />
-
-          {/* Hull highlight */}
-          <path
-            d="M28 65 Q25 68, 26 75 L74 75 Q75 68, 72 65"
-            fill="rgba(212, 165, 116, 0.15)"
-          />
-
-          {/* Deck */}
-          <rect
-            x="28"
-            y="58"
-            width="44"
-            height="4"
-            rx="1"
-            fill="#3d2817"
-            stroke="#2c1810"
-            strokeWidth="1"
-          />
-
-          {/* Main mast */}
-          <rect
-            x="48"
-            y="20"
-            width="4"
-            height="40"
-            fill="#4a3426"
-            stroke="#2c1810"
-            strokeWidth="1"
-          />
-
-          {/* Main sail - flutters slightly */}
-          <g style={{
-            animation: 'yt-ship-sail-flutter 2s ease-in-out infinite',
-            transformOrigin: '48px 35px',
-          }}>
-            <path
-              d="M48 25 Q65 28, 75 35 Q65 42, 48 45 Z"
-              fill="#f5e6d3"
-              stroke="#d4a574"
-              strokeWidth="1"
-              opacity="0.95"
-            />
-            {/* Sail shading */}
-            <path
-              d="M48 25 Q58 27, 65 32 Q58 37, 48 39 Z"
-              fill="rgba(212, 165, 116, 0.2)"
-            />
-          </g>
-
-          {/* Fore mast */}
-          <rect
-            x="33"
-            y="30"
-            width="3"
-            height="30"
-            fill="#4a3426"
-            stroke="#2c1810"
-            strokeWidth="0.8"
-          />
-
-          {/* Fore sail */}
-          <g style={{
-            animation: 'yt-ship-sail-flutter 2.3s ease-in-out infinite',
-            transformOrigin: '33px 42px',
-          }}>
-            <path
-              d="M33 35 Q22 38, 18 42 Q22 46, 33 49 Z"
-              fill="#f5e6d3"
-              stroke="#d4a574"
-              strokeWidth="0.8"
-              opacity="0.9"
-            />
-          </g>
-
-          {/* Rigging lines */}
-          <line x1="48" y1="25" x2="75" y2="35" stroke="#8b7355" strokeWidth="0.5" opacity="0.6" />
-          <line x1="48" y1="45" x2="75" y2="35" stroke="#8b7355" strokeWidth="0.5" opacity="0.6" />
-          <line x1="33" y1="35" x2="18" y2="42" stroke="#8b7355" strokeWidth="0.4" opacity="0.5" />
-
-          {/* Flag at top of mast - waves in wind */}
-          <path
-            d="M52 20 L52 16 Q58 17, 60 16 Q58 15, 52 16 Z"
-            fill="#dc2626"
-            style={{
-              animation: 'yt-ship-sail-flutter 1s ease-in-out infinite',
-              transformOrigin: '52px 18px',
-            }}
-          />
-
-          {/* Windows on hull */}
-          <circle cx="40" cy="68" r="1.5" fill="#d4a574" opacity="0.8" />
-          <circle cx="50" cy="68" r="1.5" fill="#d4a574" opacity="0.8" />
-          <circle cx="60" cy="68" r="1.5" fill="#d4a574" opacity="0.8" />
-
-          {/* Waterline waves */}
-          <path
-            d="M20 82 Q30 80, 40 82 Q50 84, 60 82 Q70 80, 80 82"
-            stroke="rgba(148, 163, 184, 0.4)"
-            strokeWidth="1.5"
-            fill="none"
-          />
-        </svg>
-
-        {/* Splash particles */}
-        {splashes.map(splash => (
-          <div
-            key={splash.id}
-            style={{
-              position: 'absolute',
-              bottom: '20px',
-              left: '50%',
-              width: `${splash.size}px`,
-              height: `${splash.size}px`,
-              borderRadius: '50%',
-              background: 'radial-gradient(circle, rgba(255,255,255,0.9) 0%, rgba(148,163,184,0.6) 50%, transparent 100%)',
-              ['--splash-x' as string]: `${splash.x}px`,
-              ['--splash-y' as string]: `${splash.y}px`,
-              animation: `yt-ship-splash ${splash.duration}s ease-out ${splash.delay}s infinite`,
-              pointerEvents: 'none',
-            }}
-          />
-        ))}
-
-        {/* Spray mist */}
-        {sprays.map(spray => (
-          <div
-            key={spray.id}
-            style={{
-              position: 'absolute',
-              bottom: '25px',
-              left: '20%',
-              width: '40px',
-              height: '30px',
-              background: 'radial-gradient(ellipse, rgba(148,163,184,0.5) 0%, transparent 70%)',
-              opacity: spray.opacity,
-              animation: `yt-ship-spray ${spray.duration}s ease-out ${spray.delay}s infinite`,
-              pointerEvents: 'none',
-              filter: 'blur(3px)',
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Storm atmospheric vignette */}
-      {seaState === 'storm' && (
+        {/* Layer 2: Heave (vertical bob) */}
         <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'radial-gradient(circle at center, transparent 40%, rgba(15, 23, 42, 0.3) 80%)',
-          pointerEvents: 'none',
-        }} />
-      )}
+          animation: `${m.heave} ${m.heaveDur} ease-in-out infinite`,
+        }}>
+          {/* Layer 3: Roll (rotation) */}
+          <div style={{
+            animation: `${m.roll} ${m.rollDur} ease-in-out infinite`,
+            transformOrigin: 'center 70%', // pivot below center for natural roll
+          }}>
+            {/* Ship PNG */}
+            <img
+              src={shipUrl}
+              alt=""
+              width={48}
+              height={48}
+              style={{
+                display: 'block',
+                filter: `brightness(${m.brightness}) drop-shadow(${m.dropShadow})${
+                  lightningHit ? ' brightness(2) drop-shadow(0 0 12px rgba(245,230,200,0.8))' : ''
+                }`,
+                ...(lightningHit && {
+                  animation: 'yt-ship2-flash 700ms ease-out forwards',
+                }),
+                // Warm tint via sepia + hue-rotate to match parchment palette
+                imageRendering: 'auto',
+              }}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

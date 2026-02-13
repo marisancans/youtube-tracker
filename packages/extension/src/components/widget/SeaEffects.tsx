@@ -1,377 +1,292 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { SeaState } from '@yt-detox/shared';
 
+/**
+ * SeaEffects — warm maritime overlay for the widget bar.
+ *
+ * Palette: amber / gold / teal / sienna. NO blue. NO white waves.
+ * Waves scroll independently from ship motion so the ship appears
+ * to fight the sea rather than ride it.
+ */
+
 interface SeaEffectsProps {
   seaState: SeaState;
-  composite: number;
+  composite: number; // 0..1
 }
 
-// ─── Keyframe ID (unique to avoid clashing in shadow DOM) ───
-const STYLE_ID = 'yt-detox-sea-effects-keyframes';
+// ─── Keyframes ───────────────────────────────────────────────────────────────
 
-function injectKeyframes(host: ShadowRoot | Document): void {
-  const root = host instanceof ShadowRoot ? host : document;
-  if (root.getElementById?.(STYLE_ID)) return;
-  // For shadow DOM we append to the shadow root; for document we append to <head>.
-  const container = host instanceof ShadowRoot ? host : document.head;
-  if (container.querySelector(`#${STYLE_ID}`)) return;
+const STYLE_ID = 'yt-detox-sea-fx-v2';
 
-  const style = document.createElement('style');
-  style.id = STYLE_ID;
-  style.textContent = `
-    @keyframes yt-sea-wave-scroll {
+function injectKeyframes(): void {
+  if (document.getElementById(STYLE_ID)) return;
+  const s = document.createElement('style');
+  s.id = STYLE_ID;
+  s.textContent = `
+    /* Horizontal wave scroll (doubled width tiles seamlessly) */
+    @keyframes yt-sea2-scroll {
       0%   { transform: translateX(0); }
       100% { transform: translateX(-50%); }
     }
-    @keyframes yt-sea-rain-fall {
-      0%   { transform: translateY(-20px) translateX(0px); opacity: var(--rain-opacity, 0.2); }
-      100% { transform: translateY(40px) translateX(var(--rain-drift, -4px)); opacity: 0; }
+
+    /* Foam particle — rises and fades */
+    @keyframes yt-sea2-foam {
+      0%   { transform: translateY(0) scale(1); opacity: 0.6; }
+      60%  { opacity: 0.35; }
+      100% { transform: translateY(-14px) scale(0.3); opacity: 0; }
     }
-    @keyframes yt-sea-foam-rise {
-      0%   { transform: translateY(0) scale(1); opacity: 0.7; }
-      60%  { opacity: 0.5; }
-      100% { transform: translateY(-18px) scale(0.4); opacity: 0; }
+
+    /* Rain — warm golden streaks falling diagonally */
+    @keyframes yt-sea2-rain {
+      0%   { transform: translateY(-10px) translateX(0); opacity: var(--drop-a, 0.2); }
+      100% { transform: translateY(80px) translateX(var(--drop-dx, -6px)); opacity: 0; }
     }
-    @keyframes yt-sea-wind-streak {
-      0%   { transform: translateX(-10%); opacity: 0; }
-      15%  { opacity: var(--wind-opacity, 0.12); }
-      85%  { opacity: var(--wind-opacity, 0.12); }
-      100% { transform: translateX(110%); opacity: 0; }
+
+    /* Horizontal wind streaks */
+    @keyframes yt-sea2-wind {
+      0%   { transform: translateX(-15%); opacity: 0; }
+      20%  { opacity: var(--wind-a, 0.1); }
+      80%  { opacity: var(--wind-a, 0.1); }
+      100% { transform: translateX(115%); opacity: 0; }
     }
-    @keyframes yt-sea-lightning-double {
+
+    /* Lightning double-strike — warm parchment flash */
+    @keyframes yt-sea2-lightning {
       0%   { opacity: 0; }
-      5%   { opacity: 0.3; }
-      18%  { opacity: 0; }
-      38%  { opacity: 0; }
-      42%  { opacity: 0.18; }
-      50%  { opacity: 0; }
+      4%   { opacity: 0.25; }
+      15%  { opacity: 0; }
+      36%  { opacity: 0; }
+      40%  { opacity: 0.15; }
+      48%  { opacity: 0; }
       100% { opacity: 0; }
     }
   `;
-  container.appendChild(style);
+  document.head.appendChild(s);
 }
 
-// ─── Deterministic pseudo-random (seeded by index) ───
-function seededRandom(seed: number): number {
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function sr(seed: number): number {
   const x = Math.sin(seed * 9301 + 49297) * 49297;
   return x - Math.floor(x);
 }
 
-// ─── Wave Path ───
-// Smooth sine-wave that tiles seamlessly: first half = one full cycle, repeated.
-const WAVE_PATH = 'M0,5 Q25,0 50,5 Q75,10 100,5 Q125,0 150,5 Q175,10 200,5';
+// ─── Warm wave SVG paths ─────────────────────────────────────────────────────
+// Two different wave shapes for parallax depth.
+const WAVE_A = 'M0,5 Q25,0 50,5 Q75,10 100,5 Q125,0 150,5 Q175,10 200,5';
+const WAVE_B = 'M0,6 Q20,2 45,6 Q65,10 90,6 Q115,2 140,6 Q165,10 200,6';
 
-interface WaveConfig {
-  duration: string;
+// ─── Palette — warm amber / teal / sienna ────────────────────────────────────
+const C = {
+  // Wave fills — layered dark-to-light for depth
+  seaDeep:     '#1a2e2a',  // darkest teal
+  seaMid:      '#264040',  // mid teal-green
+  waveGold:    '#b8956a',  // golden crest
+  waveSienna:  '#8b6914',  // deep amber
+  waveAmber:   '#d4a574',  // bright gold highlight
+
+  // Foam / spray
+  foamGold:    '#e8d5b7',  // parchment foam
+  foamAmber:   '#c4956a',  // amber foam
+
+  // Rain
+  rainGold:    '#b8956a',
+
+  // Wind streaks
+  windGold:    '#d4a574',
+
+  // Lightning
+  flashWarm:   '#f5e6c8',  // warm parchment flash (not white)
+
+  // Storm overlay
+  stormDark:   '#1a0f0a',  // dark mahogany
+};
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface WaveCfg {
+  path: string;
+  dur: string;
   opacity: number;
-  yOffset: number;
-  amplitude: number;   // scale Y for more drama
-  color: string;
+  yOff: number;
+  ampScale: number;
+  fill: string;
 }
 
-interface RainDrop {
-  left: string;
-  height: number;
-  opacity: number;
-  duration: string;
-  delay: string;
-  drift: string;
-}
-
-interface FoamDot {
-  left: string;
-  bottom: number;
-  size: number;
-  duration: string;
-  delay: string;
-}
-
-interface WindStreak {
-  top: string;
-  duration: string;
-  delay: string;
-  opacity: number;
-  height: number;
-}
-
-// ─── Component ───
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export default function SeaEffects({ seaState, composite }: SeaEffectsProps): JSX.Element {
-  // Use composite for smooth interpolation within each sea-state bracket.
-  // This gives a 0-1 sub-range within the current state.
-  const subIntensity = useMemo(() => {
+  // Sub-intensity within the current bracket (0..1)
+  const sub = useMemo(() => {
     if (composite < 0.25) return composite / 0.25;
-    if (composite < 0.50) return (composite - 0.25) / 0.25;
-    if (composite < 0.75) return (composite - 0.50) / 0.25;
+    if (composite < 0.5) return (composite - 0.25) / 0.25;
+    if (composite < 0.75) return (composite - 0.5) / 0.25;
     return (composite - 0.75) / 0.25;
   }, [composite]);
 
-  // Inject keyframes on mount (works in shadow DOM or normal DOM)
-  useEffect(() => {
-    // Walk up to find shadow root, or fall back to document
-    const el = document.getElementById(STYLE_ID);
-    if (!el) {
-      // Attempt shadow root detection — the widget is rendered inside a shadow DOM host.
-      // React doesn't expose the shadow root easily, so we inject into document as fallback.
-      injectKeyframes(document);
-    }
-  }, []);
+  useEffect(() => { injectKeyframes(); }, []);
 
-  // ─── Lightning state ───
+  // ── Lightning ──
   const [flash, setFlash] = useState(false);
-
   useEffect(() => {
-    if (seaState !== 'storm') {
-      setFlash(false);
-      return;
-    }
-    let timeout: number;
-    let cancelled = false;
-    const scheduleFlash = () => {
-      const delay = 3000 + Math.random() * 5000; // 3-8 seconds
-      timeout = window.setTimeout(() => {
-        if (cancelled) return;
+    if (seaState !== 'storm') { setFlash(false); return; }
+    let t: number, dead = false;
+    const go = () => {
+      t = window.setTimeout(() => {
+        if (dead) return;
         setFlash(true);
-        window.setTimeout(() => {
-          if (!cancelled) setFlash(false);
-        }, 500);
-        scheduleFlash();
-      }, delay);
+        window.setTimeout(() => { if (!dead) setFlash(false); }, 500);
+        go();
+      }, 2500 + Math.random() * 5000);
     };
-    scheduleFlash();
-    return () => {
-      cancelled = true;
-      clearTimeout(timeout);
-    };
+    go();
+    return () => { dead = true; clearTimeout(t); };
   }, [seaState]);
 
-  // ─── Wave configs by sea state ───
-  // subIntensity scales opacity within a bracket for smoother transitions
-  const waves: WaveConfig[] = useMemo(() => {
-    const s = 0.7 + subIntensity * 0.3; // 0.7..1.0 scale factor
+  // ── Wave configs ──
+  const waves: WaveCfg[] = useMemo(() => {
+    const s = 0.7 + sub * 0.3;
     switch (seaState) {
       case 'calm':
         return [
-          { duration: '8s', opacity: +(0.15 * s).toFixed(2), yOffset: 0, amplitude: 1, color: '#0d9488' },
+          { path: WAVE_A, dur: '12s', opacity: +(0.25 * s).toFixed(2), yOff: 0, ampScale: 1, fill: C.seaMid },
+          { path: WAVE_B, dur: '18s', opacity: +(0.15 * s).toFixed(2), yOff: -2, ampScale: 0.8, fill: C.seaDeep },
         ];
       case 'choppy':
         return [
-          { duration: '6s', opacity: +(0.25 * s).toFixed(2), yOffset: 0, amplitude: 1.3, color: '#d4a574' },
-          { duration: '9s', opacity: +(0.18 * s).toFixed(2), yOffset: -2, amplitude: 1.1, color: '#d4a574' },
+          { path: WAVE_A, dur: '7s', opacity: +(0.4 * s).toFixed(2), yOff: 0, ampScale: 1.4, fill: C.waveGold },
+          { path: WAVE_B, dur: '10s', opacity: +(0.25 * s).toFixed(2), yOff: -3, ampScale: 1.1, fill: C.waveSienna },
+          { path: WAVE_A, dur: '15s', opacity: +(0.15 * s).toFixed(2), yOff: -5, ampScale: 0.9, fill: C.seaMid },
         ];
       case 'rough':
         return [
-          { duration: '4s', opacity: +(0.3 * s).toFixed(2), yOffset: 0, amplitude: 1.8, color: '#334155' },
-          { duration: '6s', opacity: +(0.22 * s).toFixed(2), yOffset: -3, amplitude: 1.5, color: '#334155' },
-          { duration: '8s', opacity: +(0.15 * s).toFixed(2), yOffset: -5, amplitude: 1.2, color: '#475569' },
+          { path: WAVE_A, dur: '4s', opacity: +(0.45 * s).toFixed(2), yOff: 0, ampScale: 2, fill: C.waveAmber },
+          { path: WAVE_B, dur: '5.5s', opacity: +(0.35 * s).toFixed(2), yOff: -4, ampScale: 1.7, fill: C.waveGold },
+          { path: WAVE_A, dur: '8s', opacity: +(0.2 * s).toFixed(2), yOff: -8, ampScale: 1.3, fill: C.waveSienna },
         ];
       case 'storm':
         return [
-          { duration: '2.5s', opacity: +(0.35 * s).toFixed(2), yOffset: 0, amplitude: 2.8, color: '#1e293b' },
-          { duration: '3.5s', opacity: +(0.28 * s).toFixed(2), yOffset: -4, amplitude: 2.2, color: '#334155' },
-          { duration: '5s', opacity: +(0.18 * s).toFixed(2), yOffset: -8, amplitude: 1.6, color: '#475569' },
+          { path: WAVE_A, dur: '2.5s', opacity: +(0.55 * s).toFixed(2), yOff: 2, ampScale: 3, fill: C.waveAmber },
+          { path: WAVE_B, dur: '3.2s', opacity: +(0.4 * s).toFixed(2), yOff: -3, ampScale: 2.4, fill: C.waveGold },
+          { path: WAVE_A, dur: '4.5s', opacity: +(0.25 * s).toFixed(2), yOff: -8, ampScale: 1.8, fill: C.waveSienna },
+          { path: WAVE_B, dur: '6s', opacity: +(0.15 * s).toFixed(2), yOff: -12, ampScale: 1.3, fill: C.seaMid },
         ];
       default:
         return [];
     }
-  }, [seaState, subIntensity]);
+  }, [seaState, sub]);
 
-  // ─── Rain drops ───
-  const rainDrops: RainDrop[] = useMemo(() => {
-    if (seaState !== 'rough' && seaState !== 'storm') return [];
-    const count = seaState === 'storm' ? 35 : 18;
-    const minOpacity = seaState === 'storm' ? 0.2 : 0.15;
-    const maxOpacity = seaState === 'storm' ? 0.35 : 0.25;
-    const minDuration = seaState === 'storm' ? 0.3 : 0.5;
-    const maxDuration = seaState === 'storm' ? 1.0 : 1.5;
-    const angle = seaState === 'storm' ? -8 : -4; // px of horizontal drift
+  // ── Foam dots (choppy+) ──
+  const foamCount = seaState === 'calm' ? 0 : seaState === 'choppy' ? 5 : seaState === 'rough' ? 8 : 12;
+  const foamDots = useMemo(() => Array.from({ length: foamCount }, (_, i) => ({
+    left: `${(sr(i + 500) * 100).toFixed(1)}%`,
+    bottom: 2 + Math.round(sr(i + 600) * 8),
+    size: 2 + Math.round(sr(i + 700) * 2),
+    dur: `${(1.5 + sr(i + 800) * 2).toFixed(1)}s`,
+    delay: `${(sr(i + 900) * 3).toFixed(1)}s`,
+    color: sr(i + 950) > 0.5 ? C.foamGold : C.foamAmber,
+  })), [foamCount]);
 
-    const drops: RainDrop[] = [];
-    for (let i = 0; i < count; i++) {
-      const r1 = seededRandom(i);
-      const r2 = seededRandom(i + 100);
-      const r3 = seededRandom(i + 200);
-      const r4 = seededRandom(i + 300);
-      drops.push({
-        left: `${(r1 * 100).toFixed(1)}%`,
-        height: Math.round(8 + r2 * 12),
-        opacity: +(minOpacity + r3 * (maxOpacity - minOpacity)).toFixed(2),
-        duration: `${(minDuration + r4 * (maxDuration - minDuration)).toFixed(2)}s`,
-        delay: `${(seededRandom(i + 400) * 2).toFixed(2)}s`,
-        drift: `${angle}px`,
-      });
-    }
-    return drops;
-  }, [seaState]);
+  // ── Rain drops (rough/storm) ──
+  const rainCount = seaState === 'rough' ? 15 : seaState === 'storm' ? 30 : 0;
+  const rainDrops = useMemo(() => Array.from({ length: rainCount }, (_, i) => ({
+    left: `${(sr(i) * 100).toFixed(1)}%`,
+    h: Math.round(6 + sr(i + 100) * 10),
+    a: +(0.12 + sr(i + 200) * 0.18).toFixed(2),
+    dur: `${(0.4 + sr(i + 300) * 0.8).toFixed(2)}s`,
+    delay: `${(sr(i + 400) * 2).toFixed(2)}s`,
+    dx: `${seaState === 'storm' ? -8 : -4}px`,
+  })), [rainCount, seaState]);
 
-  // ─── Foam particles (choppy only) ───
-  const foamDots: FoamDot[] = useMemo(() => {
-    if (seaState !== 'choppy') return [];
-    const dots: FoamDot[] = [];
-    for (let i = 0; i < 4; i++) {
-      dots.push({
-        left: `${15 + seededRandom(i + 500) * 70}%`,
-        bottom: 2 + Math.round(seededRandom(i + 600) * 6),
-        size: 2 + Math.round(seededRandom(i + 700)),
-        duration: `${(2 + seededRandom(i + 800) * 2).toFixed(1)}s`,
-        delay: `${(seededRandom(i + 900) * 3).toFixed(1)}s`,
-      });
-    }
-    return dots;
-  }, [seaState]);
+  // ── Wind streaks (rough/storm) ──
+  const windCount = seaState === 'rough' ? 3 : seaState === 'storm' ? 5 : 0;
+  const windStreaks = useMemo(() => Array.from({ length: windCount }, (_, i) => ({
+    top: `${10 + sr(i + 1000) * 55}%`,
+    dur: `${(0.6 + sr(i + 1100) * 1).toFixed(1)}s`,
+    delay: `${(sr(i + 1200) * 3).toFixed(1)}s`,
+    a: seaState === 'storm' ? 0.12 : 0.08,
+  })), [windCount, seaState]);
 
-  // ─── Wind streaks (rough/storm) ───
-  const windStreaks: WindStreak[] = useMemo(() => {
-    if (seaState !== 'rough' && seaState !== 'storm') return [];
-    const count = seaState === 'storm' ? 4 : 3;
-    const streaks: WindStreak[] = [];
-    for (let i = 0; i < count; i++) {
-      streaks.push({
-        top: `${10 + seededRandom(i + 1000) * 60}%`,
-        duration: `${(0.8 + seededRandom(i + 1100) * 1.2).toFixed(1)}s`,
-        delay: `${(seededRandom(i + 1200) * 4).toFixed(1)}s`,
-        opacity: seaState === 'storm' ? 0.15 : 0.1,
-        height: 1,
-      });
-    }
-    return streaks;
-  }, [seaState]);
-
-  // ─── Container style: absolute, covering the full bar ───
-  const containerStyle: React.CSSProperties = {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    overflow: 'hidden',
-    pointerEvents: 'none',
-    borderRadius: 'inherit',
-  };
-
-  // ─── Storm background overlay ───
-  const stormOverlayStyle: React.CSSProperties | null =
-    seaState === 'storm'
-      ? {
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'linear-gradient(180deg, rgba(15,23,42,0.35) 0%, rgba(30,41,59,0.18) 100%)',
-          pointerEvents: 'none',
-        }
-      : null;
+  // ── Storm overlay gradient ──
+  const stormBg = seaState === 'storm'
+    ? `linear-gradient(180deg, ${C.stormDark}55 0%, ${C.stormDark}22 100%)`
+    : seaState === 'rough'
+      ? `linear-gradient(180deg, ${C.stormDark}30 0%, transparent 100%)`
+      : 'none';
 
   return (
-    <div style={containerStyle}>
-      {/* Storm dark overlay */}
-      {stormOverlayStyle && <div style={stormOverlayStyle} />}
+    <div style={{
+      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+      overflow: 'hidden', pointerEvents: 'none', borderRadius: 'inherit',
+    }}>
+      {/* Atmospheric overlay for rough / storm */}
+      {(seaState === 'rough' || seaState === 'storm') && (
+        <div style={{ position: 'absolute', inset: 0, background: stormBg, pointerEvents: 'none' }} />
+      )}
 
-      {/* ─── Wave layers ─── */}
-      {waves.map((wave, i) => (
+      {/* ── Wave layers ── */}
+      {waves.map((w, i) => (
         <div
-          key={`wave-${i}`}
+          key={`w-${i}`}
           style={{
             position: 'absolute',
-            bottom: wave.yOffset,
+            bottom: w.yOff,
             left: 0,
             width: '200%',
-            height: `${10 * wave.amplitude}px`,
-            opacity: wave.opacity,
+            height: `${10 * w.ampScale}px`,
+            opacity: w.opacity,
             pointerEvents: 'none',
-            animation: `yt-sea-wave-scroll ${wave.duration} linear infinite`,
+            animation: `yt-sea2-scroll ${w.dur} linear infinite`,
           }}
         >
-          <svg
-            viewBox="0 0 200 10"
-            preserveAspectRatio="none"
-            style={{
-              display: 'block',
-              width: '100%',
-              height: '100%',
-            }}
-          >
-            <path d={WAVE_PATH} fill={wave.color} />
+          <svg viewBox="0 0 200 10" preserveAspectRatio="none"
+            style={{ display: 'block', width: '100%', height: '100%' }}>
+            <path d={w.path} fill={w.fill} />
           </svg>
         </div>
       ))}
 
-      {/* ─── Foam particles (choppy) ─── */}
-      {foamDots.map((dot, i) => (
-        <div
-          key={`foam-${i}`}
-          style={{
-            position: 'absolute',
-            left: dot.left,
-            bottom: dot.bottom,
-            width: dot.size,
-            height: dot.size,
-            borderRadius: '50%',
-            background: 'white',
-            pointerEvents: 'none',
-            animation: `yt-sea-foam-rise ${dot.duration} ease-out ${dot.delay} infinite`,
-            opacity: 0,
-          }}
-        />
+      {/* ── Foam particles ── */}
+      {foamDots.map((d, i) => (
+        <div key={`f-${i}`} style={{
+          position: 'absolute', left: d.left, bottom: d.bottom,
+          width: d.size, height: d.size, borderRadius: '50%',
+          background: d.color, pointerEvents: 'none', opacity: 0,
+          animation: `yt-sea2-foam ${d.dur} ease-out ${d.delay} infinite`,
+        }} />
       ))}
 
-      {/* ─── Rain drops (rough / storm) ─── */}
-      {rainDrops.map((drop, i) => (
-        <div
-          key={`rain-${i}`}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: drop.left,
-            width: 1,
-            height: drop.height,
-            background: 'white',
-            pointerEvents: 'none',
-            opacity: 0,
-            // CSS custom properties for the keyframe
-            ['--rain-opacity' as string]: drop.opacity,
-            ['--rain-drift' as string]: drop.drift,
-            animation: `yt-sea-rain-fall ${drop.duration} linear ${drop.delay} infinite`,
-          }}
-        />
+      {/* ── Rain drops (warm golden) ── */}
+      {rainDrops.map((d, i) => (
+        <div key={`r-${i}`} style={{
+          position: 'absolute', top: 0, left: d.left,
+          width: 1, height: d.h, background: C.rainGold,
+          pointerEvents: 'none', opacity: 0,
+          ['--drop-a' as string]: d.a,
+          ['--drop-dx' as string]: d.dx,
+          animation: `yt-sea2-rain ${d.dur} linear ${d.delay} infinite`,
+        }} />
       ))}
 
-      {/* ─── Wind streaks (rough / storm) ─── */}
-      {windStreaks.map((streak, i) => (
-        <div
-          key={`wind-${i}`}
-          style={{
-            position: 'absolute',
-            top: streak.top,
-            left: 0,
-            right: 0,
-            height: streak.height,
-            background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,${streak.opacity}) 30%, rgba(255,255,255,${streak.opacity}) 70%, transparent 100%)`,
-            pointerEvents: 'none',
-            ['--wind-opacity' as string]: streak.opacity,
-            animation: `yt-sea-wind-streak ${streak.duration} linear ${streak.delay} infinite`,
-            opacity: 0,
-          }}
-        />
+      {/* ── Wind streaks (gold) ── */}
+      {windStreaks.map((w, i) => (
+        <div key={`gust-${i}`} style={{
+          position: 'absolute', top: w.top, left: 0, right: 0, height: 1,
+          background: `linear-gradient(90deg, transparent 0%, ${C.windGold}${Math.round(w.a * 255).toString(16).padStart(2, '0')} 30%, ${C.windGold}${Math.round(w.a * 255).toString(16).padStart(2, '0')} 70%, transparent 100%)`,
+          pointerEvents: 'none', opacity: 0,
+          ['--wind-a' as string]: w.a,
+          animation: `yt-sea2-wind ${w.dur} linear ${w.delay} infinite`,
+        }} />
       ))}
 
-      {/* ─── Lightning flash (storm) ─── */}
+      {/* ── Lightning flash (warm parchment, not white) ── */}
       {seaState === 'storm' && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'white',
-            pointerEvents: 'none',
-            opacity: flash ? 1 : 0,
-            // The double-strike keyframe runs when flash is active
-            animation: flash ? 'yt-sea-lightning-double 500ms ease-out forwards' : 'none',
-          }}
-        />
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: C.flashWarm, pointerEvents: 'none',
+          opacity: flash ? 1 : 0,
+          animation: flash ? 'yt-sea2-lightning 500ms ease-out forwards' : 'none',
+        }} />
       )}
     </div>
   );
