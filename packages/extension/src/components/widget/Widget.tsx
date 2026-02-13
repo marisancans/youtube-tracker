@@ -17,7 +17,10 @@ import {
   ropeBorderSvg,
 } from '../../components/nautical/nautical-svg-strings';
 import PirateMap from '../map/PirateMap';
+import SeaEffects from './SeaEffects';
+import DriftRadar from './DriftRadar';
 import type { DriftSnapshot } from '../../background/storage';
+import type { DriftStateV2 } from '@yt-detox/shared';
 
 interface Nudge {
   id: string;
@@ -386,6 +389,14 @@ const animationStyles = `
     0%, 100% { box-shadow: 0 0 5px rgba(239, 68, 68, 0.3); }
     50% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.5); }
   }
+  @keyframes yt-detox-rock {
+    0%, 100% { transform: rotate(calc(var(--rock-angle, 2deg) * -1)); }
+    50% { transform: rotate(var(--rock-angle, 2deg)); }
+  }
+  @keyframes yt-detox-bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(var(--bob-amount, -2px)); }
+  }
 `;
 
 export default function Widget(): JSX.Element {
@@ -440,6 +451,8 @@ export default function Widget(): JSX.Element {
     syncDebugExpanded: false,
     driftHistory: [],
   });
+
+  const [driftV2, setDriftV2] = useState<DriftStateV2 | null>(null);
 
   // Inject animation styles once
   useEffect(() => {
@@ -512,6 +525,10 @@ export default function Widget(): JSX.Element {
         setState((p) => ({ ...p, driftHistory: response }));
       }
     });
+    // Load drift v2 state
+    safeSendMessageWithCallback('GET_DRIFT_V2', undefined, (r: any) => {
+      if (r?.composite !== undefined) setDriftV2(r);
+    });
   }, []);
 
   // Listen for storage changes (e.g. sign-in from settings page)
@@ -534,6 +551,17 @@ export default function Widget(): JSX.Element {
     };
     chrome.storage.onChanged.addListener(listener);
     return () => chrome.storage.onChanged.removeListener(listener);
+  }, []);
+
+  // Listen for DRIFT_V2_UPDATED broadcasts from the background
+  useEffect(() => {
+    const listener = (msg: any) => {
+      if (msg.type === 'DRIFT_V2_UPDATED' && msg.data?.state) {
+        setDriftV2(msg.data.state);
+      }
+    };
+    chrome.runtime.onMessage.addListener(listener);
+    return () => chrome.runtime.onMessage.removeListener(listener);
   }, []);
 
   // Periodically update drift and streak
@@ -584,6 +612,10 @@ export default function Widget(): JSX.Element {
         if (Array.isArray(response)) {
           setState((p) => ({ ...p, driftHistory: response }));
         }
+      });
+      // Update drift v2 state
+      safeSendMessageWithCallback('GET_DRIFT_V2', undefined, (r: any) => {
+        if (r?.composite !== undefined) setDriftV2(r);
       });
     }, 10000); // Update every 10 seconds
     return () => clearInterval(updateInterval);
@@ -858,6 +890,31 @@ export default function Widget(): JSX.Element {
   // ──────────────────────────────────────────────
   // COMPACT BAR (collapsed=false means bar view)
   // ──────────────────────────────────────────────
+  const seaState = driftV2?.level || 'calm';
+  const compositeVal = driftV2?.composite || 0;
+  const driftPercent = Math.round(compositeVal * 100);
+  const barMinutes = Math.floor(state.sessionDuration / 60);
+
+  // Sea-state dependent ship rocking config
+  const rockConfig: Record<string, { angle: string; period: string; bobAmount?: string }> = {
+    calm:   { angle: '2deg',  period: '4s' },
+    choppy: { angle: '5deg',  period: '2.5s' },
+    rough:  { angle: '10deg', period: '1.5s' },
+    storm:  { angle: '18deg', period: '0.8s', bobAmount: '-3px' },
+  };
+  const currentRock = rockConfig[seaState] || rockConfig.calm;
+
+  // Drift percentage color by sea state
+  const driftColor: Record<string, string> = {
+    calm: '#5eead4',
+    choppy: '#fbbf24',
+    rough: '#f59e0b',
+    storm: '#ef4444',
+  };
+
+  // Background darkens with higher composite
+  const barBgDarkness = Math.round(compositeVal * 30); // 0..30 extra darkness
+
   if (!state.collapsed) {
     return (
       <div style={{
@@ -866,7 +923,8 @@ export default function Widget(): JSX.Element {
         alignItems: 'center',
         gap: '0px',
         padding: '0 12px',
-        background: 'linear-gradient(180deg, #1a2744 0%, #0a1628 100%)',
+        position: 'relative' as const,
+        background: `linear-gradient(180deg, hsl(220, 40%, ${Math.max(12 - barBgDarkness * 0.3, 3)}%) 0%, hsl(220, 50%, ${Math.max(6 - barBgDarkness * 0.15, 2)}%) 100%)`,
         border: '1px solid rgba(212, 165, 116, 0.3)',
         borderTop: 'none',
         borderBottom: '2px solid #b8956a',
@@ -879,107 +937,104 @@ export default function Widget(): JSX.Element {
         boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(212,165,116,0.1)',
         cursor: 'default',
         userSelect: 'none' as const,
+        overflow: 'hidden',
       }}>
-        {/* Section 1: Session Timer */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '0 8px' }}>
-          <span style={{
-            fontVariantNumeric: 'tabular-nums',
-            fontFamily: '"Source Sans 3", monospace',
-            color: '#5eead4',
-            fontSize: '13px',
-            fontWeight: 600,
-            letterSpacing: '0.5px',
+        {/* SeaEffects weather overlay */}
+        <SeaEffects seaState={seaState} composite={compositeVal} />
+
+        {/* Section 1: Ship icon with rock animation */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 8px',
+          position: 'relative' as const,
+          zIndex: 1,
+        }}>
+          <div style={{
+            display: 'inline-flex',
+            color: '#f5e6c8',
+            ['--rock-angle' as string]: currentRock.angle,
+            animation: `yt-detox-rock ${currentRock.period} ease-in-out infinite`,
           }}>
-            {formatTime(state.sessionDuration)}
-          </span>
-        </div>
-
-        {/* Gold divider */}
-        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '36px' }}>|</span>
-
-        {/* Section 2: Daily Progress */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '0 8px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
-            <div style={{
-              width: '40px',
-              height: '4px',
-              background: 'rgba(212,165,116,0.15)',
-              borderRadius: '2px',
-              overflow: 'hidden',
-            }}>
+            {currentRock.bobAmount ? (
               <div style={{
-                height: '100%',
-                width: `${progressPercent}%`,
-                background: isOverGoal
-                  ? 'linear-gradient(90deg, #991b1b, #dc2626)'
-                  : 'linear-gradient(90deg, #b8956a, #d4a574)',
-                borderRadius: '2px',
-                transition: 'width 0.5s ease',
-              }} />
-            </div>
-            <span style={{
-              fontSize: '8px',
-              color: 'rgba(212,165,116,0.5)',
-              fontFamily: '"Source Sans 3", sans-serif',
-              lineHeight: 1,
-              whiteSpace: 'nowrap' as const,
-            }}>
-              {state.todayMinutes}m / {state.dailyGoal}m
-            </span>
+                ['--bob-amount' as string]: currentRock.bobAmount,
+                animation: `yt-detox-bob ${currentRock.period} ease-in-out infinite`,
+              }}>
+                <span dangerouslySetInnerHTML={{ __html: shipIconSvg(0, 14) }} />
+              </div>
+            ) : (
+              <span dangerouslySetInnerHTML={{ __html: shipIconSvg(0, 14) }} />
+            )}
           </div>
         </div>
 
         {/* Gold divider */}
-        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '36px' }}>|</span>
+        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '36px', position: 'relative' as const, zIndex: 1 }}>|</span>
 
-        {/* Section 3: Video Count with ship icon */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '0 8px' }}>
-          <span
-            style={{ display: 'inline-flex', color: '#f5e6c8', opacity: 0.7 }}
-            dangerouslySetInnerHTML={{ __html: shipIconSvg(0, 12) }}
-          />
-          <span style={{ color: '#f5e6c8', fontSize: '13px' }}>{state.videosWatched}</span>
-        </div>
-
-        {/* Gold divider */}
-        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '36px' }}>|</span>
-
-        {/* Section 4: Focus Score with compass rose */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '0 8px' }}>
-          <span
-            style={{ display: 'inline-flex', color: '#5eead4' }}
-            dangerouslySetInnerHTML={{ __html: compassRoseSvg(focusScore, 16) }}
-          />
+        {/* Section 2: Stats - minutes, videos, drift% */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          padding: '0 8px',
+          position: 'relative' as const,
+          zIndex: 1,
+        }}>
           <span style={{
-            color: '#5eead4',
-            fontSize: '13px',
-            fontWeight: 700,
+            fontVariantNumeric: 'tabular-nums',
             fontFamily: '"Source Sans 3", monospace',
+            color: '#f5e6c8',
+            fontSize: '12px',
+            fontWeight: 500,
+            whiteSpace: 'nowrap' as const,
           }}>
-            {focusScore}
+            {barMinutes}m
           </span>
-        </div>
-
-        {/* Gold divider */}
-        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '36px' }}>|</span>
-
-        {/* Section 5: Streak with lighthouse */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '0 8px' }}>
-          <span
-            style={{ display: 'inline-flex', color: state.streak > 0 ? '#d4a574' : 'rgba(245,230,200,0.3)' }}
-            dangerouslySetInnerHTML={{ __html: lighthouseSvg(14) }}
-          />
+          <span style={{ color: 'rgba(212,165,116,0.4)', fontSize: '10px' }}>&middot;</span>
           <span style={{
-            color: state.streak > 0 ? '#d4a574' : 'rgba(245,230,200,0.3)',
-            fontSize: '13px',
-            fontWeight: state.streak > 0 ? 600 : 400,
+            fontVariantNumeric: 'tabular-nums',
+            fontFamily: '"Source Sans 3", monospace',
+            color: '#f5e6c8',
+            fontSize: '12px',
+            fontWeight: 500,
+            whiteSpace: 'nowrap' as const,
           }}>
-            {state.streak}
+            {state.videosWatched} videos
+          </span>
+          <span style={{ color: 'rgba(212,165,116,0.4)', fontSize: '10px' }}>&middot;</span>
+          <span style={{
+            fontVariantNumeric: 'tabular-nums',
+            fontFamily: '"Source Sans 3", monospace',
+            color: driftColor[seaState] || '#5eead4',
+            fontSize: '12px',
+            fontWeight: 700,
+            whiteSpace: 'nowrap' as const,
+          }}>
+            {driftPercent}%
           </span>
         </div>
 
         {/* Gold divider */}
-        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '36px' }}>|</span>
+        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '36px', position: 'relative' as const, zIndex: 1 }}>|</span>
+
+        {/* Section 3: Mini DriftRadar */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 4px',
+          position: 'relative' as const,
+          zIndex: 1,
+        }}>
+          {driftV2 ? (
+            <DriftRadar axes={driftV2.axes} size={22} />
+          ) : (
+            <div style={{ width: 22, height: 22, opacity: 0.3 }} />
+          )}
+        </div>
+
+        {/* Gold divider */}
+        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '36px', position: 'relative' as const, zIndex: 1 }}>|</span>
 
         {/* Expand button */}
         <button
@@ -994,6 +1049,8 @@ export default function Widget(): JSX.Element {
             cursor: 'pointer',
             padding: '2px 4px',
             marginLeft: '2px',
+            position: 'relative' as const,
+            zIndex: 1,
           }}
         >
           <Icons.ChevronDown />
@@ -1020,7 +1077,8 @@ export default function Widget(): JSX.Element {
         alignItems: 'center',
         gap: '0px',
         padding: '0 12px',
-        background: 'linear-gradient(180deg, #1a2744 0%, #0a1628 100%)',
+        position: 'relative' as const,
+        background: `linear-gradient(180deg, hsl(220, 40%, ${Math.max(12 - barBgDarkness * 0.3, 3)}%) 0%, hsl(220, 50%, ${Math.max(6 - barBgDarkness * 0.15, 2)}%) 100%)`,
         border: '1px solid rgba(212, 165, 116, 0.3)',
         borderTop: 'none',
         borderBottom: 'none',
@@ -1034,20 +1092,43 @@ export default function Widget(): JSX.Element {
         boxShadow: 'inset 0 1px 0 rgba(212,165,116,0.1)',
         cursor: 'default',
         userSelect: 'none' as const,
+        overflow: 'hidden',
       }}>
+        {/* SeaEffects weather overlay */}
+        <SeaEffects seaState={seaState} composite={compositeVal} />
+
+        {/* Ship icon with rocking */}
+        <div style={{
+          display: 'inline-flex',
+          color: '#f5e6c8',
+          position: 'relative' as const,
+          zIndex: 1,
+          marginRight: '8px',
+          ['--rock-angle' as string]: currentRock.angle,
+          animation: `yt-detox-rock ${currentRock.period} ease-in-out infinite`,
+        }}>
+          <span dangerouslySetInnerHTML={{ __html: shipIconSvg(0, 14) }} />
+        </div>
+
         <span style={{
           fontVariantNumeric: 'tabular-nums',
           fontFamily: '"Source Sans 3", monospace',
-          color: '#5eead4',
-          fontSize: '13px',
-          fontWeight: 600,
+          color: '#f5e6c8',
+          fontSize: '12px',
+          fontWeight: 500,
           flex: 1,
+          position: 'relative' as const,
+          zIndex: 1,
+          whiteSpace: 'nowrap' as const,
         }}>
-          {formatTime(state.sessionDuration)}
+          {barMinutes}m &middot; {state.videosWatched} videos &middot;{' '}
+          <span style={{ color: driftColor[seaState] || '#5eead4', fontWeight: 700 }}>{driftPercent}%</span>
         </span>
-        <span style={{ color: 'rgba(212,165,116,0.5)', fontSize: '12px', marginRight: '8px' }}>
-          {focusScore} pts
-        </span>
+        {driftV2 && (
+          <div style={{ position: 'relative' as const, zIndex: 1, marginRight: '6px', display: 'flex', alignItems: 'center' }}>
+            <DriftRadar axes={driftV2.axes} size={22} />
+          </div>
+        )}
         <button
           onClick={() => setState((p) => ({ ...p, collapsed: false }))}
           style={{
@@ -1059,6 +1140,8 @@ export default function Widget(): JSX.Element {
             color: '#d4a574',
             cursor: 'pointer',
             padding: '2px',
+            position: 'relative' as const,
+            zIndex: 1,
           }}
         >
           <Icons.ChevronUp />
