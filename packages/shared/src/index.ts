@@ -487,6 +487,11 @@ export type MessageType =
   | 'GET_DRIFT_EFFECTS'
   | 'GET_DRIFT_HISTORY'
   | 'DRIFT_UPDATED'
+  // Behavioral events for drift
+  | 'DRIFT_BEHAVIOR_EVENT'
+  // Drift V2
+  | 'GET_DRIFT_V2'
+  | 'DRIFT_V2_UPDATED'
   // Challenge
   | 'GET_CHALLENGE_PROGRESS'
   | 'UPGRADE_TIER'
@@ -505,7 +510,9 @@ export type MessageType =
   // Data restore
   | 'RESTORE_DATA'
   // UI navigation
-  | 'OPEN_TAB';
+  | 'OPEN_TAB'
+  // Live stats
+  | 'STATS_UPDATE';
 
 // ===== Batch Sync Types =====
 
@@ -543,6 +550,54 @@ export interface TemporalData {
   bingeModeActive: boolean;
   preSleepActive: boolean;
   sessionDurationMs: number;
+}
+
+// ===== Drift Axes System =====
+
+export interface DriftSample {
+  timestamp: number;
+  weight: number;
+}
+
+export interface DriftAxisState {
+  value: number;
+  samples: DriftSample[];
+  halfLife: number;
+}
+
+export interface DriftAxes {
+  timePressure: DriftAxisState;
+  contentQuality: DriftAxisState;
+  behaviorPattern: DriftAxisState;
+  circadian: number;
+}
+
+export type SeaState = 'calm' | 'choppy' | 'rough' | 'storm';
+
+export interface DriftStateV2 {
+  axes: DriftAxes;
+  composite: number;
+  level: SeaState;
+  lastCalculated: number;
+}
+
+export interface DriftWeights {
+  timePressure: number;
+  contentQuality: number;
+  behaviorPattern: number;
+  circadian: number;
+}
+
+export type VideoRatingValue = 1 | 2 | 3 | 4 | 5;
+
+export interface DriftEffectsV2 {
+  thumbnailBlur: number;
+  thumbnailGrayscale: number;
+  commentsReduction: number;
+  sidebarReduction: number;
+  autoplayDelay: number;
+  showTextOnly: boolean;
+  seaState: SeaState;
 }
 
 export interface Message<T = unknown> {
