@@ -81,7 +81,7 @@ export async function updateDailyStats(
   stats.sessionCount++;
 
   if (stats.sessionCount > 0) {
-    stats.avgSessionDurationSeconds = Math.floor(stats.totalSeconds / stats.sessionCount);
+    stats.avgSessionDurationSeconds = Math.floor(stats.activeSeconds / stats.sessionCount);
   }
 
   // First check time from temporal tracking
@@ -114,17 +114,17 @@ export async function updateDailyStats(
     }
   } else {
     const hour = getHour();
-    stats.hourlySeconds[hour] = (stats.hourlySeconds[hour] || 0) + browserSession.totalDurationSeconds;
+    stats.hourlySeconds[hour] = (stats.hourlySeconds[hour] || 0) + browserSession.activeDurationSeconds;
   }
 
   // Binge detection
-  if (browserSession.totalDurationSeconds > 3600 || temporal?.bingeModeActive) {
+  if (browserSession.activeDurationSeconds > 3600 || temporal?.bingeModeActive) {
     stats.bingeSessions++;
   }
 
   // Pre-sleep tracking
   if (temporal?.preSleepActive) {
-    stats.preSleepMinutes += Math.floor(browserSession.totalDurationSeconds / 60);
+    stats.preSleepMinutes += Math.floor(browserSession.activeDurationSeconds / 60);
   }
 
   // Process video sessions
@@ -223,7 +223,7 @@ export async function calculateBaselineStats(): Promise<BaselineStats> {
   }
 
   // Calculate averages
-  const totalSeconds = stats.reduce((sum, d) => sum + (d.totalSeconds || 0), 0);
+  const totalSeconds = stats.reduce((sum, d) => sum + (d.activeSeconds || 0), 0);
   const totalVideos = stats.reduce((sum, d) => sum + (d.videoCount || 0), 0);
   const totalSessions = stats.reduce((sum, d) => sum + (d.sessionCount || 0), 0);
   const totalProductive = stats.reduce((sum, d) => sum + (d.productiveVideos || 0), 0);
@@ -301,8 +301,8 @@ export async function getWeeklySummary(): Promise<any> {
 
   const thisWeek = days.reduce(
     (acc, day) => ({
-      totalSeconds: acc.totalSeconds + day.totalSeconds,
-      totalMinutes: acc.totalMinutes + Math.floor(day.totalSeconds / 60),
+      totalSeconds: acc.totalSeconds + day.activeSeconds,
+      totalMinutes: acc.totalMinutes + Math.floor(day.activeSeconds / 60),
       videoCount: acc.videoCount + day.videoCount,
       shortsCount: acc.shortsCount + day.shortsCount,
       productiveVideos: acc.productiveVideos + day.productiveVideos,

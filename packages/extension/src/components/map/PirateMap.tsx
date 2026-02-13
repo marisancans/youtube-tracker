@@ -205,7 +205,7 @@ export default function PirateMap({
     if (mode === 'mini') {
       // Open full map view — use message to background script since
       // chrome.tabs isn't available in content script context
-      const mapUrl = chrome.runtime.getURL('src/options/options.html#map');
+      const mapUrl = chrome.runtime.getURL('src/options/options.html#dashboard');
       if (chrome.tabs?.create) {
         chrome.tabs.create({ url: mapUrl });
       } else {

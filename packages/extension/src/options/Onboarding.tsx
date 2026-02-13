@@ -309,12 +309,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                 {authError && (
                   <p className="text-storm-red text-sm mt-3 font-body">{authError}</p>
                 )}
-                <button
-                  onClick={nextStep}
-                  className="mt-4 text-parchment/30 hover:text-parchment/50 text-sm font-body transition-colors"
-                >
-                  Sail without a beacon
-                </button>
               </>
             )}
           </div>

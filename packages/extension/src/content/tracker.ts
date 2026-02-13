@@ -512,7 +512,11 @@ function updateBrowserSession(): void {
 
   const now = Date.now();
   const totalMs = now - state.currentBrowserSession.startedAt;
-  const backgroundMs = state.backgroundAccumulatedMs;
+  // Include the current hidden period if tab is currently hidden
+  const currentHiddenMs = (document.hidden && state.visibilityHiddenAt)
+    ? (now - state.visibilityHiddenAt)
+    : 0;
+  const backgroundMs = state.backgroundAccumulatedMs + currentHiddenMs;
   const activeMs = totalMs - backgroundMs;
 
   state.currentBrowserSession.totalDurationSeconds = Math.floor(totalMs / 1000);
@@ -537,10 +541,12 @@ function updateBrowserSession(): void {
       break;
   }
 
-  // Update hourly seconds
-  const hour = getHour();
-  const elapsedThisInterval = Math.floor((now - state.temporal.lastActivityTime) / 1000);
-  state.temporal.hourlySeconds[hour] = (state.temporal.hourlySeconds[hour] || 0) + elapsedThisInterval;
+  // Update hourly seconds — only when tab is actively visible
+  if (!document.hidden) {
+    const hour = getHour();
+    const elapsedThisInterval = Math.floor((now - state.temporal.lastActivityTime) / 1000);
+    state.temporal.hourlySeconds[hour] = (state.temporal.hourlySeconds[hour] || 0) + elapsedThisInterval;
+  }
   state.temporal.lastActivityTime = now;
 
   // Check for binge mode
