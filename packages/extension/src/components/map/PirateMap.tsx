@@ -54,7 +54,7 @@ export default function PirateMap({
   useEffect(() => {
     const updateSize = () => {
       if (mode === 'mini') {
-        setDimensions({ width: 600, height: 320 });
+        setDimensions({ width: 300, height: 160 });
       } else {
         setDimensions({ width: window.innerWidth, height: window.innerHeight });
       }
@@ -88,13 +88,13 @@ export default function PirateMap({
     drawGrid(ctx, w, h);
 
     // Generate and draw path
-    const padding = mode === 'mini' ? 40 : 60;
+    const padding = mode === 'mini' ? 20 : 60;
     const path = generatePath(driftHistory, w, h, padding);
     drawPath(ctx, path);
 
     // Ship
     if (path.segments.length > 0) {
-      const shipSize = mode === 'mini' ? 32 : 28;
+      const shipSize = mode === 'mini' ? 16 : 28;
       drawShip(ctx, path.shipPosition.x, path.shipPosition.y, path.shipAngle, currentDrift, shipSize);
     }
 
@@ -130,9 +130,9 @@ export default function PirateMap({
     }
 
     // Compass rose - positioned with enough clearance for labels and drift text
-    const compassSize = mode === 'mini' ? 40 : 48;
-    const compassX = w - (mode === 'mini' ? 70 : 90);
-    const compassY = h - (mode === 'mini' ? 90 : 100);
+    const compassSize = mode === 'mini' ? 20 : 48;
+    const compassX = w - (mode === 'mini' ? 35 : 90);
+    const compassY = h - (mode === 'mini' ? 45 : 100);
     drawCompassRose(ctx, compassX, compassY, compassSize, currentDrift);
 
     // Border
@@ -218,11 +218,11 @@ export default function PirateMap({
   const style: React.CSSProperties = mode === 'full'
     ? { position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh' }
     : {
-        width: '600px',
-        height: '320px',
-        borderRadius: '20px',
+        width: '300px',
+        height: '160px',
+        borderRadius: '10px',
         overflow: 'hidden',
-        border: '2px solid rgba(184, 149, 106, 0.4)',
+        border: '1px solid rgba(184, 149, 106, 0.4)',
         cursor: 'pointer',
       };
 

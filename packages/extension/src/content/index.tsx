@@ -47,7 +47,7 @@ function getPageType(): 'watch' | 'shorts' | 'search' | 'other' {
   return 'other';
 }
 
-const BAR_HEIGHT = 36;
+const BAR_HEIGHT = 72;
 const SPACER_STYLE_ID = 'yt-detox-spacer-style';
 
 /** Mount bar on document.body (fixed), push player down with CSS. */
