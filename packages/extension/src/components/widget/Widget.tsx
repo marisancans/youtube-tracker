@@ -11,8 +11,6 @@ import { showFrictionOverlay, isFrictionOverlayVisible } from '../../content/fri
 import {
   compassRoseSvg,
   shipIconSvg,
-  anchorSvg,
-  lighthouseSvg,
   shipsWheelSvg,
   ropeBorderSvg,
 } from '../../components/nautical/nautical-svg-strings';
@@ -143,14 +141,6 @@ function formatMinutes(minutes: number): string {
     return m > 0 ? `${h}h ${m}m` : `${h}h`;
   }
   return `${minutes}m`;
-}
-
-// Calculate focus score (0-100)
-function calculateFocusScore(productive: number, unproductive: number, todayMinutes: number, goal: number): number {
-  if (productive + unproductive === 0) return 100;
-  const productivityRatio = productive / (productive + unproductive);
-  const timeScore = todayMinutes <= goal ? 100 : Math.max(0, 100 - ((todayMinutes - goal) / goal) * 50);
-  return Math.round(productivityRatio * 60 + timeScore * 0.4);
 }
 
 // Get level from XP
@@ -876,15 +866,6 @@ export default function Widget(): JSX.Element {
     return () => clearInterval(interval);
   }, [state.lastRatedVideo, state.showPrompt]);
 
-  const progressPercent = Math.min((state.todayMinutes / state.dailyGoal) * 100, 100);
-  const isOverGoal = progressPercent >= 100;
-  const isNearGoal = progressPercent >= 80;
-  const focusScore = calculateFocusScore(
-    state.productiveCount,
-    state.unproductiveCount,
-    state.todayMinutes,
-    state.dailyGoal,
-  );
   const levelInfo = getLevelInfo(state.xp);
 
   // ──────────────────────────────────────────────
@@ -1399,98 +1380,6 @@ export default function Widget(): JSX.Element {
         {/* ═══ Body Content ═══ */}
         <div style={{ padding: '16px' }}>
 
-          {/* ─── HERO SECTION ─── */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '16px',
-          }}>
-            {/* Time in coordinate format */}
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                <span style={{
-                  fontSize: '32px',
-                  fontWeight: 700,
-                  color: '#2c1810',
-                  fontFamily: '"Source Sans 3", monospace',
-                  fontVariantNumeric: 'tabular-nums',
-                  letterSpacing: '-1px',
-                  lineHeight: 1,
-                }}>
-                  {formatTime(state.sessionDuration)}
-                </span>
-                {state.sessionBackgroundSeconds >= 60 && (
-                  <span style={{ fontSize: '11px', color: 'rgba(44,24,16,0.35)', fontWeight: 400 }}>
-                    +{Math.floor(state.sessionBackgroundSeconds / 60)}m bg
-                  </span>
-                )}
-              </div>
-              <div style={{
-                fontSize: '10px',
-                color: 'rgba(44,24,16,0.5)',
-                textTransform: 'uppercase' as const,
-                letterSpacing: '1px',
-                marginTop: '2px',
-              }}>
-                Watch Time
-              </div>
-            </div>
-
-            {/* Compass Rose */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-              <div
-                style={{ color: '#2c1810', display: 'inline-flex' }}
-                dangerouslySetInnerHTML={{ __html: compassRoseSvg(focusScore, 56) }}
-              />
-              <span style={{
-                fontSize: '9px',
-                color: 'rgba(44,24,16,0.5)',
-                textTransform: 'uppercase' as const,
-                letterSpacing: '0.5px',
-              }}>
-                Focus: {focusScore}
-              </span>
-            </div>
-
-            {/* Streak badge */}
-            {state.streak > 0 && (
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                padding: '8px 10px',
-                background: 'linear-gradient(135deg, rgba(212,165,116,0.25) 0%, rgba(184,149,106,0.25) 100%)',
-                borderRadius: '10px',
-                border: '1px solid rgba(212,165,116,0.4)',
-                marginLeft: '8px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <span
-                    style={{ color: '#d4a574', display: 'inline-flex' }}
-                    dangerouslySetInnerHTML={{ __html: lighthouseSvg(16) }}
-                  />
-                  <span style={{
-                    fontSize: '20px',
-                    fontWeight: 700,
-                    color: '#b8956a',
-                    fontFamily: '"Playfair Display", serif',
-                  }}>
-                    {state.streak}
-                  </span>
-                </div>
-                <span style={{
-                  fontSize: '8px',
-                  color: 'rgba(184,149,106,0.8)',
-                  textTransform: 'uppercase' as const,
-                  letterSpacing: '0.5px',
-                }}>
-                  Day Streak
-                </span>
-              </div>
-            )}
-          </div>
-
           {/* ─── ACTIVE NUDGE ─── */}
           {state.activeNudge && (
             <div style={{
@@ -1642,108 +1531,182 @@ export default function Widget(): JSX.Element {
             </div>
           )}
 
-          {/* ─── STATS GRID (2x2) ─── */}
+          {/* ─── DRIFT OVERVIEW ─── */}
           <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: '8px',
+            display: 'flex',
+            gap: '12px',
             marginBottom: '14px',
+            padding: '12px',
+            background: 'rgba(255,255,255,0.4)',
+            borderRadius: '10px',
+            border: '1px solid rgba(44,24,16,0.08)',
           }}>
-            {/* Ships Spotted (videos) */}
-            <div style={{
-              padding: '10px 8px',
-              background: 'rgba(255,255,255,0.4)',
-              borderRadius: '10px',
-              border: '1px solid rgba(44,24,16,0.08)',
-              textAlign: 'center' as const,
-            }}>
-              <div style={{
-                display: 'flex', justifyContent: 'center', marginBottom: '4px', color: '#2c1810',
-              }}>
-                <span dangerouslySetInnerHTML={{ __html: shipIconSvg(0, 20) }} />
+            {/* Left: Drift Radar + composite */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+              {driftV2 ? (
+                <>
+                  <DriftRadar axes={driftV2.axes} size={120} showLabels />
+                  <div style={{
+                    marginTop: '6px',
+                    fontSize: '20px',
+                    fontWeight: 700,
+                    color: '#2c1810',
+                    fontFamily: '"Playfair Display", serif',
+                    lineHeight: 1,
+                  }}>
+                    {Math.round(driftV2.composite * 100)}%
+                  </div>
+                  <div style={{
+                    fontSize: '10px',
+                    color: 'rgba(44,24,16,0.5)',
+                    textTransform: 'uppercase' as const,
+                    letterSpacing: '0.5px',
+                    marginTop: '2px',
+                  }}>
+                    {driftV2.level}
+                  </div>
+                </>
+              ) : (
+                <div style={{
+                  width: 120,
+                  height: 120,
+                  borderRadius: '50%',
+                  background: 'rgba(44,24,16,0.06)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '11px',
+                  color: 'rgba(44,24,16,0.35)',
+                }}>
+                  Loading...
+                </div>
+              )}
+            </div>
+
+            {/* Right: Axis breakdown bars */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '8px' }}>
+              {([
+                { key: 'timePressure' as const, label: 'Time', color: '#f59e0b' },
+                { key: 'contentQuality' as const, label: 'Content', color: '#3b82f6' },
+                { key: 'behaviorPattern' as const, label: 'Behavior', color: '#a855f7' },
+                { key: 'circadian' as const, label: 'Circadian', color: '#6366f1' },
+              ]).map(({ key, label, color }) => {
+                const value = key === 'circadian'
+                  ? (driftV2?.axes.circadian ?? 0)
+                  : (driftV2?.axes[key]?.value ?? 0);
+                return (
+                  <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{
+                      fontSize: '10px',
+                      color: 'rgba(44,24,16,0.6)',
+                      width: '52px',
+                      flexShrink: 0,
+                      textAlign: 'right' as const,
+                    }}>
+                      {label}
+                    </span>
+                    <div style={{
+                      flex: 1,
+                      height: '6px',
+                      background: 'rgba(44,24,16,0.08)',
+                      borderRadius: '3px',
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        height: '100%',
+                        width: `${Math.round(value * 100)}%`,
+                        background: color,
+                        borderRadius: '3px',
+                        transition: 'width 0.5s ease',
+                      }} />
+                    </div>
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: 600,
+                      color: 'rgba(44,24,16,0.7)',
+                      width: '28px',
+                      flexShrink: 0,
+                      fontVariantNumeric: 'tabular-nums',
+                    }}>
+                      {Math.round(value * 100)}%
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ─── SESSION STATS ─── */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-around',
+            alignItems: 'center',
+            marginBottom: '14px',
+            padding: '8px 4px',
+            background: 'rgba(255,255,255,0.3)',
+            borderRadius: '8px',
+            border: '1px solid rgba(44,24,16,0.06)',
+          }}>
+            <div style={{ textAlign: 'center' as const }}>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: '#2c1810', fontFamily: '"Source Sans 3", monospace' }}>
+                {formatTime(state.sessionDuration)}
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: '#2c1810', fontFamily: '"Playfair Display", serif' }}>
+              <div style={{ fontSize: '9px', color: 'rgba(44,24,16,0.5)', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>
+                Watch
+              </div>
+            </div>
+            <div style={{ width: '1px', height: '20px', background: 'rgba(44,24,16,0.1)' }} />
+            <div style={{ textAlign: 'center' as const }}>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: '#2c1810', fontFamily: '"Source Sans 3", monospace' }}>
                 {state.videosWatched}
               </div>
-              <div style={{
-                fontSize: '8px', color: 'rgba(44,24,16,0.5)',
-                textTransform: 'uppercase' as const, letterSpacing: '0.5px',
-              }}>
+              <div style={{ fontSize: '9px', color: 'rgba(44,24,16,0.5)', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>
                 Videos
               </div>
             </div>
-
-            {/* Open Ports (tabs) */}
-            <div style={{
-              padding: '10px 8px',
-              background: 'rgba(255,255,255,0.4)',
-              borderRadius: '10px',
-              border: '1px solid rgba(44,24,16,0.08)',
-              textAlign: 'center' as const,
-            }}>
-              <div style={{
-                display: 'flex', justifyContent: 'center', marginBottom: '4px', color: '#2c1810',
-              }}>
-                <span dangerouslySetInnerHTML={{ __html: anchorSvg(20) }} />
-              </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: '#2c1810', fontFamily: '"Playfair Display", serif' }}>
-                {state.youtubeTabs}
-              </div>
-              <div style={{
-                fontSize: '8px', color: 'rgba(44,24,16,0.5)',
-                textTransform: 'uppercase' as const, letterSpacing: '0.5px',
-              }}>
-                Open Tabs
-              </div>
-            </div>
-
-            {/* Fair Winds (productive) */}
-            <div style={{
-              padding: '10px 8px',
-              background: 'rgba(255,255,255,0.4)',
-              borderRadius: '10px',
-              border: '1px solid rgba(13,148,136,0.15)',
-              textAlign: 'center' as const,
-            }}>
-              <div style={{
-                display: 'flex', justifyContent: 'center', marginBottom: '4px', color: '#0d9488',
-              }}>
-                <Icons.ThumbsUp />
-              </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: '#0d9488', fontFamily: '"Playfair Display", serif' }}>
+            <div style={{ width: '1px', height: '20px', background: 'rgba(44,24,16,0.1)' }} />
+            <div style={{ textAlign: 'center' as const }}>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: '#0d9488', fontFamily: '"Source Sans 3", monospace' }}>
                 {state.productiveCount}
               </div>
-              <div style={{
-                fontSize: '8px', color: 'rgba(13,148,136,0.7)',
-                textTransform: 'uppercase' as const, letterSpacing: '0.5px',
-              }}>
+              <div style={{ fontSize: '9px', color: 'rgba(13,148,136,0.7)', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>
                 Productive
               </div>
             </div>
-
-            {/* Sirens' Call (unproductive) */}
-            <div style={{
-              padding: '10px 8px',
-              background: 'rgba(255,255,255,0.4)',
-              borderRadius: '10px',
-              border: '1px solid rgba(153,27,27,0.15)',
-              textAlign: 'center' as const,
-            }}>
-              <div style={{
-                display: 'flex', justifyContent: 'center', marginBottom: '4px', color: '#991b1b',
-              }}>
-                <Icons.ThumbsDown />
-              </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: '#991b1b', fontFamily: '"Playfair Display", serif' }}>
+            <div style={{ width: '1px', height: '20px', background: 'rgba(44,24,16,0.1)' }} />
+            <div style={{ textAlign: 'center' as const }}>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: '#991b1b', fontFamily: '"Source Sans 3", monospace' }}>
                 {state.unproductiveCount}
               </div>
-              <div style={{
-                fontSize: '8px', color: 'rgba(153,27,27,0.7)',
-                textTransform: 'uppercase' as const, letterSpacing: '0.5px',
-              }}>
+              <div style={{ fontSize: '9px', color: 'rgba(153,27,27,0.7)', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>
                 Unproductive
               </div>
             </div>
+          </div>
+
+          {/* ─── DEEP DIVE BUTTON ─── */}
+          <div style={{ marginBottom: '14px' }}>
+            <button
+              onClick={() => chrome.runtime.sendMessage({ type: 'OPEN_TAB', data: { url: chrome.runtime.getURL('src/options/options.html#dashboard') } })}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                background: 'linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(168,85,247,0.12) 100%)',
+                border: '1px solid rgba(99,102,241,0.25)',
+                borderRadius: '8px',
+                color: '#4f46e5',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontFamily: '"Source Sans 3", sans-serif',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+              }}
+            >
+              Deep Dive &rarr;
+            </button>
           </div>
 
           {/* ─── MINI MAP ─── */}
@@ -1881,86 +1844,6 @@ export default function Widget(): JSX.Element {
                 transition: 'width 0.5s',
               }} />
             </div>
-          </div>
-
-          {/* ─── DAILY PROGRESS ─── */}
-          <div style={{ marginBottom: '14px' }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '8px',
-            }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '11px',
-                color: 'rgba(44,24,16,0.6)',
-              }}>
-                <Icons.Target /> Daily Goal
-              </div>
-              <span style={{
-                fontSize: '11px',
-                fontWeight: 500,
-                color: isOverGoal ? '#991b1b' : isNearGoal ? '#f59e0b' : 'rgba(44,24,16,0.6)',
-              }}>
-                {formatMinutes(state.todayMinutes)} / {formatMinutes(state.dailyGoal)}
-                {state.todayBackgroundMinutes > 0 && (
-                  <span style={{
-                    fontSize: '10px',
-                    color: 'rgba(44,24,16,0.35)',
-                    marginLeft: '4px',
-                    fontWeight: 400,
-                  }}>
-                    (+{formatMinutes(state.todayBackgroundMinutes)} bg)
-                  </span>
-                )}
-              </span>
-            </div>
-            <div style={{
-              height: '8px',
-              background: 'rgba(44,24,16,0.08)',
-              borderRadius: '4px',
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                height: '100%',
-                width: `${progressPercent}%`,
-                background: isOverGoal
-                  ? 'linear-gradient(90deg, #991b1b 0%, #dc2626 100%)'
-                  : isNearGoal
-                    ? 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)'
-                    : 'linear-gradient(90deg, #b8956a 0%, #d4a574 100%)',
-                borderRadius: '4px',
-                transition: 'width 0.5s ease',
-              }} />
-            </div>
-            {state.todayBackgroundMinutes > 0 && !isOverGoal && (
-              <div style={{
-                fontSize: '10px',
-                color: 'rgba(44,24,16,0.35)',
-                marginTop: '6px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-              }}>
-                +{formatMinutes(state.todayBackgroundMinutes)} background
-              </div>
-            )}
-            {isOverGoal && (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                fontSize: '11px',
-                color: '#991b1b',
-                marginTop: '8px',
-              }}>
-                <Icons.Flame /> Over by {formatMinutes(state.todayMinutes - state.dailyGoal)}
-              </div>
-            )}
           </div>
 
           {/* ─── ACHIEVEMENTS — "Maritime Medals" ─── */}
