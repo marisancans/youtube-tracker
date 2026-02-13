@@ -902,19 +902,19 @@ export default function Widget(): JSX.Element {
         display: 'inline-flex',
         alignItems: 'center',
         gap: '0px',
-        padding: '0 12px',
+        padding: '0 24px',
         position: 'relative' as const,
         background: `linear-gradient(180deg, hsl(220, 40%, ${Math.max(12 - barBgDarkness * 0.3, 3)}%) 0%, hsl(220, 50%, ${Math.max(6 - barBgDarkness * 0.15, 2)}%) 100%)`,
-        border: '1px solid rgba(212, 165, 116, 0.3)',
+        border: '2px solid rgba(212, 165, 116, 0.3)',
         borderTop: 'none',
-        borderBottom: '2px solid #b8956a',
-        borderRadius: '0 0 10px 10px',
-        height: '36px',
-        fontSize: '13px',
+        borderBottom: '4px solid #b8956a',
+        borderRadius: '0 0 20px 20px',
+        height: '144px',
+        fontSize: '26px',
         fontWeight: 500,
         color: '#f5e6c8',
         fontFamily: '"Source Sans 3", -apple-system, BlinkMacSystemFont, sans-serif',
-        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(212,165,116,0.1)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), inset 0 2px 0 rgba(212,165,116,0.1)',
         cursor: 'default',
         userSelect: 'none' as const,
         overflow: 'hidden',
@@ -926,7 +926,7 @@ export default function Widget(): JSX.Element {
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          padding: '0 8px',
+          padding: '0 16px',
           position: 'relative' as const,
           zIndex: 1,
         }}>
@@ -941,23 +941,23 @@ export default function Widget(): JSX.Element {
                 ['--bob-amount' as string]: currentRock.bobAmount,
                 animation: `yt-detox-bob ${currentRock.period} ease-in-out infinite`,
               }}>
-                <span dangerouslySetInnerHTML={{ __html: shipIconSvg(0, 14) }} />
+                <span dangerouslySetInnerHTML={{ __html: shipIconSvg(0, 56) }} />
               </div>
             ) : (
-              <span dangerouslySetInnerHTML={{ __html: shipIconSvg(0, 14) }} />
+              <span dangerouslySetInnerHTML={{ __html: shipIconSvg(0, 56) }} />
             )}
           </div>
         </div>
 
         {/* Gold divider */}
-        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '36px', position: 'relative' as const, zIndex: 1 }}>|</span>
+        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 4px', fontSize: '28px', lineHeight: '144px', position: 'relative' as const, zIndex: 1 }}>|</span>
 
         {/* Section 2: Stats - minutes, videos, drift% */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '4px',
-          padding: '0 8px',
+          gap: '8px',
+          padding: '0 16px',
           position: 'relative' as const,
           zIndex: 1,
         }}>
@@ -965,29 +965,29 @@ export default function Widget(): JSX.Element {
             fontVariantNumeric: 'tabular-nums',
             fontFamily: '"Source Sans 3", monospace',
             color: '#f5e6c8',
-            fontSize: '12px',
+            fontSize: '24px',
             fontWeight: 500,
             whiteSpace: 'nowrap' as const,
           }}>
             {formatTime(state.sessionDuration)}
           </span>
-          <span style={{ color: 'rgba(212,165,116,0.4)', fontSize: '10px' }}>&middot;</span>
+          <span style={{ color: 'rgba(212,165,116,0.4)', fontSize: '20px' }}>&middot;</span>
           <span style={{
             fontVariantNumeric: 'tabular-nums',
             fontFamily: '"Source Sans 3", monospace',
             color: '#f5e6c8',
-            fontSize: '12px',
+            fontSize: '24px',
             fontWeight: 500,
             whiteSpace: 'nowrap' as const,
           }}>
             {state.videosWatched} videos
           </span>
-          <span style={{ color: 'rgba(212,165,116,0.4)', fontSize: '10px' }}>&middot;</span>
+          <span style={{ color: 'rgba(212,165,116,0.4)', fontSize: '20px' }}>&middot;</span>
           <span style={{
             fontVariantNumeric: 'tabular-nums',
             fontFamily: '"Source Sans 3", monospace',
             color: driftColor[seaState] || '#5eead4',
-            fontSize: '12px',
+            fontSize: '24px',
             fontWeight: 700,
             whiteSpace: 'nowrap' as const,
           }}>
@@ -996,25 +996,25 @@ export default function Widget(): JSX.Element {
         </div>
 
         {/* Gold divider */}
-        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '36px', position: 'relative' as const, zIndex: 1 }}>|</span>
+        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 4px', fontSize: '28px', lineHeight: '144px', position: 'relative' as const, zIndex: 1 }}>|</span>
 
         {/* Section 3: Mini DriftRadar */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          padding: '0 4px',
+          padding: '0 8px',
           position: 'relative' as const,
           zIndex: 1,
         }}>
           {driftV2 ? (
-            <DriftRadar axes={driftV2.axes} size={22} />
+            <DriftRadar axes={driftV2.axes} size={88} />
           ) : (
-            <div style={{ width: 22, height: 22, opacity: 0.3 }} />
+            <div style={{ width: 88, height: 88, opacity: 0.3 }} />
           )}
         </div>
 
         {/* Gold divider */}
-        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '36px', position: 'relative' as const, zIndex: 1 }}>|</span>
+        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 4px', fontSize: '28px', lineHeight: '144px', position: 'relative' as const, zIndex: 1 }}>|</span>
 
         {/* Expand button */}
         <button
@@ -1046,9 +1046,9 @@ export default function Widget(): JSX.Element {
   return (
     <div style={{
       pointerEvents: 'auto',
-      width: '340px',
+      width: '680px',
       fontFamily: '"Source Sans 3", -apple-system, BlinkMacSystemFont, sans-serif',
-      fontSize: '14px',
+      fontSize: '28px',
       color: '#2c1810',
     }}>
       {/* Compact bar at top (same as collapsed but with up chevron) */}
@@ -1056,20 +1056,20 @@ export default function Widget(): JSX.Element {
         display: 'inline-flex',
         alignItems: 'center',
         gap: '0px',
-        padding: '0 12px',
+        padding: '0 24px',
         position: 'relative' as const,
         background: `linear-gradient(180deg, hsl(220, 40%, ${Math.max(12 - barBgDarkness * 0.3, 3)}%) 0%, hsl(220, 50%, ${Math.max(6 - barBgDarkness * 0.15, 2)}%) 100%)`,
-        border: '1px solid rgba(212, 165, 116, 0.3)',
+        border: '2px solid rgba(212, 165, 116, 0.3)',
         borderTop: 'none',
         borderBottom: 'none',
         borderRadius: '0 0 0 0',
-        height: '36px',
-        fontSize: '13px',
+        height: '144px',
+        fontSize: '26px',
         fontWeight: 500,
         color: '#f5e6c8',
         width: '100%',
         boxSizing: 'border-box' as const,
-        boxShadow: 'inset 0 1px 0 rgba(212,165,116,0.1)',
+        boxShadow: 'inset 0 2px 0 rgba(212,165,116,0.1)',
         cursor: 'default',
         userSelect: 'none' as const,
         overflow: 'hidden',
@@ -1083,18 +1083,18 @@ export default function Widget(): JSX.Element {
           color: '#f5e6c8',
           position: 'relative' as const,
           zIndex: 1,
-          marginRight: '8px',
+          marginRight: '16px',
           ['--rock-angle' as string]: currentRock.angle,
           animation: `yt-detox-rock ${currentRock.period} ease-in-out infinite`,
         }}>
-          <span dangerouslySetInnerHTML={{ __html: shipIconSvg(0, 14) }} />
+          <span dangerouslySetInnerHTML={{ __html: shipIconSvg(0, 56) }} />
         </div>
 
         <span style={{
           fontVariantNumeric: 'tabular-nums',
           fontFamily: '"Source Sans 3", monospace',
           color: '#f5e6c8',
-          fontSize: '12px',
+          fontSize: '24px',
           fontWeight: 500,
           flex: 1,
           position: 'relative' as const,
@@ -1105,8 +1105,8 @@ export default function Widget(): JSX.Element {
           <span style={{ color: driftColor[seaState] || '#5eead4', fontWeight: 700 }}>{driftPercent}%</span>
         </span>
         {driftV2 && (
-          <div style={{ position: 'relative' as const, zIndex: 1, marginRight: '6px', display: 'flex', alignItems: 'center' }}>
-            <DriftRadar axes={driftV2.axes} size={22} />
+          <div style={{ position: 'relative' as const, zIndex: 1, marginRight: '12px', display: 'flex', alignItems: 'center' }}>
+            <DriftRadar axes={driftV2.axes} size={88} />
           </div>
         )}
         <button
@@ -1709,7 +1709,7 @@ export default function Widget(): JSX.Element {
           </div>
 
           {/* ─── MINI MAP ─── */}
-          <div style={{ marginBottom: '14px' }}>
+          <div style={{ marginBottom: '28px' }}>
             <PirateMap
               mode="mini"
               driftHistory={state.driftHistory}
