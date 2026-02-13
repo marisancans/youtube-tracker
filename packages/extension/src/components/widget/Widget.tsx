@@ -964,26 +964,6 @@ export default function Widget(): JSX.Element {
           </span>
         </div>
 
-        {/* Gold divider */}
-        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '72px', position: 'relative' as const, zIndex: 1 }}>|</span>
-
-        {/* Section 3: Mini DriftRadar */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          padding: '0 4px',
-          position: 'relative' as const,
-          zIndex: 1,
-        }}>
-          {driftV2 ? (
-            <DriftRadar axes={driftV2.axes} size={44} />
-          ) : (
-            <div style={{ width: 44, height: 44, opacity: 0.3 }} />
-          )}
-        </div>
-
-        {/* Gold divider */}
-        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '72px', position: 'relative' as const, zIndex: 1 }}>|</span>
 
         {/* Expand button */}
         <button
@@ -1071,11 +1051,6 @@ export default function Widget(): JSX.Element {
           {formatTime(state.sessionDuration)} &middot; {state.videosWatched} videos &middot;{' '}
           <span style={{ color: driftColor[seaState] || '#5eead4', fontWeight: 700 }}>{driftPercent}%</span>
         </span>
-        {driftV2 && (
-          <div style={{ position: 'relative' as const, zIndex: 1, marginRight: '6px', display: 'flex', alignItems: 'center' }}>
-            <DriftRadar axes={driftV2.axes} size={44} />
-          </div>
-        )}
         <button
           onClick={() => setState((p) => ({ ...p, collapsed: false }))}
           style={{
