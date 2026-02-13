@@ -129,10 +129,10 @@ export default function PirateMap({
       }
     }
 
-    // Compass rose
-    const compassSize = mode === 'mini' ? 24 : 55;
-    const compassX = w - (mode === 'mini' ? 30 : 80);
-    const compassY = h - (mode === 'mini' ? 30 : 80);
+    // Compass rose - positioned with enough clearance for labels and drift text
+    const compassSize = mode === 'mini' ? 20 : 48;
+    const compassX = w - (mode === 'mini' ? 35 : 90);
+    const compassY = h - (mode === 'mini' ? 45 : 100);
     drawCompassRose(ctx, compassX, compassY, compassSize, currentDrift);
 
     // Border

@@ -863,15 +863,20 @@ export function drawCompassRose(
   ];
 
   for (const cl of cardinalLabels) {
-    const lx = Math.cos(cl.angle) * radius * 0.9;
-    const ly = Math.sin(cl.angle) * radius * 0.9;
-    // White backdrop for readability
+    const lx = Math.cos(cl.angle) * radius * 1.05;
+    const ly = Math.sin(cl.angle) * radius * 1.05;
+    const fontSize = Math.max(11, radius * 0.35);
+
+    // Enhanced backdrop with stroke outline for readability
     ctx.fillStyle = PARCHMENT;
-    ctx.font = `bold ${Math.max(10, radius * 0.32)}px serif`;
+    ctx.strokeStyle = PARCHMENT;
+    ctx.lineWidth = 3;
+    ctx.font = `bold ${fontSize}px serif`;
+    ctx.strokeText(cl.label, lx, ly);
     ctx.fillText(cl.label, lx, ly);
-    // Ink label
+
+    // Ink label on top
     ctx.fillStyle = INK;
-    ctx.font = `bold ${Math.max(9, radius * 0.3)}px serif`;
     ctx.fillText(cl.label, lx, ly);
   }
 
@@ -929,12 +934,27 @@ export function drawCompassRose(
   ctx.arc(0, 0, 8, 0, Math.PI * 2);
   ctx.stroke();
 
-  // ── Drift % text below compass — elegant serif ──
-  ctx.fillStyle = INK;
-  ctx.font = `italic ${Math.max(8, radius * 0.22)}px serif`;
+  // ── Drift % text below compass — elegant serif with backdrop ──
+  const driftText = `${Math.round(drift * 100)}%`;
+  const driftFontSize = Math.max(10, radius * 0.26);
+  const driftY = radius + 12;
+
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillText(`${Math.round(drift * 100)}%`, 0, radius + 8);
+  ctx.font = `italic ${driftFontSize}px serif`;
+
+  // Parchment backdrop stroke
+  ctx.strokeStyle = PARCHMENT;
+  ctx.lineWidth = 3;
+  ctx.strokeText(driftText, 0, driftY);
+
+  // Parchment fill
+  ctx.fillStyle = PARCHMENT;
+  ctx.fillText(driftText, 0, driftY);
+
+  // Ink on top
+  ctx.fillStyle = INK;
+  ctx.fillText(driftText, 0, driftY);
 
   ctx.restore();
 }
