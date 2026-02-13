@@ -316,9 +316,9 @@ async def sync_all(
         # === Video Sessions ===
         for session_data in data.videoSessions:
             existing = await db.execute(
-                select(VideoSession).where(
-                    VideoSession.user_id == user.id, VideoSession.ext_session_id == session_data.id
-                )
+                select(VideoSession)
+                .where(VideoSession.user_id == user.id, VideoSession.ext_session_id == session_data.id)
+                .limit(1)
             )
             if existing.scalar_one_or_none():
                 continue

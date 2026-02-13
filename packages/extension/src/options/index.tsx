@@ -1,12 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import Settings from './Settings';
+import Dashboard from './Dashboard';
 import Onboarding from './Onboarding';
 import '../styles/globals.css';
+
+type Page = 'settings' | 'map';
+
+function getPageFromHash(): Page {
+  return window.location.hash === '#map' ? 'map' : 'settings';
+}
 
 function App() {
   const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState<Page>(getPageFromHash);
+
+  // Listen for hash changes (back/forward navigation)
+  useEffect(() => {
+    const onHashChange = () => setPage(getPageFromHash());
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   useEffect(() => {
     // Check if onboarding has been completed
@@ -52,6 +67,10 @@ function App() {
 
   if (showOnboarding) {
     return <Onboarding onComplete={handleOnboardingComplete} />;
+  }
+
+  if (page === 'map') {
+    return <Dashboard />;
   }
 
   return <Settings />;

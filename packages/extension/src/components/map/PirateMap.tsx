@@ -15,7 +15,7 @@ import { generatePath } from './path-generator';
 import { drawSea, drawGrid, drawBorder, drawPath, drawShip, drawCompassRose, drawTreasureX } from './map-renderer';
 import { drawIsland, hitTestIsland, ISLAND_CONFIGS, type IslandId } from './island-sprites';
 import { startWeatherLoop, stopWeatherLoop, setDriftLevel, resetWeather } from './weather-renderer';
-import { startAmbient, stopAmbient, setWeatherIntensity, initAudio } from '../../lib/audio';
+import { setWeatherIntensity } from '../../lib/audio';
 
 interface PirateMapProps {
   mode: 'mini' | 'full';
@@ -49,12 +49,6 @@ export default function PirateMap({
   const weatherCanvasRef = useRef<HTMLCanvasElement>(null);
   const [hoveredIsland, setHoveredIsland] = useState<IslandId | null>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-
-  // Initialize audio
-  useEffect(() => {
-    initAudio().then(() => startAmbient());
-    return () => { stopAmbient(); };
-  }, []);
 
   // Handle resize
   useEffect(() => {
@@ -209,9 +203,14 @@ export default function PirateMap({
 
   const handleMiniClick = useCallback(() => {
     if (mode === 'mini') {
-      // Open dashboard
-      if (chrome.runtime?.openOptionsPage) {
-        chrome.runtime.openOptionsPage();
+      // Open full map view — use message to background script since
+      // chrome.tabs isn't available in content script context
+      const mapUrl = chrome.runtime.getURL('src/options/options.html#map');
+      if (chrome.tabs?.create) {
+        chrome.tabs.create({ url: mapUrl });
+      } else {
+        // Content script: ask background to open tab
+        chrome.runtime.sendMessage({ type: 'OPEN_TAB', data: { url: mapUrl } });
       }
     }
   }, [mode]);

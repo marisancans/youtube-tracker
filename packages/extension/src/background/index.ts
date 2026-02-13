@@ -375,6 +375,14 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
           response = { streak: await calculateStreak() };
           break;
 
+        case 'OPEN_TAB': {
+          const tabData = data as { url?: string } | undefined;
+          if (tabData?.url) {
+            chrome.tabs.create({ url: tabData.url });
+          }
+          break;
+        }
+
         default:
           console.log('[YT Detox] Unknown message type:', type);
       }

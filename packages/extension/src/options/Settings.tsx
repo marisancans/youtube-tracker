@@ -521,6 +521,13 @@ export default function Settings() {
               Dashboard
             </button>
             <button
+              onClick={() => { window.location.hash = '#map'; }}
+              className="px-5 py-2.5 text-sm font-display font-medium rounded-t-lg transition-all border-b-2 bg-navy-light text-parchment-dark border-transparent hover:text-parchment hover:bg-navy-light/80 flex items-center gap-2"
+            >
+              <Spyglass size={14} />
+              Captain's Map
+            </button>
+            <button
               onClick={() => setActiveTab('settings')}
               className={`px-5 py-2.5 text-sm font-display font-medium rounded-t-lg transition-all border-b-2 flex items-center gap-2 ${
                 activeTab === 'settings'

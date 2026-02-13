@@ -372,7 +372,7 @@ export default function Dashboard() {
           {muted ? '\uD83D\uDD07' : '\uD83D\uDD0A'}
         </button>
         <button
-          onClick={() => chrome.runtime.openOptionsPage()}
+          onClick={() => { window.location.hash = ''; }}
           title="Settings"
           style={{
             background: 'none',

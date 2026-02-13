@@ -503,7 +503,9 @@ export type MessageType =
   | 'CHECK_ACHIEVEMENTS'
   | 'GET_STREAK'
   // Data restore
-  | 'RESTORE_DATA';
+  | 'RESTORE_DATA'
+  // UI navigation
+  | 'OPEN_TAB';
 
 // ===== Batch Sync Types =====
 
