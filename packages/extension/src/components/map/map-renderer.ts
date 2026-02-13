@@ -863,14 +863,15 @@ export function drawCompassRose(
   ];
 
   for (const cl of cardinalLabels) {
-    const lx = Math.cos(cl.angle) * radius * 1.05;
-    const ly = Math.sin(cl.angle) * radius * 1.05;
-    const fontSize = Math.max(11, radius * 0.35);
+    // Position labels inside compass between inner ring (0.4) and star points (0.8)
+    const lx = Math.cos(cl.angle) * radius * 0.62;
+    const ly = Math.sin(cl.angle) * radius * 0.62;
+    const fontSize = Math.max(12, radius * 0.38);
 
     // Enhanced backdrop with stroke outline for readability
     ctx.fillStyle = PARCHMENT;
     ctx.strokeStyle = PARCHMENT;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.font = `bold ${fontSize}px serif`;
     ctx.strokeText(cl.label, lx, ly);
     ctx.fillText(cl.label, lx, ly);
