@@ -25,10 +25,12 @@ import {
   getDriftLevel,
   getDriftEffectsAsync,
   getDriftState,
+  getDriftV2State,
   getDriftSnapshots,
   initDrift,
   initDriftHistory,
   startDriftCalculation,
+  addDriftSample,
 } from './drift';
 
 import { checkAndUpdatePhase, setPhase, initPhase } from './phase';
@@ -202,6 +204,20 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
 
   (async () => {
     try {
+      // Auth guard — only allow whitelisted messages without sign-in
+      const AUTH_EXEMPT = new Set([
+        'AUTH_SIGN_IN', 'AUTH_SIGN_OUT', 'AUTH_GET_STATE',
+        'GET_SETTINGS', 'UPDATE_SETTINGS', 'OPEN_TAB',
+      ]);
+
+      if (!AUTH_EXEMPT.has(type)) {
+        const auth = await getAuthState();
+        if (!auth.user) {
+          sendResponse({ error: 'AUTH_REQUIRED' });
+          return;
+        }
+      }
+
       let response: any = { success: true };
 
       switch (type) {
@@ -320,6 +336,16 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
         case 'GET_DRIFT_EFFECTS':
           response = await getDriftEffectsAsync(getDriftState().current);
           break;
+        case 'GET_DRIFT_V2':
+          response = getDriftV2State();
+          break;
+        case 'DRIFT_BEHAVIOR_EVENT': {
+          const evt = data as { axis: 'timePressure' | 'contentQuality' | 'behaviorPattern'; weight: number };
+          if (evt?.axis && typeof evt.weight === 'number') {
+            addDriftSample(evt.axis, evt.weight);
+          }
+          break;
+        }
 
         // Challenge
         case 'GET_CHALLENGE_PROGRESS':
@@ -373,6 +399,14 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
           break;
         case 'GET_STREAK':
           response = { streak: await calculateStreak() };
+          break;
+
+        case 'STATS_UPDATE':
+          await chrome.storage.local.set({
+            liveSession: (data as any).session,
+            liveTemporal: (data as any).temporal,
+            liveSessionUpdatedAt: Date.now(),
+          });
           break;
 
         case 'OPEN_TAB': {
@@ -444,6 +478,18 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
 // ===== Initialization =====
 
+let periodicTasksStarted = false;
+
+function startPeriodicTasks(): void {
+  if (periodicTasksStarted) return;
+  periodicTasksStarted = true;
+  startDriftCalculation(30000);
+  startChallengeChecks(60 * 60 * 1000);
+  startPeriodicSync(5 * 60 * 1000);
+  startAchievementChecks(60 * 60 * 1000);
+  console.log('[YT Detox] Periodic tasks started');
+}
+
 async function initialize(): Promise<void> {
   console.log('[YT Detox] Initializing background service worker...');
 
@@ -460,13 +506,20 @@ async function initialize(): Promise<void> {
   // Initialize achievements
   await initAchievements();
 
-  // Start periodic tasks
-  startDriftCalculation(30000); // Calculate drift every 30 seconds
-  startChallengeChecks(60 * 60 * 1000); // Check challenges every hour
-  startPeriodicSync(5 * 60 * 1000); // Sync every 5 minutes
-  startAchievementChecks(60 * 60 * 1000); // Check achievements every hour
+  // Only start periodic tasks if user is signed in
+  const auth = await getAuthState();
+  if (auth.user) {
+    startPeriodicTasks();
+  }
 
-  console.log('[YT Detox] Background service worker initialized (v0.6.0 - achievements)');
+  // Start/stop periodic tasks when auth state changes
+  chrome.storage.onChanged.addListener((changes) => {
+    if (changes.authState?.newValue?.user && !periodicTasksStarted) {
+      startPeriodicTasks();
+    }
+  });
+
+  console.log('[YT Detox] Background service worker initialized (v0.6.0 - auth-required)');
 }
 
 // Run initialization
