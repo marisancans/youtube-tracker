@@ -146,6 +146,8 @@ export interface DailyStats {
   preSleepMinutes: number; // usage within 2h of bedtime
   // Binge detection
   bingeSessions: number; // sessions > 1 hour
+  // Drift
+  avgDrift: number; // Average composite drift for this day (computed from snapshots)
 }
 
 // ===== Granular Events =====

@@ -48,6 +48,7 @@ export function getEmptyDailyStats(dateStr: string): DailyStats {
     topChannels: [],
     preSleepMinutes: 0,
     bingeSessions: 0,
+    avgDrift: 0,
   };
 }
 
