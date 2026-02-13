@@ -802,9 +802,7 @@ export default function Widget(): JSX.Element {
         }
       });
 
-      const devFeatures = (window as any).__YT_DETOX_DEV_FEATURES__ || {};
       if (
-        devFeatures.frictionOverlay &&
         videoSession &&
         !videoSession.productivityRating &&
         state.lastRatedVideo !== videoSession.id
@@ -824,6 +822,19 @@ export default function Widget(): JSX.Element {
             rateVideo(storageRating);
             const xpGain = storageRating === 1 ? 15 : storageRating === 0 ? 5 : 2;
             setState((p) => ({ ...p, showPrompt: false, lastRatedVideo: videoSession.id, xp: p.xp + xpGain }));
+
+            // Feed Content Quality drift axis based on rating
+            const RATING_WEIGHTS: Record<number, number> = {
+              1: -0.25, // Anchored
+              2: -0.10, // On Course / Steady
+              3: 0.05,  // Drifting
+              4: 0.20,  // Adrift
+              5: 0.35,  // Lost at Sea
+            };
+            chrome.runtime.sendMessage({
+              type: 'DRIFT_BEHAVIOR_EVENT',
+              data: { axis: 'contentQuality', weight: RATING_WEIGHTS[driftRating] || 0 },
+            });
           });
         }
       }

@@ -17,6 +17,8 @@ import {
   trackRecommendationClick,
   handleVisibilityChange,
   scrapeVideoInfo,
+  getCurrentSession,
+  getTemporalData,
 } from './tracker';
 import { initDriftEffects } from './drift-effects';
 import { initMusicDetection } from './music-detector';
@@ -219,10 +221,23 @@ function handleUrlChange(): void {
     setTimeout(startVideoSession, 1000);
   }
 
+  if (newPageType === 'shorts') {
+    chrome.runtime.sendMessage({
+      type: 'DRIFT_BEHAVIOR_EVENT',
+      data: { axis: 'behaviorPattern', weight: 0.15 },
+    });
+  }
+
   if (newPageType === 'search') {
     const params = new URLSearchParams(window.location.search);
     const query = params.get('search_query');
-    if (query) trackSearch(query);
+    if (query) {
+      trackSearch(query);
+      chrome.runtime.sendMessage({
+        type: 'DRIFT_BEHAVIOR_EVENT',
+        data: { axis: 'behaviorPattern', weight: -0.10 },
+      });
+    }
   }
 }
 
@@ -340,6 +355,10 @@ function setupRecommendationTracking(): void {
           position = Math.max(0, siblings.indexOf(renderer));
         }
         trackRecommendationClick(videoId, position, location);
+        chrome.runtime.sendMessage({
+          type: 'DRIFT_BEHAVIOR_EVENT',
+          data: { axis: 'behaviorPattern', weight: 0.20 },
+        });
       }
     }
   });
@@ -384,6 +403,22 @@ async function init(): Promise<void> {
   (window as any).__YT_DETOX_TRACKER__ = { version: '0.5.0', initialized: true };
 
   console.log('[YT Detox] Initializing...');
+
+  // Check auth before starting tracker
+  const authResp = await new Promise<any>((resolve) =>
+    chrome.runtime.sendMessage({ type: 'AUTH_GET_STATE' }, resolve),
+  );
+  if (!authResp?.user) {
+    console.log('[YT Detox] Not authenticated — tracker paused');
+    mountWidget(); // Widget shows auth-gate bar
+    chrome.storage.onChanged.addListener((changes) => {
+      if (changes.authState?.newValue?.user) {
+        isInitialized = false;
+        init();
+      }
+    });
+    return;
+  }
 
   const storage = await new Promise<any>((resolve) => chrome.storage.local.get('settings', resolve));
   const devFeatures = storage?.settings?.devFeatures || {
@@ -442,6 +477,18 @@ async function init(): Promise<void> {
     const pt = getPageType();
     if (pt === 'watch' || pt === 'shorts') updateVideoSession();
   }, UPDATE_INTERVAL);
+
+  // Periodic live stats flush (every 30s) so Dashboard/Settings see current data
+  window.setInterval(() => {
+    const session = getCurrentSession();
+    const temporal = getTemporalData();
+    if (session) {
+      chrome.runtime.sendMessage({
+        type: 'STATS_UPDATE',
+        data: { session, temporal },
+      });
+    }
+  }, 30000);
 
   console.log('[YT Detox] Initialized');
 }
