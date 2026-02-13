@@ -15,6 +15,7 @@ import type {
   InterventionEvent,
   MoodReport,
 } from '@yt-detox/shared';
+import type { DriftStateV2, DriftWeights, DriftAxisState } from '@yt-detox/shared';
 
 // ===== Event Queues =====
 
@@ -50,6 +51,43 @@ export interface DriftSnapshot {
   level: 'low' | 'medium' | 'high' | 'critical';
   videosThisHour: number;
   productiveThisHour: number;
+}
+
+export const DEFAULT_DRIFT_WEIGHTS: DriftWeights = {
+  timePressure: 0.40,
+  contentQuality: 0.25,
+  behaviorPattern: 0.20,
+  circadian: 0.15,
+};
+
+export const DRIFT_HALF_LIVES = {
+  timePressure: 4 * 60 * 60 * 1000,   // 4h
+  contentQuality: 6 * 60 * 60 * 1000, // 6h
+  behaviorPattern: 3 * 60 * 60 * 1000,// 3h
+};
+
+export const DRIFT_SATURATION = {
+  timePressure: 180,     // ~3h of active seconds within window = 1.0
+  contentQuality: 3.0,   // sum of weights to saturate
+  behaviorPattern: 2.0,  // sum of weights to saturate
+};
+
+function emptyAxis(halfLife: number): DriftAxisState {
+  return { value: 0, samples: [], halfLife };
+}
+
+export function emptyDriftStateV2(): DriftStateV2 {
+  return {
+    axes: {
+      timePressure: emptyAxis(DRIFT_HALF_LIVES.timePressure),
+      contentQuality: emptyAxis(DRIFT_HALF_LIVES.contentQuality),
+      behaviorPattern: emptyAxis(DRIFT_HALF_LIVES.behaviorPattern),
+      circadian: 0,
+    },
+    composite: 0,
+    level: 'calm',
+    lastCalculated: Date.now(),
+  };
 }
 
 // ===== Auth State =====
@@ -111,7 +149,9 @@ export const DEFAULT_SETTINGS: Settings = {
   dailyGoalMinutes: 60,
   weekendGoalMinutes: 120,
   bedtime: '23:00',
+  bedtimeHour: 23,
   wakeTime: '07:00',
+  driftWeights: DEFAULT_DRIFT_WEIGHTS,
   interventionsEnabled: {
     productivityPrompts: true,
     timeWarnings: true,

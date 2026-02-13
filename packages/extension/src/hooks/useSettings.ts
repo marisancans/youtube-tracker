@@ -10,7 +10,14 @@ const DEFAULT_SETTINGS: Settings = {
   dailyGoalMinutes: 60,
   weekendGoalMinutes: 120,
   bedtime: '23:00',
+  bedtimeHour: 23,
   wakeTime: '07:00',
+  driftWeights: {
+    timePressure: 0.40,
+    contentQuality: 0.25,
+    behaviorPattern: 0.20,
+    circadian: 0.15,
+  },
   interventionsEnabled: {
     productivityPrompts: true,
     timeWarnings: true,

@@ -414,6 +414,8 @@ export interface Settings {
   productivityPromptChance: number;
   whitelistedChannels: string[];
   blockedChannels: string[];
+  bedtimeHour: number;
+  driftWeights: DriftWeights;
   backend: BackendSettings;
   devFeatures: DevFeatures;
 }
