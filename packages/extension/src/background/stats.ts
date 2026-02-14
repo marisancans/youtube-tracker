@@ -367,3 +367,152 @@ export async function getWeeklySummary(): Promise<any> {
     generatedAt: Date.now(),
   };
 }
+
+// ===== Rolling 24h Stats =====
+
+export interface Rolling24hStats {
+  totalSeconds: number;
+  activeSeconds: number;
+  backgroundSeconds: number;
+  sessionCount: number;
+  avgSessionDurationSeconds: number;
+  videoCount: number;
+  videosCompleted: number;
+  videosAbandoned: number;
+  shortsCount: number;
+  uniqueChannels: number;
+  searchCount: number;
+  recommendationClicks: number;
+  autoplayCount: number;
+  autoplayCancelled: number;
+  totalScrollPixels: number;
+  avgScrollVelocity: number;
+  thumbnailsHovered: number;
+  thumbnailsClicked: number;
+  pageReloads: number;
+  backButtonPresses: number;
+  tabSwitches: number;
+  productiveVideos: number;
+  unproductiveVideos: number;
+  neutralVideos: number;
+  promptsShown: number;
+  promptsAnswered: number;
+  interventionsShown: number;
+  interventionsEffective: number;
+  hourlySeconds: Record<string, number>;
+  topChannels: ChannelStat[];
+  preSleepMinutes: number;
+  bingeSessions: number;
+  avgDrift: number;
+  date: string; // today's date key, kept for compatibility
+  firstCheckTime?: string;
+}
+
+export async function getRolling24hStats(): Promise<Rolling24hStats> {
+  const storage = await getStorage();
+  const todayKey = getTodayKey();
+  const currentHour = new Date().getHours();
+
+  // Yesterday's date key
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayKey = yesterday.toISOString().split('T')[0];
+
+  const todayStats = storage.dailyStats[todayKey] || getEmptyDailyStats(todayKey);
+  const yesterdayStats = storage.dailyStats[yesterdayKey] || getEmptyDailyStats(yesterdayKey);
+
+  // --- Hourly-bucketed data: sum exact hours ---
+  // Today: hours 0..currentHour
+  // Yesterday: hours (currentHour+1)..23
+  const hourlySeconds: Record<string, number> = {};
+  let rollingActiveSeconds = 0;
+
+  for (let h = 0; h < 24; h++) {
+    const key = h.toString();
+    if (h <= currentHour) {
+      // This hour comes from today
+      hourlySeconds[key] = todayStats.hourlySeconds[key] || 0;
+    } else {
+      // This hour comes from yesterday (trailing portion)
+      hourlySeconds[key] = yesterdayStats.hourlySeconds[key] || 0;
+    }
+    rollingActiveSeconds += hourlySeconds[key];
+  }
+
+  // --- Aggregate fields: today's full values + yesterday scaled by trailing fraction ---
+  // Yesterday's trailing hours = 23 - currentHour (hours currentHour+1 through 23)
+  // Fraction of yesterday that falls in the rolling window
+  const yesterdayTrailingHours = 23 - currentHour;
+  const yesterdayFraction = yesterdayTrailingHours / 24;
+
+  function sumField(todayVal: number, yesterdayVal: number): number {
+    return todayVal + Math.round(yesterdayVal * yesterdayFraction);
+  }
+
+  // --- Merge topChannels from both days ---
+  const channelMap = new Map<string, ChannelStat>();
+  for (const ch of todayStats.topChannels || []) {
+    channelMap.set(ch.channel, { ...ch });
+  }
+  for (const ch of yesterdayStats.topChannels || []) {
+    const scaledMinutes = Math.round(ch.minutes * yesterdayFraction);
+    const scaledCount = Math.round(ch.videoCount * yesterdayFraction);
+    if (channelMap.has(ch.channel)) {
+      const existing = channelMap.get(ch.channel)!;
+      existing.minutes += scaledMinutes;
+      existing.videoCount += scaledCount;
+    } else {
+      channelMap.set(ch.channel, {
+        channel: ch.channel,
+        minutes: scaledMinutes,
+        videoCount: scaledCount,
+      });
+    }
+  }
+
+  const topChannels = Array.from(channelMap.values())
+    .sort((a, b) => b.minutes - a.minutes)
+    .slice(0, 10);
+
+  const sessionCount = sumField(todayStats.sessionCount, yesterdayStats.sessionCount);
+
+  const result: Rolling24hStats = {
+    date: todayKey,
+    firstCheckTime: todayStats.firstCheckTime,
+    totalSeconds: sumField(todayStats.totalSeconds, yesterdayStats.totalSeconds),
+    activeSeconds: rollingActiveSeconds, // precise hourly sum
+    backgroundSeconds: sumField(todayStats.backgroundSeconds, yesterdayStats.backgroundSeconds),
+    sessionCount,
+    avgSessionDurationSeconds: sessionCount > 0 ? Math.floor(rollingActiveSeconds / sessionCount) : 0,
+    videoCount: sumField(todayStats.videoCount, yesterdayStats.videoCount),
+    videosCompleted: sumField(todayStats.videosCompleted, yesterdayStats.videosCompleted),
+    videosAbandoned: sumField(todayStats.videosAbandoned, yesterdayStats.videosAbandoned),
+    shortsCount: sumField(todayStats.shortsCount, yesterdayStats.shortsCount),
+    uniqueChannels: channelMap.size,
+    searchCount: sumField(todayStats.searchCount, yesterdayStats.searchCount),
+    recommendationClicks: sumField(todayStats.recommendationClicks, yesterdayStats.recommendationClicks),
+    autoplayCount: sumField(todayStats.autoplayCount, yesterdayStats.autoplayCount),
+    autoplayCancelled: sumField(todayStats.autoplayCancelled, yesterdayStats.autoplayCancelled),
+    totalScrollPixels: sumField(todayStats.totalScrollPixels, yesterdayStats.totalScrollPixels),
+    avgScrollVelocity: todayStats.avgScrollVelocity || yesterdayStats.avgScrollVelocity,
+    thumbnailsHovered: sumField(todayStats.thumbnailsHovered, yesterdayStats.thumbnailsHovered),
+    thumbnailsClicked: sumField(todayStats.thumbnailsClicked, yesterdayStats.thumbnailsClicked),
+    pageReloads: sumField(todayStats.pageReloads, yesterdayStats.pageReloads),
+    backButtonPresses: sumField(todayStats.backButtonPresses, yesterdayStats.backButtonPresses),
+    tabSwitches: sumField(todayStats.tabSwitches, yesterdayStats.tabSwitches),
+    productiveVideos: sumField(todayStats.productiveVideos, yesterdayStats.productiveVideos),
+    unproductiveVideos: sumField(todayStats.unproductiveVideos, yesterdayStats.unproductiveVideos),
+    neutralVideos: sumField(todayStats.neutralVideos, yesterdayStats.neutralVideos),
+    promptsShown: sumField(todayStats.promptsShown, yesterdayStats.promptsShown),
+    promptsAnswered: sumField(todayStats.promptsAnswered, yesterdayStats.promptsAnswered),
+    interventionsShown: sumField(todayStats.interventionsShown, yesterdayStats.interventionsShown),
+    interventionsEffective: sumField(todayStats.interventionsEffective, yesterdayStats.interventionsEffective),
+    hourlySeconds,
+    topChannels,
+    preSleepMinutes: sumField(todayStats.preSleepMinutes, yesterdayStats.preSleepMinutes),
+    bingeSessions: sumField(todayStats.bingeSessions, yesterdayStats.bingeSessions),
+    avgDrift: todayStats.avgDrift || yesterdayStats.avgDrift,
+  };
+
+  return result;
+}
