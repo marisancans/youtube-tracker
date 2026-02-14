@@ -3,7 +3,7 @@
  * All logic is in separate modules, this file handles message routing and initialization.
  */
 
-import type { VideoSession, BrowserSession, Settings, Message } from '@yt-detox/shared';
+import type { VideoSession, BrowserSession, Settings, Message, DailyStats } from '@yt-detox/shared';
 
 // ===== Module Imports =====
 
@@ -148,7 +148,7 @@ async function handleRateVideo(data: { sessionId: string; rating: -1 | 0 | 1 }):
   }
 }
 
-async function handleGetStats(): Promise<{ today: any | null; currentSession: any | null }> {
+async function handleGetStats(): Promise<{ today: DailyStats | null; currentSession: null }> {
   const rolling = await getRolling24hStats();
   return {
     today: rolling,

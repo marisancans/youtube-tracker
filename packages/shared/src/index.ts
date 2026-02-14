@@ -341,9 +341,8 @@ export interface SyncEventsResponse {
 
 export interface StatsResponse {
   today: DailyStats | null;
-  last7Days: DailyStats[];
+  last7Days?: DailyStats[];
   currentSession: CurrentSession | null;
-  dailyGoalMinutes: number;
 }
 
 export interface CurrentSession {

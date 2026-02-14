@@ -140,14 +140,15 @@ async function recordDriftSnapshot(drift: number, level: SeaState): Promise<void
   }
   await chrome.storage.local.set({ driftHistory: driftSnapshots });
 
-  // Update today's avgDrift in dailyStats
-  if (stats.dailyStats?.[today]) {
+  // Update today's avgDrift in dailyStats (fresh read to avoid race with updateDailyStats)
+  const freshStats = await chrome.storage.local.get('dailyStats');
+  if (freshStats.dailyStats?.[today]) {
     const todayStart = new Date(today + 'T00:00:00').getTime();
     const todaySnapshots = driftSnapshots.filter((s) => s.timestamp >= todayStart);
     if (todaySnapshots.length > 0) {
-      stats.dailyStats[today].avgDrift =
+      freshStats.dailyStats[today].avgDrift =
         todaySnapshots.reduce((sum, s) => sum + s.drift, 0) / todaySnapshots.length;
-      await chrome.storage.local.set({ dailyStats: stats.dailyStats });
+      await chrome.storage.local.set({ dailyStats: freshStats.dailyStats });
     }
   }
 }

@@ -67,7 +67,6 @@ export function useStats(pollInterval = 1000) {
     today: (stats?.today as DailyStats) || EMPTY_DAILY,
     last7Days: stats?.last7Days || [],
     currentSession: stats?.currentSession || null,
-    dailyGoalMinutes: stats?.dailyGoalMinutes || 60,
     loading,
     error,
     refetch: fetchStats,
