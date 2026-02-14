@@ -14,9 +14,8 @@ import {
   ropeBorderSvg,
 } from '../../components/nautical/nautical-svg-strings';
 import PirateMap from '../map/PirateMap';
-import SeaEffects from './SeaEffects';
+import SeaCanvas from './SeaCanvas';
 import DriftRadar from './DriftRadar';
-import DramaticShip from './DramaticShip';
 import type { DriftSnapshot } from '../../background/storage';
 import type { DriftStateV2 } from '@yt-detox/shared';
 
@@ -83,7 +82,6 @@ interface WidgetState {
   sessionDuration: number;
   videosWatched: number;
   todayMinutes: number;
-  dailyGoal: number;
   showPrompt: boolean;
   videoTitle: string | null;
   lastRatedVideo: string | null;
@@ -388,7 +386,6 @@ export default function Widget(): JSX.Element {
     sessionDuration: 0,
     videosWatched: 0,
     todayMinutes: 0,
-    dailyGoal: 60,
     showPrompt: false,
     videoTitle: null,
     lastRatedVideo: null,
@@ -448,11 +445,6 @@ export default function Widget(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    safeSendMessageWithCallback('GET_SETTINGS', undefined, (response: any) => {
-      if (response && !response.error) {
-        setState((p) => ({ ...p, dailyGoal: response.dailyGoalMinutes || 60 }));
-      }
-    });
     // Load streak from background (calculated properly)
     safeSendMessageWithCallback('GET_STREAK', undefined, (response: any) => {
       if (response?.streak !== undefined) {
@@ -702,23 +694,6 @@ export default function Widget(): JSX.Element {
 
     const now = Date.now();
 
-    // Time warning: over daily goal
-    if (state.todayMinutes > state.dailyGoal && !state.dismissedNudges.has('time_warning_today')) {
-      const overBy = state.todayMinutes - state.dailyGoal;
-      setState((p) => ({
-        ...p,
-        activeNudge: {
-          id: 'time_warning_today',
-          type: 'time_warning',
-          message: `You're ${formatMinutes(overBy)} over your daily goal`,
-          icon: 'AlertCircle',
-          color: '#f87171',
-          dismissible: true,
-        },
-      }));
-      return;
-    }
-
     // Break reminder: every 30 minutes of continuous session
     const breakInterval = 30 * 60; // 30 minutes in seconds
     if (
@@ -760,7 +735,6 @@ export default function Widget(): JSX.Element {
     }
   }, [
     state.todayMinutes,
-    state.dailyGoal,
     state.sessionDuration,
     state.dismissedNudges,
     state.phase,
@@ -903,28 +877,16 @@ export default function Widget(): JSX.Element {
         userSelect: 'none' as const,
         overflow: 'hidden',
       }}>
-        {/* SeaEffects weather overlay */}
-        <SeaEffects seaState={seaState} composite={compositeVal} />
+        {/* Canvas ocean + ship */}
+        <SeaCanvas seaState={seaState} composite={compositeVal} />
 
-        {/* Section 1: Dramatic ship animation */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          position: 'relative' as const,
-          zIndex: 1,
-        }}>
-          <DramaticShip seaState={seaState} composite={compositeVal} />
-        </div>
-
-        {/* Gold divider */}
-        <span style={{ color: 'rgba(212, 165, 116, 0.3)', padding: '0 2px', fontSize: '14px', lineHeight: '72px', position: 'relative' as const, zIndex: 1 }}>|</span>
-
-        {/* Section 2: Stats - minutes, videos, drift% */}
+        {/* Section: Stats - minutes, videos, drift% (pushed right to clear canvas ship) */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
           gap: '4px',
           padding: '0 8px',
+          marginLeft: '72px',
           position: 'relative' as const,
           zIndex: 1,
         }}>
@@ -1021,17 +983,8 @@ export default function Widget(): JSX.Element {
         userSelect: 'none' as const,
         overflow: 'hidden',
       }}>
-        {/* SeaEffects weather overlay */}
-        <SeaEffects seaState={seaState} composite={compositeVal} />
-
-        {/* Dramatic ship animation */}
-        <div style={{
-          display: 'inline-flex',
-          position: 'relative' as const,
-          zIndex: 1,
-        }}>
-          <DramaticShip seaState={seaState} composite={compositeVal} />
-        </div>
+        {/* Canvas ocean + ship */}
+        <SeaCanvas seaState={seaState} composite={compositeVal} />
 
         <span style={{
           fontVariantNumeric: 'tabular-nums',
@@ -1040,6 +993,7 @@ export default function Widget(): JSX.Element {
           fontSize: '12px',
           fontWeight: 500,
           flex: 1,
+          marginLeft: '72px',
           position: 'relative' as const,
           zIndex: 1,
           whiteSpace: 'nowrap' as const,
@@ -1386,7 +1340,7 @@ export default function Widget(): JSX.Element {
                     Promotion Available!
                   </div>
                   <div style={{ fontSize: '11px', color: 'rgba(44,24,16,0.6)' }}>
-                    {state.challengeProgress.daysUnderGoal} days under goal — ready to advance to{' '}
+                    {state.challengeProgress.daysUnderGoal} days of calm seas — ready to advance to{' '}
                     {(() => {
                       const nextIndex = TIER_ORDER.indexOf(state.challengeProgress.currentTier) + 1;
                       const nextTier = TIER_ORDER[nextIndex];
