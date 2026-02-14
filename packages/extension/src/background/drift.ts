@@ -139,6 +139,17 @@ async function recordDriftSnapshot(drift: number, level: SeaState): Promise<void
     driftSnapshots = driftSnapshots.slice(-48);
   }
   await chrome.storage.local.set({ driftHistory: driftSnapshots });
+
+  // Update today's avgDrift in dailyStats
+  if (stats.dailyStats?.[today]) {
+    const todayStart = new Date(today + 'T00:00:00').getTime();
+    const todaySnapshots = driftSnapshots.filter((s) => s.timestamp >= todayStart);
+    if (todaySnapshots.length > 0) {
+      stats.dailyStats[today].avgDrift =
+        todaySnapshots.reduce((sum, s) => sum + s.drift, 0) / todaySnapshots.length;
+      await chrome.storage.local.set({ dailyStats: stats.dailyStats });
+    }
+  }
 }
 
 // ===== V2 Exported Functions =====
@@ -168,13 +179,19 @@ export async function calculateDriftV2(): Promise<DriftStateV2> {
   driftV2.axes.behaviorPattern.value = computeAxisValue(driftV2.axes.behaviorPattern, now, DRIFT_SATURATION.behaviorPattern);
   driftV2.axes.circadian = computeCircadian(bedtimeHour);
 
-  // Composite
-  driftV2.composite =
-    driftV2.axes.timePressure.value * weights.timePressure +
-    driftV2.axes.contentQuality.value * weights.contentQuality +
-    driftV2.axes.behaviorPattern.value * weights.behaviorPattern +
-    driftV2.axes.circadian * weights.circadian;
-  driftV2.composite = Math.min(Math.max(driftV2.composite, 0), 1);
+  // Composite: 3 axes form the base (weights normalized to sum=1),
+  // then circadian acts as a MULTIPLIER that amplifies the base.
+  // After bedtime, drift surges hard — not just +15%.
+  const baseWeight = weights.timePressure + weights.contentQuality + weights.behaviorPattern;
+  const base = baseWeight > 0
+    ? (driftV2.axes.timePressure.value * weights.timePressure +
+       driftV2.axes.contentQuality.value * weights.contentQuality +
+       driftV2.axes.behaviorPattern.value * weights.behaviorPattern) / baseWeight
+    : 0;
+  // Circadian multiplier: at bedtime (circadian=1.0) drift is amplified
+  // by up to 80%. The circadian weight slider scales the boost strength.
+  const circadianBoost = 1 + driftV2.axes.circadian * (weights.circadian / 0.15) * 0.8;
+  driftV2.composite = Math.min(Math.max(base * circadianBoost, 0), 1);
   driftV2.level = getSeaState(driftV2.composite);
   driftV2.lastCalculated = now;
 
