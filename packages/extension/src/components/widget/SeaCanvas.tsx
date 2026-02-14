@@ -76,23 +76,22 @@ interface SeaCfg {
   foamIntensity: number;  // 0..1 — controls whitecap opacity on breaking faces
   rainCount: number;
   windCount: number;      // horizontal wind streaks
-  sprayCount: number;     // spray particles flying off wave crests
   stormOverlay: number;
   shipAmpMult: number;
 }
 
 const P = {
-  deepOcean:   '#0d2b2b',
-  midOcean:    '#1a4a42',
-  shallowSea:  '#2a6355',
+  deepOcean:   '#0a1a3a',
+  midOcean:    '#143052',
+  shallowSea:  '#1e4a6e',
   crestGold:   '#e8b84d',
   crestAmber:  '#d4955a',
-  crestLight:  '#f0d080',
-  foamCream:   '#f5e8d0',
-  foamBright:  '#fff8ee',
-  rainGold:    '#c9a055',
-  stormDark:   '#0a1a1a',
-  flashWarm:   '#f5e6c8',
+  crestLight:  '#7eb8d8',
+  foamCream:   '#d0e8f5',
+  foamBright:  '#e8f4ff',
+  rainGold:    '#8ab4d0',
+  stormDark:   '#060e1e',
+  flashWarm:   '#c8ddef',
 };
 
 function getCfg(state: SeaState, sub: number): SeaCfg {
@@ -104,7 +103,7 @@ function getCfg(state: SeaState, sub: number): SeaCfg {
           { amp: 3*s, freq: 0.018, speed: 0.15, noiseAmp: 1.5*s, noiseFreq: 0.008, fillTop: P.shallowSea, fillBot: P.midOcean, crestColor: P.crestLight, crestWidth: 1 },
           { amp: 2*s, freq: 0.012, speed: 0.08, noiseAmp: 1*s, noiseFreq: 0.005, fillTop: P.midOcean, fillBot: P.deepOcean, crestColor: P.crestGold, crestWidth: 0.5 },
         ],
-        foamIntensity: 0.1, rainCount: 0, windCount: 0, sprayCount: 0,
+        foamIntensity: 0.1, rainCount: 0, windCount: 0,
         stormOverlay: 0, shipAmpMult: 0.8,
       };
     case 'choppy':
@@ -114,7 +113,7 @@ function getCfg(state: SeaState, sub: number): SeaCfg {
           { amp: 3.5*s, freq: 0.035, speed: 0.45, noiseAmp: 2*s, noiseFreq: 0.015, fillTop: P.midOcean, fillBot: P.deepOcean, crestColor: P.crestAmber, crestWidth: 1 },
           { amp: 2*s, freq: 0.01, speed: 0.12, noiseAmp: 1*s, noiseFreq: 0.006, fillTop: P.deepOcean, fillBot: P.deepOcean, crestColor: P.crestGold, crestWidth: 0.5 },
         ],
-        foamIntensity: 0.3, rainCount: 0, windCount: 0, sprayCount: 0,
+        foamIntensity: 0.3, rainCount: 0, windCount: 0,
         stormOverlay: 0, shipAmpMult: 1,
       };
     case 'rough':
@@ -124,7 +123,7 @@ function getCfg(state: SeaState, sub: number): SeaCfg {
           { amp: 6*s, freq: 0.04, speed: 0.7, noiseAmp: 3*s, noiseFreq: 0.02, fillTop: P.midOcean, fillBot: P.deepOcean, crestColor: P.crestAmber, crestWidth: 1.5 },
           { amp: 3*s, freq: 0.015, speed: 0.2, noiseAmp: 2*s, noiseFreq: 0.008, fillTop: P.deepOcean, fillBot: P.deepOcean, crestColor: P.crestGold, crestWidth: 1 },
         ],
-        foamIntensity: 0.5, rainCount: 30, windCount: 4, sprayCount: 0,
+        foamIntensity: 0.5, rainCount: 30, windCount: 4,
         stormOverlay: 0.12, shipAmpMult: 1.2,
       };
     case 'storm':
@@ -134,7 +133,7 @@ function getCfg(state: SeaState, sub: number): SeaCfg {
           { amp: 11*s, freq: 0.05, speed: 1.4, noiseAmp: 6*s, noiseFreq: 0.028, fillTop: P.midOcean, fillBot: P.deepOcean, crestColor: P.crestAmber, crestWidth: 2.5 },
           { amp: 6*s, freq: 0.02, speed: 0.5, noiseAmp: 4*s, noiseFreq: 0.015, fillTop: P.deepOcean, fillBot: P.deepOcean, crestColor: P.crestGold, crestWidth: 1.5 },
         ],
-        foamIntensity: 0.85, rainCount: 70, windCount: 20, sprayCount: 15,
+        foamIntensity: 0.85, rainCount: 70, windCount: 20,
         stormOverlay: 0.3, shipAmpMult: 1.8,
       };
     default:
@@ -219,20 +218,6 @@ export default function SeaCanvas({ seaState, composite }: Props): JSX.Element {
       alpha: seaState === 'storm' ? 0.1 + sr(i + 2400) * 0.15 : 0.06 + sr(i + 2400) * 0.1,
     })),
   [cfg.windCount, seaState]);
-
-  // Spray particles — small bright dots that fly off wave crests in storm
-  const sprayPos = useMemo(() =>
-    Array.from({ length: cfg.sprayCount }, (_, i) => ({
-      xStart: sr(i + 5000) * 340,   // starting x on a wave crest
-      yBase: 0.35 + sr(i + 5100) * 0.2, // near wave surface area
-      speed: 80 + sr(i + 5200) * 120,
-      size: 1 + sr(i + 5300) * 2,
-      phase: sr(i + 5400) * 200,
-      lifetime: 0.8 + sr(i + 5500) * 1.2, // how long visible (seconds)
-      driftY: -20 - sr(i + 5600) * 30,    // fly upward
-      alpha: 0.3 + sr(i + 5700) * 0.4,
-    })),
-  [cfg.sprayCount]);
 
   const draw = useCallback((timestamp: number) => {
     const canvas = canvasRef.current;
@@ -407,27 +392,6 @@ export default function SeaCanvas({ seaState, composite }: Props): JSX.Element {
       ctx.globalAlpha = 1;
     }
 
-    // ── Spray particles (fly off crests during storm) ──
-    if (sprayPos.length > 0) {
-      for (const spray of sprayPos) {
-        const cycle = spray.phase + t * spray.speed;
-        const phase = (cycle % (spray.lifetime * spray.speed)) / (spray.lifetime * spray.speed);
-        if (phase > 1) continue;
-        const sx = spray.xStart - phase * 120; // fly left
-        const sy = spray.yBase * h + phase * spray.driftY;
-        const fadeIn = Math.min(1, phase * 5);
-        const fadeOut = Math.max(0, 1 - (phase - 0.6) / 0.4);
-        const a = spray.alpha * fadeIn * fadeOut;
-        if (a <= 0) continue;
-        ctx.beginPath();
-        ctx.arc(sx, sy, spray.size, 0, Math.PI * 2);
-        ctx.fillStyle = P.foamBright;
-        ctx.globalAlpha = a;
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-    }
-
     // ── Ship ──
     const shipImg = shipImgRef.current;
     if (shipImg) {
@@ -481,7 +445,7 @@ export default function SeaCanvas({ seaState, composite }: Props): JSX.Element {
     }
 
     rafRef.current = requestAnimationFrame(draw);
-  }, [cfg, rainPos, windPos, sprayPos, seaState]);
+  }, [cfg, rainPos, windPos, seaState]);
 
   useEffect(() => {
     rafRef.current = requestAnimationFrame(draw);
