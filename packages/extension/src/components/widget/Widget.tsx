@@ -456,13 +456,31 @@ export default function Widget(): JSX.Element {
     chrome.storage.local.get(
       ['xp', 'dailyStats', 'settings', 'productiveUrls', 'syncState', 'lastSyncResult'],
       (result) => {
-        const today = new Date().toISOString().split('T')[0];
-        const storedHourly = result.dailyStats?.[today]?.hourlySeconds;
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+        const yesterdayDate = new Date(now);
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        const yesterdayKey = yesterdayDate.toISOString().split('T')[0];
+        const currentHour = now.getHours();
+
+        const rollingHourly: Record<string, number> = {};
+        const yesterdayHourly = result.dailyStats?.[yesterdayKey]?.hourlySeconds;
+        const todayHourly = result.dailyStats?.[today]?.hourlySeconds;
+        if (yesterdayHourly) {
+          for (let h = currentHour + 1; h < 24; h++) {
+            rollingHourly[h.toString()] = yesterdayHourly[h.toString()] || 0;
+          }
+        }
+        if (todayHourly) {
+          for (let h = 0; h <= currentHour; h++) {
+            rollingHourly[h.toString()] = todayHourly[h.toString()] || 0;
+          }
+        }
         const liveHourly = getTemporalData().hourlySeconds;
         setState((p) => ({
           ...p,
           xp: result.xp || p.xp,
-          hourlyData: compute24hData(storedHourly, liveHourly),
+          hourlyData: compute24hData(rollingHourly, liveHourly),
           phase: result.settings?.phase || p.phase,
           productiveUrls: result.productiveUrls || p.productiveUrls,
           lastSyncTime: result.syncState?.lastSyncTime || p.lastSyncTime,
@@ -600,10 +618,31 @@ export default function Widget(): JSX.Element {
     const update24h = () => {
       if (!chrome.storage?.local) return;
       chrome.storage.local.get(['dailyStats'], (result) => {
-        const today = new Date().toISOString().split('T')[0];
-        const storedHourly = result.dailyStats?.[today]?.hourlySeconds;
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayKey = yesterday.toISOString().split('T')[0];
+
+        const todayHourly = result.dailyStats?.[today]?.hourlySeconds;
+        const yesterdayHourly = result.dailyStats?.[yesterdayKey]?.hourlySeconds;
         const liveHourly = getTemporalData().hourlySeconds;
-        setState((p) => ({ ...p, hourlyData: compute24hData(storedHourly, liveHourly) }));
+
+        // Merge: yesterday's hours after current hour + today's hours + live data
+        const currentHour = now.getHours();
+        const merged: Record<string, number> = {};
+        if (yesterdayHourly) {
+          for (let h = currentHour + 1; h < 24; h++) {
+            merged[h.toString()] = (merged[h.toString()] || 0) + (yesterdayHourly[h.toString()] || 0);
+          }
+        }
+        if (todayHourly) {
+          for (let h = 0; h <= currentHour; h++) {
+            merged[h.toString()] = (merged[h.toString()] || 0) + (todayHourly[h.toString()] || 0);
+          }
+        }
+
+        setState((p) => ({ ...p, hourlyData: compute24hData(merged, liveHourly) }));
       });
     };
     update24h();
