@@ -18,7 +18,7 @@ import {
 
 import { signIn, signOut, getAuthState, initAuth } from './auth';
 
-import { getEmptyDailyStats, updateDailyStats, calculateBaselineStats, getWeeklySummary } from './stats';
+import { getEmptyDailyStats, updateDailyStats, calculateBaselineStats, getWeeklySummary, getRolling24hStats } from './stats';
 
 import {
   calculateDrift,
@@ -149,10 +149,9 @@ async function handleRateVideo(data: { sessionId: string; rating: -1 | 0 | 1 }):
 }
 
 async function handleGetStats(): Promise<{ today: any | null; currentSession: any | null }> {
-  const storage = await getStorage();
-  const today = getTodayKey();
+  const rolling = await getRolling24hStats();
   return {
-    today: storage.dailyStats[today] || null,
+    today: rolling,
     currentSession: null,
   };
 }
