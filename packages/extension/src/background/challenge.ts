@@ -6,12 +6,12 @@ import { getStorage, saveStorage, type ChallengeTier, type ChallengeProgress } f
 
 // ===== Challenge Tiers =====
 
-export const CHALLENGE_TIERS: Record<ChallengeTier, { goalMinutes: number; xpMultiplier: number }> = {
-  casual: { goalMinutes: 60, xpMultiplier: 1.0 },
-  focused: { goalMinutes: 45, xpMultiplier: 1.5 },
-  disciplined: { goalMinutes: 30, xpMultiplier: 2.0 },
-  monk: { goalMinutes: 15, xpMultiplier: 3.0 },
-  ascetic: { goalMinutes: 5, xpMultiplier: 5.0 },
+export const CHALLENGE_TIERS: Record<ChallengeTier, { driftThreshold: number; xpMultiplier: number }> = {
+  casual: { driftThreshold: 0.60, xpMultiplier: 1.0 },
+  focused: { driftThreshold: 0.45, xpMultiplier: 1.5 },
+  disciplined: { driftThreshold: 0.30, xpMultiplier: 2.0 },
+  monk: { driftThreshold: 0.15, xpMultiplier: 3.0 },
+  ascetic: { driftThreshold: 0.05, xpMultiplier: 5.0 },
 };
 
 export const TIER_ORDER: ChallengeTier[] = ['casual', 'focused', 'disciplined', 'monk', 'ascetic'];
@@ -20,10 +20,11 @@ export const DAYS_TO_UPGRADE = 5; // Days under goal to unlock next tier
 // ===== Get Challenge Progress =====
 
 export async function getChallengeProgress(): Promise<ChallengeProgress> {
-  const data = await chrome.storage.local.get(['challengeProgress', 'settings', 'dailyStats', 'xp']);
+  const data = await chrome.storage.local.get(['challengeProgress', 'settings', 'dailyStats', 'xp', 'driftHistory']);
   const settings = data.settings || {};
   const currentTier: ChallengeTier = (settings.challengeTier as ChallengeTier) || 'casual';
   const dailyStats = data.dailyStats || {};
+  const driftHistory: Array<{ timestamp: number; drift: number }> = data.driftHistory || [];
 
   const progress: ChallengeProgress = data.challengeProgress || {
     currentTier,
@@ -34,44 +35,51 @@ export async function getChallengeProgress(): Promise<ChallengeProgress> {
     eligibleForUpgrade: false,
   };
 
-  // Calculate consecutive days under goal
-  const goalMinutes = CHALLENGE_TIERS[currentTier]?.goalMinutes || 60;
-  const today = new Date().toISOString().split('T')[0];
-
-  // Check recent days
+  const driftThreshold = CHALLENGE_TIERS[currentTier]?.driftThreshold ?? 0.60;
   let consecutiveDays = 0;
+
   for (let i = 0; i < 14; i++) {
     const date = new Date();
     date.setDate(date.getDate() - i);
     const dateKey = date.toISOString().split('T')[0];
-    const dayStats = dailyStats[dateKey];
 
-    if (dayStats) {
-      const dayMinutes = Math.floor((dayStats.totalSeconds || 0) / 60);
-      if (dayMinutes <= goalMinutes) {
-        consecutiveDays++;
+    if (i === 0) {
+      // Today: compute average from live drift snapshots
+      const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+      const todaySnapshots = driftHistory.filter((s) => s.timestamp > oneDayAgo);
+      if (todaySnapshots.length > 0) {
+        const avgDrift = todaySnapshots.reduce((sum, s) => sum + s.drift, 0) / todaySnapshots.length;
+        if (avgDrift <= driftThreshold) {
+          consecutiveDays++;
+        } else {
+          break;
+        }
       } else {
-        break; // Streak broken
+        consecutiveDays++;
       }
-    } else if (i === 0) {
-      // Today with no data counts as under goal
-      consecutiveDays++;
     } else {
-      break;
+      const dayStats = dailyStats[dateKey];
+      if (dayStats) {
+        const avgDrift = dayStats.avgDrift ?? 0;
+        if (avgDrift <= driftThreshold) {
+          consecutiveDays++;
+        } else {
+          break;
+        }
+      } else {
+        consecutiveDays++;
+      }
     }
   }
 
   progress.daysUnderGoal = consecutiveDays;
-  progress.lastUnderGoalDate = today;
+  progress.lastUnderGoalDate = new Date().toISOString().split('T')[0];
 
-  // Check eligibility for upgrade
   const currentTierIndex = TIER_ORDER.indexOf(currentTier);
   const canUpgrade = currentTierIndex < TIER_ORDER.length - 1;
   progress.eligibleForUpgrade = canUpgrade && consecutiveDays >= DAYS_TO_UPGRADE;
 
-  // Save progress
   await chrome.storage.local.set({ challengeProgress: progress });
-
   return progress;
 }
 
@@ -96,7 +104,6 @@ export async function upgradeTier(): Promise<{
 
   // Update settings
   settings.challengeTier = newTier;
-  settings.dailyGoalMinutes = CHALLENGE_TIERS[newTier].goalMinutes;
   await saveStorage({ settings });
 
   // Update XP
@@ -132,7 +139,6 @@ export async function downgradeTier(): Promise<{ success: boolean; newTier: Chal
 
   // Update settings
   settings.challengeTier = newTier;
-  settings.dailyGoalMinutes = CHALLENGE_TIERS[newTier].goalMinutes;
   await saveStorage({ settings });
 
   console.log(`[YT Detox] Tier downgraded: ${currentTier} → ${newTier}`);
@@ -172,7 +178,7 @@ export async function checkDailyChallenge(): Promise<void> {
       type: 'basic',
       iconUrl: 'icons/icon128.png',
       title: '🏆 Challenge Unlocked!',
-      message: `You've been under goal for ${progress.daysUnderGoal} days! Ready to level up?`,
+      message: `${progress.daysUnderGoal} days of calm seas! Ready to level up?`,
       buttons: [{ title: 'Accept Challenge' }, { title: 'Maybe Later' }],
     });
   }
@@ -194,7 +200,6 @@ export async function setGoalMode(
 export async function setChallengeTier(tier: ChallengeTier): Promise<{ success: boolean; tier: ChallengeTier }> {
   const storage = await getStorage();
   (storage.settings as any).challengeTier = tier;
-  storage.settings.dailyGoalMinutes = CHALLENGE_TIERS[tier].goalMinutes;
   await saveStorage({ settings: storage.settings });
   return { success: true, tier };
 }
