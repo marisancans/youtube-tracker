@@ -425,7 +425,7 @@ const RANK_MAP: Record<string, string> = {
 export default function Dashboard() {
   const [dailyStats, setDailyStats] = useState<Record<string, FullDailyStats>>({});
   const [videoSessions, setVideoSessions] = useState<VideoSessionEntry[]>([]);
-  const [settings, setSettings] = useState<Record<string, any>>({});
+  const [, setSettings] = useState<Record<string, any>>({});
   const [xp, setXp] = useState(0);
   const [drift, setDrift] = useState(0);
   const [driftLevel, setDriftLevel] = useState('low');

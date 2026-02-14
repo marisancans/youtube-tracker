@@ -37,6 +37,7 @@ const EMPTY_DAILY: DailyStats = {
   topChannels: [],
   preSleepMinutes: 0,
   bingeSessions: 0,
+  avgDrift: 0,
 };
 
 export function useStats(pollInterval = 1000) {
