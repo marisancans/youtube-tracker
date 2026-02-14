@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "YouTube Detox",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Gradually wean off YouTube addiction with Drift friction, achievements, and productive alternatives",
   "permissions": [
     "storage",
