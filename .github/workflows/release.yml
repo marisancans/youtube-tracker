@@ -1,0 +1,123 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # Skip if this is an automated version bump commit
+    if: "!startsWith(github.event.head_commit.message, 'chore: bump version')"
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Determine bump type
+        id: bump
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "type=${{ inputs.bump_type }}" >> "$GITHUB_OUTPUT"
+          else
+            # Analyze commits since last tag
+            LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -z "$LAST_TAG" ]; then
+              RANGE="HEAD"
+            else
+              RANGE="${LAST_TAG}..HEAD"
+            fi
+
+            COMMITS=$(git log --pretty=format:"%s" $RANGE)
+
+            if echo "$COMMITS" | grep -qiE "^BREAKING|!:"; then
+              echo "type=major" >> "$GITHUB_OUTPUT"
+            elif echo "$COMMITS" | grep -qiE "^feat"; then
+              echo "type=minor" >> "$GITHUB_OUTPUT"
+            else
+              echo "type=patch" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+          echo "Bump type: $(cat "$GITHUB_OUTPUT" | grep type | cut -d= -f2)"
+
+      - name: Bump version
+        id: version
+        run: |
+          bash scripts/bump-version.sh ${{ steps.bump.outputs.type }} --no-commit
+          VERSION=$(node -e "console.log(require('./package.json').version)")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "New version: $VERSION"
+
+      - name: Build
+        run: |
+          pnpm --filter @yt-detox/shared build
+          pnpm --filter @yt-detox/extension build
+
+      - name: Package extension
+        run: |
+          cd packages/extension/dist
+          zip -r "../youtube-detox-v${{ steps.version.outputs.version }}.zip" .
+
+      - name: Commit and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json packages/extension/package.json packages/extension/manifest.json
+          git commit -m "chore: bump version to v${{ steps.version.outputs.version }}"
+          git tag "v${{ steps.version.outputs.version }}"
+          git push
+          git push --tags
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.version.outputs.version }}"
+          name: "v${{ steps.version.outputs.version }}"
+          body: |
+            ## YouTube Detox v${{ steps.version.outputs.version }}
+
+            ### Installation
+            1. Download `youtube-detox-v${{ steps.version.outputs.version }}.zip` below
+            2. Go to `chrome://extensions/`
+            3. Enable Developer Mode
+            4. Click "Load unpacked" and select the extracted folder
+
+            ---
+            *Auto-generated release from ${{ steps.bump.outputs.type }} bump*
+          files: |
+            packages/extension/youtube-detox-v${{ steps.version.outputs.version }}.zip
+          generate_release_notes: true

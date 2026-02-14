@@ -45,7 +45,17 @@ pnpm --filter @yt-detox/shared build
 pnpm --filter @yt-detox/extension build
 ```
 
-### Load Extension in Chrome
+### Quick Install (Windows PowerShell)
+
+Paste this into PowerShell to download and extract the latest release:
+
+```powershell
+irm https://api.github.com/repos/marisancans/youtube-tracker/releases/latest|%{$u=($_.assets|?{$_.name-like'*.zip'})[0].browser_download_url;$o="$env:USERPROFILE\Downloads\youtube-detox";New-Item -Force -ItemType Directory $o|Out-Null;irm $u -OutFile "$o\ext.zip";Expand-Archive -Force "$o\ext.zip" "$o\ext";Remove-Item "$o\ext.zip";Write-Host "Done! Load '$o\ext' as unpacked extension in chrome://extensions"}
+```
+
+Then open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select the `youtube-detox\ext` folder in your Downloads.
+
+### Load Extension in Chrome (from source)
 
 1. Open `chrome://extensions`
 2. Enable "Developer mode"

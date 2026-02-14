@@ -101,11 +101,21 @@ function pauseVideo(): void {
   }
 }
 
+function resumeVideo(): void {
+  const video = document.querySelector('video') as HTMLVideoElement | null;
+  if (video && video.paused) {
+    video.play().catch(() => {});
+  }
+}
+
 function removeOverlay(): void {
   const overlay = document.getElementById(OVERLAY_ID);
   if (overlay) {
     overlay.style.opacity = '0';
-    setTimeout(() => overlay.remove(), 300);
+    setTimeout(() => {
+      overlay.remove();
+      resumeVideo();
+    }, 300);
   }
 }
 

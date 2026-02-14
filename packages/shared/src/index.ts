@@ -515,7 +515,9 @@ export type MessageType =
   // UI navigation
   | 'OPEN_TAB'
   // Live stats
-  | 'STATS_UPDATE';
+  | 'STATS_UPDATE'
+  // Update checker
+  | 'CHECK_FOR_UPDATES';
 
 // ===== Batch Sync Types =====
 

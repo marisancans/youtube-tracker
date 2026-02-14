@@ -25,7 +25,10 @@
     "test:headed": "playwright test --headed",
     "test:live": "playwright test --project=live-youtube",
     "test:live:xvfb": "xvfb-run --auto-servernum --server-args='-screen 0 1280x960x24' playwright test --project=live-youtube",
-    "deploy:build": "pnpm build:ext && cd packages/extension/dist && zip -r ../youtube-detox.zip ."
+    "deploy:build": "pnpm build:ext && cd packages/extension/dist && zip -r ../youtube-detox.zip .",
+    "version:patch": "bash scripts/bump-version.sh patch --tag",
+    "version:minor": "bash scripts/bump-version.sh minor --tag",
+    "version:major": "bash scripts/bump-version.sh major --tag"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",

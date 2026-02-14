@@ -59,6 +59,8 @@ import {
   startAchievementChecks,
 } from './achievements';
 
+import { startUpdateChecker, handleUpdateAlarm, handleUpdateNotificationClick, checkForUpdates } from './update-checker';
+
 // ===== Page Event Handlers =====
 
 async function handlePageLoad(data: any): Promise<void> {
@@ -207,6 +209,7 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
       const AUTH_EXEMPT = new Set([
         'AUTH_SIGN_IN', 'AUTH_SIGN_OUT', 'AUTH_GET_STATE',
         'GET_SETTINGS', 'UPDATE_SETTINGS', 'OPEN_TAB',
+        'CHECK_FOR_UPDATES',
       ]);
 
       if (!AUTH_EXEMPT.has(type)) {
@@ -416,6 +419,14 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
           break;
         }
 
+        // Update checker
+        case 'CHECK_FOR_UPDATES': {
+          await checkForUpdates();
+          const updateResult = await chrome.storage.local.get('updateState');
+          response = updateResult.updateState || {};
+          break;
+        }
+
         default:
           console.log('[YT Detox] Unknown message type:', type);
       }
@@ -435,12 +446,19 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'syncToBackend') {
     await handleSyncAlarm();
+  } else if (handleUpdateAlarm(alarm)) {
+    // handled by update checker
   }
 });
 
 // ===== Notifications =====
 
-chrome.notifications.onButtonClicked.addListener(handleNotificationClick);
+chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIndex) => {
+  const handled = await handleUpdateNotificationClick(notificationId, buttonIndex);
+  if (!handled) {
+    handleNotificationClick(notificationId, buttonIndex);
+  }
+});
 
 // ===== Extension Icon Click =====
 
@@ -517,6 +535,9 @@ async function initialize(): Promise<void> {
       startPeriodicTasks();
     }
   });
+
+  // Start update checker (works without auth)
+  startUpdateChecker();
 
   console.log('[YT Detox] Background service worker initialized (v0.6.0 - auth-required)');
 }

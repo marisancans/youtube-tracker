@@ -41,3 +41,6 @@ data/
 # Test artifacts
 playwright-report/
 test-results/
+
+# Extension zip builds
+packages/extension/youtube-detox*.zip
