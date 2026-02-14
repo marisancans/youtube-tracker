@@ -513,7 +513,6 @@ export default function Dashboard() {
   // --- Computed ---
   const tk = todayKey();
   const today = dailyStats[tk];
-  const goalMin = (settings.dailyGoalMinutes as number) || 60;
   const keys7 = useMemo(() => last7Keys(), []);
   const stats7 = useMemo(() => keys7.map((k) => dailyStats[k] || null), [keys7, dailyStats]);
 
@@ -521,8 +520,6 @@ export default function Dashboard() {
   const todayActiveMin = today ? Math.round(((today.activeSeconds || today.totalSeconds || 0)) / 60) : 0;
   const todayTotalMin = today ? Math.round((today.totalSeconds || 0) / 60) : 0;
   const todayBgMin = today ? Math.round((today.backgroundSeconds || 0) / 60) : 0;
-  const overGoal = todayActiveMin > goalMin;
-
   // 24h bars
   const hourly = useMemo(() => {
     const hrs: number[] = [];
@@ -691,16 +688,12 @@ export default function Dashboard() {
           {/* ═══ ROW 1: Hero Stats ═══ */}
           <HeroCard
             value={fmt(todayActiveMin)}
-            label="Active Today"
-            sub={
-              overGoal
-                ? `+${fmt(todayActiveMin - goalMin)} over`
-                : `${fmt(goalMin - todayActiveMin)} left`
-            }
-            color={overGoal ? 'text-storm-red' : 'text-teal'}
+            label="Rolling 24h"
+            sub={`${today?.sessionCount || 0} sessions`}
+            color="text-ink"
             icon={
               <CompassRose
-                score={Math.max(0, 100 - (todayActiveMin / goalMin) * 100)}
+                score={Math.max(0, 100 - Math.round((driftV2 ? driftV2.composite : drift) * 100))}
                 size={24}
                 className="text-gold"
               />
@@ -883,7 +876,6 @@ export default function Dashboard() {
               labels={weekLabels}
               height={120}
               activeIdx={6}
-              goalLine={goalMin}
             />
             <div className="flex justify-between mt-2 text-[10px] text-ink-light font-mono">
               <span>Week total: {fmt(weekTotals.activeMin)}</span>
@@ -929,7 +921,7 @@ export default function Dashboard() {
 
           {/* ═══ ROW 4: Top Channels + Content Sources ═══ */}
           <div className="col-span-3 bg-parchment rounded-xl p-5 rope-border">
-            <Section>Top Channels (Today)</Section>
+            <Section>Top Channels (24h)</Section>
             {channels.length > 0 ? (
               <HBars
                 items={channels.map((c) => ({
@@ -947,7 +939,7 @@ export default function Dashboard() {
           </div>
 
           <div className="col-span-3 bg-parchment rounded-xl p-5 rope-border">
-            <Section>Content Sources (Today)</Section>
+            <Section>Content Sources (24h)</Section>
             {sources.length > 0 ? (
               <Donut
                 segments={sources.map((s) => ({
@@ -1238,8 +1230,6 @@ export default function Dashboard() {
             </div>
             <div className="pt-3 border-t border-gold/20">
               <Metric label="Challenge tier" value={tier} />
-              <Metric label="Daily goal" value={fmt(goalMin)} />
-              <Metric label="Goal mode" value={(settings.goalMode as string) || 'time_reduction'} />
             </div>
 
             {/* Shorts vs Long-form */}
