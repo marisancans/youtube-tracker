@@ -186,6 +186,81 @@ function generateAtmosphereCSS(): string {
       transition: opacity 2s ease;
       will-change: transform, opacity;
     }
+
+    /* ===== Storm Wind System ===== */
+
+    /* Page shake during storm */
+    @keyframes storm-shake {
+      0%   { transform: translate(0, 0); }
+      10%  { transform: translate(-1px, 0.5px); }
+      20%  { transform: translate(1.5px, -0.5px); }
+      30%  { transform: translate(-0.5px, 1px); }
+      40%  { transform: translate(1px, -1px); }
+      50%  { transform: translate(-1.5px, 0); }
+      60%  { transform: translate(0.5px, 0.5px); }
+      70%  { transform: translate(-1px, -0.5px); }
+      80%  { transform: translate(1px, 1px); }
+      90%  { transform: translate(0, -0.5px); }
+      100% { transform: translate(0, 0); }
+    }
+
+    body.yt-detox-storm-active > *:not(#yt-detox-wave-overlay):not(#yt-detox-fog-overlay):not(#yt-detox-compass-watermark):not(#yt-detox-wind-overlay):not(#yt-detox-spray-overlay):not(style):not(script) {
+      animation: storm-shake 0.15s linear infinite !important;
+    }
+
+    /* Wind streaks container */
+    #yt-detox-wind-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9993;
+      overflow: hidden;
+      transition: opacity 1.5s ease;
+    }
+
+    @keyframes wind-streak {
+      0%   { transform: translateX(110vw); opacity: 0; }
+      5%   { opacity: 1; }
+      90%  { opacity: 1; }
+      100% { transform: translateX(-120vw); opacity: 0; }
+    }
+
+    .yt-detox-wind-streak {
+      position: absolute;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(200, 180, 140, 0.15), rgba(200, 180, 140, 0.25), rgba(200, 180, 140, 0.15), transparent);
+      animation: wind-streak var(--streak-duration) linear infinite;
+      animation-delay: var(--streak-delay);
+      will-change: transform;
+    }
+
+    /* Spray / debris particles */
+    #yt-detox-spray-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9993;
+      overflow: hidden;
+      transition: opacity 1.5s ease;
+    }
+
+    @keyframes spray-fly {
+      0%   { transform: translate(110vw, 0) scale(1); opacity: 0; }
+      10%  { opacity: 0.6; }
+      50%  { transform: translate(0vw, var(--spray-drift-y)) scale(0.8); opacity: 0.4; }
+      100% { transform: translate(-110vw, var(--spray-drift-y2)) scale(0.3); opacity: 0; }
+    }
+
+    .yt-detox-spray {
+      position: absolute;
+      width: var(--spray-size);
+      height: var(--spray-size);
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(200, 180, 140, 0.4), transparent);
+      animation: spray-fly var(--spray-duration) linear infinite;
+      animation-delay: var(--spray-delay);
+      will-change: transform;
+    }
   `;
 }
 
@@ -276,6 +351,60 @@ function ensureCompassWatermark(): HTMLDivElement {
   return el;
 }
 
+function ensureWindOverlay(): HTMLDivElement {
+  let el = document.getElementById('yt-detox-wind-overlay') as HTMLDivElement | null;
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'yt-detox-wind-overlay';
+    // Generate 12 wind streaks at random heights with varying speeds
+    let html = '';
+    for (let i = 0; i < 12; i++) {
+      const top = 5 + (i * 8) + (Math.sin(i * 7.3) * 3); // spread across viewport
+      const width = 200 + Math.floor(Math.sin(i * 4.1) * 100 + 100); // 100-400px
+      const duration = 1.2 + (i % 4) * 0.3; // 1.2-2.1s — fast!
+      const delay = i * 0.15;
+      html += `<div class="yt-detox-wind-streak" style="
+        top: ${top}%;
+        width: ${width}px;
+        --streak-duration: ${duration}s;
+        --streak-delay: -${delay}s;
+      "></div>`;
+    }
+    el.innerHTML = html;
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function ensureSprayOverlay(): HTMLDivElement {
+  let el = document.getElementById('yt-detox-spray-overlay') as HTMLDivElement | null;
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'yt-detox-spray-overlay';
+    // Generate 20 spray particles with random trajectories
+    let html = '';
+    for (let i = 0; i < 20; i++) {
+      const top = 10 + (i * 4.5) % 85;
+      const size = 3 + Math.floor(Math.sin(i * 2.7) * 2 + 2); // 3-7px
+      const duration = 2 + (i % 5) * 0.5; // 2-4s
+      const delay = i * 0.2;
+      const driftY = -30 + Math.floor(Math.sin(i * 3.1) * 50); // random vertical drift
+      const driftY2 = driftY + Math.floor(Math.sin(i * 5.3) * 30);
+      html += `<div class="yt-detox-spray" style="
+        top: ${top}%;
+        --spray-size: ${size}px;
+        --spray-duration: ${duration}s;
+        --spray-delay: -${delay}s;
+        --spray-drift-y: ${driftY}px;
+        --spray-drift-y2: ${driftY2}px;
+      "></div>`;
+    }
+    el.innerHTML = html;
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
 // ---------------------------------------------------------------------------
 // Atmosphere Updater
 // ---------------------------------------------------------------------------
@@ -316,6 +445,21 @@ function updateAtmosphere(effects: DriftEffects): void {
   const compassEl = ensureCompassWatermark();
   compassEl.style.opacity = hasDrift ? String(config.compassOpacity) : '0';
   compassEl.style.color = '#94a3b8'; // slate-400 — neutral across light & dark themes
+
+  // ----- Storm wind system (only in storm state) -----
+  if (state === 'storm') {
+    document.body.classList.add('yt-detox-storm-active');
+    const windEl = ensureWindOverlay();
+    windEl.style.opacity = '1';
+    const sprayEl = ensureSprayOverlay();
+    sprayEl.style.opacity = '1';
+  } else {
+    document.body.classList.remove('yt-detox-storm-active');
+    const windEl = document.getElementById('yt-detox-wind-overlay');
+    if (windEl) windEl.style.opacity = '0';
+    const sprayEl = document.getElementById('yt-detox-spray-overlay');
+    if (sprayEl) sprayEl.style.opacity = '0';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -328,10 +472,15 @@ function removeAtmosphere(): void {
   htmlEl.style.removeProperty('--yt-detox-atmosphere-color');
   htmlEl.style.removeProperty('--yt-detox-atmosphere-opacity');
 
+  // Remove storm classes
+  document.body.classList.remove('yt-detox-storm-active');
+
   // Remove overlay elements
   document.getElementById('yt-detox-wave-overlay')?.remove();
   document.getElementById('yt-detox-fog-overlay')?.remove();
   document.getElementById('yt-detox-compass-watermark')?.remove();
+  document.getElementById('yt-detox-wind-overlay')?.remove();
+  document.getElementById('yt-detox-spray-overlay')?.remove();
 }
 
 // ---------------------------------------------------------------------------
