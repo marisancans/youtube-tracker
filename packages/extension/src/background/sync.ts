@@ -6,6 +6,7 @@
 
 import { getStorage, saveStorage, EMPTY_EVENT_QUEUES } from './storage';
 import { getAuthState } from './auth';
+import { recalculateDriftFromHistory } from './drift';
 
 // ===== Unified Backend Sync =====
 
@@ -252,6 +253,9 @@ export async function restoreFromBackend(userId: string): Promise<{ success: boo
       videoSessions: mergedVideoSessions,
       browserSessions: mergedBrowserSessions,
     });
+
+    // Recalculate drift state from restored video sessions
+    await recalculateDriftFromHistory(mergedVideoSessions);
 
     console.log('[YT Detox] Restore complete:', result.counts);
     return { success: true, counts: result.counts };

@@ -358,6 +358,48 @@ export function startDriftCalculation(intervalMs: number = 30000): void {
   }, intervalMs);
 }
 
+// ===== Drift Recalculation from Restored Data =====
+
+export async function recalculateDriftFromHistory(
+  videoSessions: Array<{ timestamp: number; watchedSeconds: number; productivityRating?: -1 | 0 | 1 | null }>,
+): Promise<void> {
+  const now = Date.now();
+  const cutoff = now - 24 * 60 * 60 * 1000;
+
+  // Reset drift state
+  driftV2 = emptyDriftStateV2();
+
+  // Replay time pressure samples from video sessions
+  const recentSessions = videoSessions.filter((s) => s.timestamp > cutoff);
+  for (const session of recentSessions) {
+    const minutes = session.watchedSeconds / 60;
+    driftV2.axes.timePressure.samples.push({
+      timestamp: session.timestamp,
+      weight: minutes,
+    });
+  }
+
+  // Replay content quality samples from rated sessions
+  const RATING_WEIGHTS: Record<number, number> = {
+    1: -0.25,
+    0: 0.05,
+    '-1': 0.35,
+  };
+  for (const session of recentSessions) {
+    if (session.productivityRating != null) {
+      const weight = RATING_WEIGHTS[session.productivityRating] ?? 0;
+      driftV2.axes.contentQuality.samples.push({
+        timestamp: session.timestamp,
+        weight,
+      });
+    }
+  }
+
+  // Recalculate composite
+  await calculateDriftV2();
+  console.log('[YT Detox] Drift recalculated from restored data, composite:', driftV2.composite.toFixed(2));
+}
+
 export function stopDriftCalculation(): void {
   if (driftInterval) {
     clearInterval(driftInterval);
